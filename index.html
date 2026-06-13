@@ -6,14 +6,14 @@
 <title>Number Puzzles × Steroids</title>
 <style>
   :root{
-    --bg:#16121f; --panel:rgba(24,19,36,.88); --panel-border:rgba(255,255,255,.08);
-    --text:#e8e2f2; --muted:#9a90b0; --accent:#e8a04c; --accent2:#c75f6e;
+    --bg:#cdc0ea; --panel:rgba(247,243,253,.9); --panel-border:rgba(96,66,158,.18);
+    --text:#3a2d5c; --muted:#7a6c9f; --accent:#8a5cf5; --accent2:#c75fb0;
   }
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
     font-family:"Segoe UI",system-ui,sans-serif;user-select:none}
   #game{position:fixed;inset:0;display:block;cursor:crosshair;
-    background:radial-gradient(120% 90% at 50% 0%, #2a2140 0%, #16121f 70%)}
+    background:radial-gradient(120% 90% at 50% 0%, #eae2fa 0%, #cdc0ea 70%)}
   #game.panning{cursor:grabbing}
 
   /* ---------- HUD ---------- */
@@ -22,21 +22,21 @@
     backdrop-filter:blur(8px);z-index:10}
   #hud h1{font-size:15px;letter-spacing:3px;font-weight:600;color:var(--accent);white-space:nowrap}
   #hud h1 small{display:block;font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:400}
-  #progressWrap{flex:1;max-width:340px;height:10px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden}
-  #progressBar{height:100%;width:0%;border-radius:5px;background:linear-gradient(90deg,#c75f6e,#e8a04c);transition:width .3s}
+  #progressWrap{flex:1;max-width:340px;height:10px;border-radius:5px;background:rgba(96,66,158,.14);overflow:hidden}
+  #progressBar{height:100%;width:0%;border-radius:5px;background:linear-gradient(90deg,#c75fb0,#8a5cf5);transition:width .3s}
   #progressTxt{font-size:12px;color:var(--muted);min-width:88px}
   #mistakes{font-size:13px;color:var(--muted)}
   #mistakes b{color:var(--accent2)}
   .spacer{flex:1}
-  button{background:rgba(255,255,255,.07);border:1px solid var(--panel-border);color:var(--text);
+  button{background:rgba(255,255,255,.6);border:1px solid var(--panel-border);color:var(--text);
     border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
-  button:hover{background:rgba(255,255,255,.14)}
-  button.primary{background:linear-gradient(135deg,#c75f6e,#e8a04c);border:none;color:#1d1426;font-weight:600}
-  button.primary:hover{filter:brightness(1.1)}
-  select{background:rgba(255,255,255,.07);border:1px solid var(--panel-border);color:var(--text);
+  button:hover{background:rgba(255,255,255,.95)}
+  button.primary{background:linear-gradient(135deg,#c75fb0,#8a5cf5);border:none;color:#fff;font-weight:600}
+  button.primary:hover{filter:brightness(1.08)}
+  select{background:rgba(255,255,255,.6);border:1px solid var(--panel-border);color:var(--text);
     border-radius:8px;padding:7px 9px;font-size:13px;cursor:pointer;font-family:inherit}
-  select:hover{background:rgba(255,255,255,.14)}
-  select option{background:#221b33;color:var(--text)}
+  select:hover{background:rgba(255,255,255,.95)}
+  select option{background:#f7f3fd;color:var(--text)}
 
   #controls{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:8px;
     font-size:12px;color:var(--muted);background:var(--panel);border-top:1px solid var(--panel-border);z-index:10}
@@ -48,15 +48,15 @@
   #loader.done{opacity:0;pointer-events:none}
   #loader h1{font-size:26px;letter-spacing:8px;color:var(--accent);font-weight:600}
   #loader p{color:var(--muted);font-size:13px;letter-spacing:1px}
-  #loadBarWrap{width:280px;height:8px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden}
-  #loadBar{height:100%;width:0%;background:linear-gradient(90deg,#c75f6e,#e8a04c)}
+  #loadBarWrap{width:280px;height:8px;border-radius:4px;background:rgba(96,66,158,.14);overflow:hidden}
+  #loadBar{height:100%;width:0%;background:linear-gradient(90deg,#c75fb0,#8a5cf5)}
 
   /* ---------- modal / overlay ---------- */
-  .overlay{position:fixed;inset:0;background:rgba(10,7,18,.72);z-index:40;display:flex;
+  .overlay{position:fixed;inset:0;background:rgba(86,64,140,.42);z-index:40;display:flex;
     align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .4s}
   .overlay.show{opacity:1;pointer-events:auto}
-  .card{background:#221b33;border:1px solid var(--panel-border);border-radius:16px;
-    padding:28px 32px;max-width:560px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+  .card{background:#f7f3fd;border:1px solid var(--panel-border);border-radius:16px;
+    padding:28px 32px;max-width:560px;text-align:center;box-shadow:0 24px 70px rgba(70,48,130,.35)}
   .card h2{color:var(--accent);font-size:19px;margin-bottom:10px;letter-spacing:1px}
   .card p{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:18px}
   .card .btns{display:flex;gap:10px;justify-content:center}
@@ -97,7 +97,7 @@
 <div id="controls">
   <b>Left click</b> light · <b>Right click</b> dark · <b>drag</b> to paint · <b>wheel</b> zoom ·
   <b>middle&nbsp;/&nbsp;space-drag</b> pan · <b>H</b> hint ·
-  <b style="color:#ffd76a">gold plots</b> sudoku · <b style="color:#8fd6c5">teal patches</b> picross · <b>🎮</b> supported
+  <b style="color:#b07a1a">gold plots</b> sudoku · <b style="color:#1f9c84">teal patches</b> picross · <b>🎮</b> supported
 </div>
 
 <div id="loader">
@@ -124,9 +124,9 @@
       <li><b>Count the neighbors:</b> each number tells how many <b>light</b> tiles sit in the 3×3 block centered on it — <i>including the numbered tile itself</i>.</li>
       <li><b>9</b> = the whole block is light. <b>0</b> = the whole block is dark.</li>
       <li>Clues only count tiles inside their own <b>map</b> — the odd-shaped territories with thick borders.</li>
-      <li>Numbers fade once satisfied; they turn <b style="color:#e05b5b">red</b> if contradicted.</li>
-      <li><b style="color:#ffd76a">Gold plots</b> are sudoku, stitched right into the canvas: click a tile and type a digit (or click to cycle). Every row, column and outlined shape needs each number exactly once.</li>
-      <li><b style="color:#8fd6c5">Teal patches</b> are picross: hover near one and its run clues appear. Each number is a run of consecutive light tiles, in order, in that row or column. Stitch them with the usual left/right click — the answer is the painting itself.</li>
+      <li>Numbers fade once satisfied; they turn <b style="color:#d23c4e">red</b> if contradicted.</li>
+      <li><b style="color:#b07a1a">Gold plots</b> are sudoku, stitched right into the canvas: click a tile and type a digit (or click to cycle). Every row, column and outlined shape needs each number exactly once.</li>
+      <li><b style="color:#1f9c84">Teal patches</b> are picross: hover near one and its run clues appear. Each number is a run of consecutive light tiles, in order, in that row or column. Stitch them with the usual left/right click — the answer is the painting itself.</li>
       <li>Finish a map, plot or patch and the painting beneath is revealed.</li>
       <li><b>Difficulty</b> (toolbar) scales everything — easier tiers keep more clues and more free 0/9 moves, give sudoku plots extra digits and tamer shapes, and pre-stitch a head start into picross patches. Your stitches and digits always survive the switch.</li>
     </ul>
@@ -364,7 +364,7 @@ let regionCells = [], regionTint = [];
   for (let i = 0; i < N; i++) regionCells[regionOf[i]].push(i);
 
   // tint each map, greedily avoiding the neighbors' tints
-  const TINTS = ['#b3a995', '#a9ab9a', '#9da7ac', '#b1a0a6', '#9cab9f', '#b1a48d', '#a49fae'];
+  const TINTS = ['#c7bbe6', '#bcb0dc', '#d1c6ec', '#c2b4d9', '#cbbfe0', '#b7addb', '#d6ccef'];
   const adj = Array.from({ length: REG_COUNT }, () => new Set());
   for (let i = 0; i < N; i++) {
     const x = i % GW, y = (i / GW) | 0;
@@ -377,7 +377,7 @@ let regionCells = [], regionTint = [];
     for (const o of adj[r]) if (o < r) used.add(regionTint[o]);
     regionTint[r] = TINTS.find(t => !used.has(t)) || TINTS[r % TINTS.length];
   }
-  for (const p of PICROSS) regionTint[p.region] = '#c8bda4';
+  for (const p of PICROSS) regionTint[p.region] = '#e1d8f4';
 })();
 
 const picrossByRegion = new Map();
@@ -432,15 +432,15 @@ function fitView(){
 
 // ---------- palette ----------
 const C = {
-  light:'#f6f0e0', dark:'#332b48',
-  grid:'rgba(40,30,60,.16)',
-  clue:'#42384f', clueOnDark:'#c9c0dd', clueBad:'#e05b5b',
-  regionBorder:'rgba(20,12,34,.85)', boardEdge:'#0e0a18',
-  zoneBg:'#d8cfb6', zoneGold:'#ffd76a', zoneBox:'rgba(206,150,60,.85)',
-  zoneInk:'#3a3148', zoneGiven:'#a86a1f', zoneBad:'#cc3b3b',
-  zoneSel:'rgba(232,160,76,.35)',
-  picBorder:'#8fd6c5', picClue:'#8fd6c5', picClueDim:'rgba(143,214,197,.32)',
-  picPanel:'rgba(12,9,22,.82)'
+  light:'#fdfcff', dark:'#453577',
+  grid:'rgba(96,72,150,.18)',
+  clue:'#473a6e', clueOnDark:'#dcd2f7', clueBad:'#d23c4e',
+  regionBorder:'rgba(78,56,136,.9)', boardEdge:'#7a64b8',
+  zoneBg:'#f0eafb', zoneGold:'#e8a04c', zoneBox:'rgba(196,138,52,.85)',
+  zoneInk:'#473a6e', zoneGiven:'#a86a1f', zoneBad:'#cc3b3b',
+  zoneSel:'rgba(138,92,245,.30)',
+  picBorder:'#2fb39a', picClue:'#bff0e4', picClueDim:'rgba(191,240,228,.4)',
+  picPanel:'rgba(64,48,108,.88)'
 };
 
 // ============================================================
@@ -1369,7 +1369,7 @@ function renderPadList(){
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;justify-content:space-between;gap:24px;padding:4px 2px;font-size:13px;color:var(--muted)';
     const right = padCaptureIdx === k
-      ? '<b style="color:#ffd76a">press a button…</b>'
+      ? '<b style="color:#8a5cf5">press a button…</b>'
       : `<b style="color:var(--text)">${padBtnName(padMap[a.key])}</b>`;
     row.innerHTML = `<span>${a.label}</span>${right}`;
     el.appendChild(row);
@@ -1727,10 +1727,10 @@ function draw(now){
   if (padActive && padCursorI >= 0) {
     const gx = padCursorI % GW, gy = (padCursorI / GW) | 0;
     if (gx >= gx0 - 1 && gx <= gx1 + 1 && gy >= gy0 - 1 && gy <= gy1 + 1) {
-      ctx.strokeStyle = 'rgba(20,12,34,.85)';
+      ctx.strokeStyle = 'rgba(70,50,120,.9)';
       ctx.lineWidth = Math.max(3.5, s * 0.24);
       ctx.strokeRect(view.x + gx * s, view.y + gy * s, s, s);
-      ctx.strokeStyle = '#ffd76a';
+      ctx.strokeStyle = '#f0a224';
       ctx.lineWidth = Math.max(1.8, s * 0.12);
       ctx.strokeRect(view.x + gx * s, view.y + gy * s, s, s);
     }
@@ -1746,7 +1746,7 @@ function draw(now){
       minX = Math.min(minX, jx); maxX = Math.max(maxX, jx);
       minY = Math.min(minY, jy); maxY = Math.max(maxY, jy); }
     ctx.globalAlpha = (1 - t) * (0.55 + 0.45 * pulse);
-    ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3;
+    ctx.strokeStyle = '#f0a224'; ctx.lineWidth = 3;
     ctx.strokeRect(view.x + minX * s - 2, view.y + minY * s - 2, (maxX - minX + 1) * s + 4, (maxY - minY + 1) * s + 4);
     ctx.globalAlpha = 1;
   }
