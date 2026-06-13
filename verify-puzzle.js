@@ -12,7 +12,7 @@ function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a
 const DIFF = {
   veryeasy: { redundancy: 0.65, passes: 1, extremeKeep: 1.0, zGivens: 1.5,  zSwaps: 0.25, pHelp: 0.20, basicOnly: true },
   easy:     { redundancy: 0.40, passes: 1, extremeKeep: 0.6, zGivens: 1.25, zSwaps: 0.5,  pHelp: 0.10, basicOnly: true },
-  medium:   { redundancy: 0.20, passes: 1, extremeKeep: 0.3, zGivens: 1.0,  zSwaps: 1.0,  pHelp: 0.05 },
+  medium:   { redundancy: 0.20, passes: 1, extremeKeep: 0.3, zGivens: 1.0,  zSwaps: 1.0,  pHelp: 0.05, basicOnly: true },
   hard:     { redundancy: 0.08, passes: 1, extremeKeep: 0.1, zGivens: 0.85, zSwaps: 1.5,  pHelp: 0 },
   veryhard: { redundancy: 0,    passes: 2, extremeKeep: 0,   zGivens: 0.7,  zSwaps: 2.0,  pHelp: 0 },
 };

@@ -64,6 +64,17 @@
   .card .proverb{font-style:italic;font-size:17px;color:var(--text);margin-bottom:6px}
   .card ul{text-align:left;color:var(--muted);font-size:13px;line-height:1.9;list-style:none}
   .card ul b{color:var(--accent)}
+  /* mini grid illustrating the cross-clue (overlap) deduction */
+  .dgrid{display:grid;grid-template-columns:repeat(4,42px);grid-template-rows:repeat(3,42px);
+    gap:3px;justify-content:center;margin:2px auto 16px}
+  .dgrid div{display:flex;align-items:center;justify-content:center;border-radius:5px;
+    font-weight:700;font-size:18px;font-family:inherit}
+  .dgrid .unk{background:#cdc1e8}
+  .dgrid .lit{background:#fdfcff;color:#473a6e;box-shadow:inset 0 0 0 2px #5bb89a}
+  .dgrid .drk{background:#453577;color:#dcd2f7;box-shadow:inset 0 0 0 2px #d2607e}
+  .dgrid .clue{background:#b9aadb;color:#2f2358}
+  .dlegend{font-size:12px;color:var(--muted);margin:-8px 0 16px}
+  .dlegend b.l{color:#3a9d7e}.dlegend b.d{color:#c44a6a}
 
   /* ---------- toast ---------- */
   #toast{position:fixed;left:50%;bottom:58px;transform:translateX(-50%) translateY(20px);
@@ -129,8 +140,28 @@
       <li><b style="color:#1f9c84">Teal patches</b> are picross: hover near one and its run clues appear. Each number is a run of consecutive light tiles, in order, in that row or column. Stitch them with the usual left/right click — the answer is the painting itself.</li>
       <li>Finish a map, plot or patch and the painting beneath is revealed.</li>
       <li><b>Difficulty</b> (toolbar) scales everything — easier tiers keep more clues and more free 0/9 moves, give sudoku plots extra digits and tamer shapes, and pre-stitch a head start into picross patches. Your stitches and digits always survive the switch.</li>
+      <li><b>Very Easy–Medium</b> need only neighbor-counting. <b>Hard</b> and <b>Very Hard</b> add <b>Advanced Deductions</b> (comparing overlapping clues) — but <i>guessing is never required</i> on any tier. Stuck? Press <b>H</b> for a hint.</li>
     </ul>
-    <div class="btns" style="margin-top:18px"><button class="primary" id="btnCloseHelp">Back to stitching</button></div>
+    <div class="btns" style="margin-top:18px">
+      <button id="btnShowAdvanced">Advanced deductions ↗</button>
+      <button class="primary" id="btnCloseHelp">Back to stitching</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="advancedModal">
+  <div class="card">
+    <h2>Advanced Deductions</h2>
+    <p>On <b>Hard</b> and up you'll meet spots where no single clue alone fixes a tile. Compare two <b>adjacent clues</b> instead — especially ones <b>3 apart in value</b>.</p>
+    <div class="dgrid">
+      <div class="drk"></div><div class="unk"></div><div class="unk"></div><div class="lit"></div>
+      <div class="drk"></div><div class="clue">3</div><div class="clue">6</div><div class="lit"></div>
+      <div class="drk"></div><div class="unk"></div><div class="unk"></div><div class="lit"></div>
+    </div>
+    <p class="dlegend"><b class="d">■</b> forced dark &nbsp;·&nbsp; <b class="l">■</b> forced light &nbsp;·&nbsp; the four middle tiles are shared by both clues</p>
+    <p>The <b>6</b> and <b>3</b> overlap on the middle tiles. The 6 needs <b>three</b> more lights than the 3, and there are exactly <b>three</b> tiles only the 6 can see — so those <b style="color:#3a9d7e">must all be light</b>, and the three only the 3 sees <b style="color:#c44a6a">must all be dark</b>. Forced — never a guess. Counting takes over again from there.</p>
+    <p style="font-size:13px"><b>If in doubt, use a hint (H).</b> Guessing is <b>never</b> required.</p>
+    <div class="btns"><button class="primary" id="btnCloseAdvanced">Got it</button></div>
   </div>
 </div>
 
@@ -210,14 +241,15 @@ const DIFF_KEY = SAVE_KEY + '-diff';
 // redundancy = spare clues kept overall; extremeKeep = how many of the
 // flat-pocket 0/9 clues are shown; zGivens scales sudoku givens; zSwaps
 // scales jigsaw irregularity; pHelp = fraction of picross pre-stitched
-// basicOnly = the two gentlest tiers must stay solvable by plain 3×3
-//   counting alone (no cross-clue subtraction ever required), so a player
-//   never hits a stall that needs the harder overlap technique — the pruner
-//   simply keeps more clues / reveals a few more starters to honor that
+// basicOnly = the gentler tiers (Very Easy–Medium) must stay solvable by
+//   plain 3×3 counting alone (no cross-clue subtraction ever required), so a
+//   player never hits a stall that needs the harder overlap technique — the
+//   pruner simply keeps more clues / reveals a few more starters to honor it.
+//   Only Hard and Very Hard demand the "Advanced Deductions" overlap trick.
 const DIFF = {
   veryeasy: { redundancy: 0.65, passes: 1, extremeKeep: 1.0, zGivens: 1.5,  zSwaps: 0.25, pHelp: 0.20, basicOnly: true, label: '✿ Very Easy' },
   easy:     { redundancy: 0.40, passes: 1, extremeKeep: 0.6, zGivens: 1.25, zSwaps: 0.5,  pHelp: 0.10, basicOnly: true, label: '☘ Easy' },
-  medium:   { redundancy: 0.20, passes: 1, extremeKeep: 0.3, zGivens: 1.0,  zSwaps: 1.0,  pHelp: 0.05, label: '⚖ Medium' },
+  medium:   { redundancy: 0.20, passes: 1, extremeKeep: 0.3, zGivens: 1.0,  zSwaps: 1.0,  pHelp: 0.05, basicOnly: true, label: '⚖ Medium' },
   hard:     { redundancy: 0.08, passes: 1, extremeKeep: 0.1, zGivens: 0.85, zSwaps: 1.5,  pHelp: 0,    label: '🔥 Hard' },
   veryhard: { redundancy: 0,    passes: 2, extremeKeep: 0,   zGivens: 0.7,  zSwaps: 2.0,  pHelp: 0,    label: '💀 Very Hard' },
 };
@@ -876,6 +908,7 @@ function setDifficulty(d){
       loader.classList.add('done');
       needsDraw = true;
       toast('Difficulty: ' + DIFF[d].label.replace(/^\S+ /, '') + ' — the clues have been rewoven. Your stitches are safe.', true);
+      setTimeout(maybeShowAdvanced, 520);
     });
   }, 80);
   return true;
@@ -883,6 +916,16 @@ function setDifficulty(d){
 
 function updateDiffSel(){
   document.getElementById('selDiff').value = difficulty;
+}
+
+// first time a player reaches a tier that needs the overlap technique, show
+// the Advanced Deductions primer once (mirrors the original game's tutorial)
+function maybeShowAdvanced(){
+  if (!generated || DIFF[difficulty].basicOnly) return;
+  if (document.querySelector('.overlay.show')) return;
+  try { if (localStorage.getItem(SAVE_KEY + '-advseen') === '1') return; } catch (e) {}
+  try { localStorage.setItem(SAVE_KEY + '-advseen', '1'); } catch (e) {}
+  document.getElementById('advancedModal').classList.add('show');
 }
 
 function genRegionClues(r){
@@ -1037,6 +1080,7 @@ function finishSetup(){
   fitView();
   document.getElementById('loader').classList.add('done');
   requestAnimationFrame(loop);
+  setTimeout(maybeShowAdvanced, 600);   // returning players already on Hard+
 }
 
 // ============================================================
@@ -1967,6 +2011,11 @@ document.getElementById('btnZoomOut').onclick = () => zoomCenter(1 / 1.25);
 document.getElementById('btnFit').onclick = fitView;
 document.getElementById('btnHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
 document.getElementById('btnCloseHelp').onclick = () => document.getElementById('helpModal').classList.remove('show');
+document.getElementById('btnShowAdvanced').onclick = () => {
+  document.getElementById('helpModal').classList.remove('show');
+  document.getElementById('advancedModal').classList.add('show');
+};
+document.getElementById('btnCloseAdvanced').onclick = () => document.getElementById('advancedModal').classList.remove('show');
 document.getElementById('btnReset').onclick = () => document.getElementById('resetModal').classList.add('show');
 document.getElementById('btnCancelReset').onclick = () => document.getElementById('resetModal').classList.remove('show');
 document.getElementById('btnConfirmReset').onclick = () => {

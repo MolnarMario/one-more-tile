@@ -15,7 +15,7 @@ function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a
 const DIFF = {
   veryeasy: { redundancy: 0.65, passes: 1, extremeKeep: 1.0, basicOnly: true },
   easy:     { redundancy: 0.40, passes: 1, extremeKeep: 0.6, basicOnly: true },
-  medium:   { redundancy: 0.20, passes: 1, extremeKeep: 0.3 },
+  medium:   { redundancy: 0.20, passes: 1, extremeKeep: 0.3, basicOnly: true },
   hard:     { redundancy: 0.08, passes: 1, extremeKeep: 0.1 },
   veryhard: { redundancy: 0,    passes: 2, extremeKeep: 0 },
 };
