@@ -5,6 +5,16 @@ shipped to the live site.
 
 ---
 
+## [0.5.1] — 2026-06-14 — Fighters quotes
+
+### Added
+- **Quotes on "The Fighters" map** — six regions now carry an original, in-character line for the
+  fighter who dominates that region's art (Piccolo, Tien, Goku, Krillin, Trunks, Vegeta), keyed in
+  `MAP_QUOTES`. Regions that are background or too small/oddly-shaped to clearly belong to one
+  fighter are left silent.
+
+---
+
 ## [0.5.0] — 2026-06-14 — Third map
 
 ### Added

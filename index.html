@@ -317,7 +317,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.5.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.5.1';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -1444,6 +1444,15 @@ const MAP_QUOTES = {
     7: "Sonar, we talked about this. No relapsing into villainy just because you're bored. If you need a dopamine hit, go play a video game or do a puzzle. Do not hijack a yacht again!",
     8: "The fuck you mean temporarily? Bitch, you blind forevah!",
     9: "They told me I have to stop referring to my collateral damage as 'happy little accidents.' Apparently, Bob Ross's estate can sue us for that. Total buzzkill!",
+  },
+  fighters: {
+    // dominant fighter per region (see region-map.html). Original lines, in character.
+    1:  "Patience. The picture reveals itself to the one who stops forcing it and starts reading it.",          // Piccolo
+    4:  "Three eyes, and I still watch only one thing: the next move. Focus is the entire technique.",          // Tien
+    6:  "Aw man, this is fun! A couple more regions and then we eat, okay? I'm starving over here.",            // Goku
+    7:  "Bald, no tail, first one knocked out every single time — and I still show up. That's gotta count.",     // Krillin
+    10: "Where I come from, there are no second tries. So get this one right the first time.",                  // Trunks
+    11: "Place every tile like it's better than the one before it. It's the only way I do anything.",           // Vegeta
   },
 };
 // which region quotes have already been shown, per map (persisted)
