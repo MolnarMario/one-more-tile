@@ -1465,13 +1465,35 @@ function maybeShowQuote(){
   if (added) saveQuotes();
   if (quoteQueue.length && !document.getElementById('charModal').classList.contains('show')) showNextQuote();
 }
-function showNextQuote(){
-  const text = quoteQueue.shift();
-  if (text === undefined) return;
+function showQuoteText(text){
   const nameEl = document.getElementById('charName');
   nameEl.textContent = ''; nameEl.style.display = 'none';   // quotes have no speaker name (yet)
   document.getElementById('charQuote').textContent = '“' + text + '”';
   document.getElementById('charModal').classList.add('show');
+}
+function showNextQuote(){
+  const text = quoteQueue.shift();
+  if (text !== undefined) showQuoteText(text);
+}
+// the home region a cell belongs to (organic region, or a plot's attached one)
+function homeOf(i){
+  const r = regionOf[i];
+  if (r < 0) return -1;
+  if (r < REG_PIX) return r;
+  for (const z of ZONES) if (z.region === r) return z.attached;
+  for (const p of PICROSS) if (p.region === r) return p.attached;
+  return -1;
+}
+// clicking a finished region (its tiles + attached plots all solved) replays
+// its quote — returns true if it showed one
+function tryReplayQuote(i){
+  if (i < 0 || solving) return false;
+  const q = MAP_QUOTES[currentMap];
+  if (!q) return false;
+  const r = homeOf(i);
+  if (r < 0 || q[r] === undefined || !homeRegionComplete(r)) return false;
+  showQuoteText(q[r]);
+  return true;
 }
 
 let mistakePromptOpen = false;
@@ -2038,7 +2060,9 @@ function ensureCursorVisible(){
 
 function padPrimary(){
   const i = padCursorI;
-  if (i < 0 || !generated || solving || gameWon) return;
+  if (i < 0 || !generated || solving) return;
+  if (tryReplayQuote(i)) return;           // A on a finished region replays its quote
+  if (gameWon) return;
   const zi = zoneOf[i];
   if (zi >= 0) {
     const zone = ZONES[zi];
@@ -2495,6 +2519,10 @@ cvs.addEventListener('mousedown', e => {
   }
   const i = cellAt(e.clientX, e.clientY);
   if (i < 0 || solving) { drag = { mode: 'pan', mx: e.clientX, my: e.clientY }; cvs.classList.add('panning'); return; }
+
+  // clicking a finished region replays its quote (a finished region has no
+  // other click action anyway)
+  if (tryReplayQuote(i)) return;
 
   const zi = zoneOf[i];
   if (zi >= 0) {
