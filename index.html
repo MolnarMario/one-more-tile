@@ -1105,6 +1105,7 @@ function loadMap(id){
     loadSave();
     applyGivens();
     for (let r = 0; r < REG_PIX; r++) checkRegion(r, true);
+    for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
     for (const z of ZONES) checkZone(z, true);
     updateHUD();
     fitView();
@@ -1335,6 +1336,7 @@ function finishSetup(){
   loadSave();
   applyGivens();
   for (let r = 0; r < REG_PIX; r++) checkRegion(r, true);
+  for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
   for (const z of ZONES) checkZone(z, true);
   updateHUD();
   fitView();
@@ -1753,6 +1755,7 @@ function applyImported(data){
   gameWon = false; mistakePromptOpen = false;
   selZ = -1; selP = -1;
   for (let r = 0; r < REG_PIX; r++) checkRegion(r, true);
+  for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
   for (const z of ZONES) checkZone(z, true);
   clearUndo();
   scheduleSave();
