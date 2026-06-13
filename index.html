@@ -187,6 +187,21 @@
   </div>
 </div>
 
+<div class="overlay" id="pinModal">
+  <div class="card" style="max-width:340px">
+    <h2>🔒 Solver locked</h2>
+    <p>The auto-solver is gated. Enter the PIN to unlock it for this session.</p>
+    <input type="password" id="pinInput" inputmode="numeric" autocomplete="off" maxlength="8"
+      placeholder="PIN" style="width:140px;text-align:center;letter-spacing:6px;font-size:18px;
+      background:rgba(255,255,255,.8);border:1px solid var(--panel-border);border-radius:8px;
+      padding:8px 10px;color:var(--text);margin-bottom:16px;font-family:ui-monospace,monospace">
+    <div class="btns">
+      <button class="primary" id="btnPinOk">Unlock</button>
+      <button id="btnPinCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="solveModal">
   <div class="card">
     <h2>Let the needle work itself?</h2>
@@ -2524,9 +2539,35 @@ function zoomCenter(k){
 }
 document.getElementById('btnUndo').onclick = undo;
 document.getElementById('btnHint').onclick = giveHint;
-document.getElementById('btnSolve').onclick = () => {
-  if (generated && !gameWon && !solving) document.getElementById('solveModal').classList.add('show');
-};
+// the auto-solver is PIN-gated; once unlocked it stays open for the session
+let solveUnlocked = false;
+const SOLVE_PIN = '5757';
+function openSolve(){
+  if (!generated || gameWon || solving) return;
+  if (solveUnlocked) { document.getElementById('solveModal').classList.add('show'); return; }
+  const inp = document.getElementById('pinInput');
+  inp.value = '';
+  document.getElementById('pinModal').classList.add('show');
+  setTimeout(() => inp.focus(), 50);
+}
+function submitPin(){
+  const inp = document.getElementById('pinInput');
+  if (inp.value === SOLVE_PIN) {
+    solveUnlocked = true;
+    document.getElementById('pinModal').classList.remove('show');
+    document.getElementById('solveModal').classList.add('show');
+  } else {
+    inp.value = '';
+    toast('Wrong PIN.', true);
+  }
+}
+document.getElementById('btnSolve').onclick = openSolve;
+document.getElementById('btnPinOk').onclick = submitPin;
+document.getElementById('btnPinCancel').onclick = () => document.getElementById('pinModal').classList.remove('show');
+document.getElementById('pinInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); submitPin(); }
+  e.stopPropagation();   // keep PIN typing out of the game's key shortcuts
+});
 document.getElementById('btnCancelSolve').onclick = () => document.getElementById('solveModal').classList.remove('show');
 document.getElementById('btnSolveRegion').onclick = () => {
   document.getElementById('solveModal').classList.remove('show');
