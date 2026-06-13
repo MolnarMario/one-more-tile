@@ -1,0 +1,1965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Number Puzzles × Steroids</title>
+<style>
+  :root{
+    --bg:#16121f; --panel:rgba(24,19,36,.88); --panel-border:rgba(255,255,255,.08);
+    --text:#e8e2f2; --muted:#9a90b0; --accent:#e8a04c; --accent2:#c75f6e;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI",system-ui,sans-serif;user-select:none}
+  #game{position:fixed;inset:0;display:block;cursor:crosshair;
+    background:radial-gradient(120% 90% at 50% 0%, #2a2140 0%, #16121f 70%)}
+  #game.panning{cursor:grabbing}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;
+    padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--panel-border);
+    backdrop-filter:blur(8px);z-index:10}
+  #hud h1{font-size:15px;letter-spacing:3px;font-weight:600;color:var(--accent);white-space:nowrap}
+  #hud h1 small{display:block;font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:400}
+  #progressWrap{flex:1;max-width:340px;height:10px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden}
+  #progressBar{height:100%;width:0%;border-radius:5px;background:linear-gradient(90deg,#c75f6e,#e8a04c);transition:width .3s}
+  #progressTxt{font-size:12px;color:var(--muted);min-width:88px}
+  #mistakes{font-size:13px;color:var(--muted)}
+  #mistakes b{color:var(--accent2)}
+  .spacer{flex:1}
+  button{background:rgba(255,255,255,.07);border:1px solid var(--panel-border);color:var(--text);
+    border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  button:hover{background:rgba(255,255,255,.14)}
+  button.primary{background:linear-gradient(135deg,#c75f6e,#e8a04c);border:none;color:#1d1426;font-weight:600}
+  button.primary:hover{filter:brightness(1.1)}
+  select{background:rgba(255,255,255,.07);border:1px solid var(--panel-border);color:var(--text);
+    border-radius:8px;padding:7px 9px;font-size:13px;cursor:pointer;font-family:inherit}
+  select:hover{background:rgba(255,255,255,.14)}
+  select option{background:#221b33;color:var(--text)}
+
+  #controls{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:8px;
+    font-size:12px;color:var(--muted);background:var(--panel);border-top:1px solid var(--panel-border);z-index:10}
+  #controls b{color:var(--text);font-weight:600}
+
+  /* ---------- loading ---------- */
+  #loader{position:fixed;inset:0;background:var(--bg);z-index:50;display:flex;
+    flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .5s}
+  #loader.done{opacity:0;pointer-events:none}
+  #loader h1{font-size:26px;letter-spacing:8px;color:var(--accent);font-weight:600}
+  #loader p{color:var(--muted);font-size:13px;letter-spacing:1px}
+  #loadBarWrap{width:280px;height:8px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden}
+  #loadBar{height:100%;width:0%;background:linear-gradient(90deg,#c75f6e,#e8a04c)}
+
+  /* ---------- modal / overlay ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(10,7,18,.72);z-index:40;display:flex;
+    align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .4s}
+  .overlay.show{opacity:1;pointer-events:auto}
+  .card{background:#221b33;border:1px solid var(--panel-border);border-radius:16px;
+    padding:28px 32px;max-width:560px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+  .card h2{color:var(--accent);font-size:19px;margin-bottom:10px;letter-spacing:1px}
+  .card p{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:18px}
+  .card .btns{display:flex;gap:10px;justify-content:center}
+  .card img{width:100%;image-rendering:pixelated;border-radius:10px;margin-bottom:16px;border:1px solid var(--panel-border)}
+  .card .proverb{font-style:italic;font-size:17px;color:var(--text);margin-bottom:6px}
+  .card ul{text-align:left;color:var(--muted);font-size:13px;line-height:1.9;list-style:none}
+  .card ul b{color:var(--accent)}
+
+  /* ---------- toast ---------- */
+  #toast{position:fixed;left:50%;bottom:58px;transform:translateX(-50%) translateY(20px);
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:10px;
+    padding:10px 22px;font-size:14px;font-style:italic;color:var(--text);opacity:0;
+    transition:all .35s;z-index:30;pointer-events:none;white-space:nowrap}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <h1>NUMBER PUZZLES<small>× steroids</small></h1>
+  <div id="progressWrap"><div id="progressBar"></div></div>
+  <span id="progressTxt">0%</span>
+  <span id="mistakes">Mistakes <b>0</b>/4</span>
+  <div class="spacer"></div>
+  <select id="selDiff" title="Difficulty — clues are rewoven, your stitches stay"></select>
+  <button id="btnHint">💡 Hint</button>
+  <button id="btnSolve">✓ Solve</button>
+  <button id="btnZoomOut">−</button>
+  <button id="btnZoomIn">+</button>
+  <button id="btnFit">⛶ Fit</button>
+  <button id="btnPad">🎮</button>
+  <button id="btnHelp">?</button>
+  <button id="btnReset">Reset</button>
+</div>
+
+<div id="controls">
+  <b>Left click</b> light · <b>Right click</b> dark · <b>drag</b> to paint · <b>wheel</b> zoom ·
+  <b>middle&nbsp;/&nbsp;space-drag</b> pan · <b>H</b> hint ·
+  <b style="color:#ffd76a">gold plots</b> sudoku · <b style="color:#8fd6c5">teal patches</b> picross · <b>🎮</b> supported
+</div>
+
+<div id="loader">
+  <h1>NUMBER PUZZLES × STEROIDS</h1>
+  <p>Stitching the canvas…</p>
+  <div id="loadBarWrap"><div id="loadBar"></div></div>
+</div>
+
+<div class="overlay" id="mistakeModal">
+  <div class="card">
+    <h2>Four mistakes on the board</h2>
+    <p>No game over here — would you like me to sweep away the incorrect tiles so you can carry on?</p>
+    <div class="btns">
+      <button class="primary" id="btnClearErrors">Clear my errors</button>
+      <button id="btnKeepGoing">Keep going</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="helpModal">
+  <div class="card">
+    <h2>How to play</h2>
+    <ul>
+      <li><b>Count the neighbors:</b> each number tells how many <b>light</b> tiles sit in the 3×3 block centered on it — <i>including the numbered tile itself</i>.</li>
+      <li><b>9</b> = the whole block is light. <b>0</b> = the whole block is dark.</li>
+      <li>Clues only count tiles inside their own <b>map</b> — the odd-shaped territories with thick borders.</li>
+      <li>Numbers fade once satisfied; they turn <b style="color:#e05b5b">red</b> if contradicted.</li>
+      <li><b style="color:#ffd76a">Gold plots</b> are sudoku, stitched right into the canvas: click a tile and type a digit (or click to cycle). Every row, column and outlined shape needs each number exactly once.</li>
+      <li><b style="color:#8fd6c5">Teal patches</b> are picross: hover near one and its run clues appear. Each number is a run of consecutive light tiles, in order, in that row or column. Stitch them with the usual left/right click — the answer is the painting itself.</li>
+      <li>Finish a map, plot or patch and the painting beneath is revealed.</li>
+      <li><b>Difficulty</b> (toolbar) scales everything — easier tiers keep more clues and more free 0/9 moves, give sudoku plots extra digits and tamer shapes, and pre-stitch a head start into picross patches. Your stitches and digits always survive the switch.</li>
+    </ul>
+    <div class="btns" style="margin-top:18px"><button class="primary" id="btnCloseHelp">Back to stitching</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="winModal">
+  <div class="card">
+    <img id="winImg" alt="The finished canvas">
+    <p class="proverb">“A smooth sea never made a skilled sailor.”</p>
+    <p>The canvas is complete — 7,680 stitches, every one in its place.</p>
+    <div class="btns">
+      <button id="btnAdmire">Admire the canvas</button>
+      <button class="primary" id="btnPlayAgain">Stitch it again</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="solveModal">
+  <div class="card">
+    <h2>Let the needle work itself?</h2>
+    <p>The solver will stitch the tiles in one by one, following the same deductions you would make. Sudoku plots fill themselves digit by digit.</p>
+    <div class="btns">
+      <button class="primary" id="btnSolveRegion">Solve this map</button>
+      <button id="btnSolveAll">Solve the whole canvas</button>
+      <button id="btnCancelSolve">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="padModal">
+  <div class="card">
+    <h2>🎮 Controller</h2>
+    <p id="padStatus">No controller detected — connect one and press any button.</p>
+    <div id="padList" style="margin-bottom:8px"></div>
+    <p style="font-size:12px;margin-bottom:14px">
+      Move the cursor with the <b>left stick / d-pad</b> · pan with the <b>right stick</b> ·
+      in menus, <b>stitch</b> confirms and <b>mark</b> cancels.
+    </p>
+    <div class="btns">
+      <button class="primary" id="btnPadRemap">Remap buttons</button>
+      <button id="btnPadDefaults">Defaults</button>
+      <button id="btnClosePad">Done</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="resetModal">
+  <div class="card">
+    <h2>Unravel everything?</h2>
+    <p>This clears all of your stitches and digits and starts the canvas over.</p>
+    <div class="btns">
+      <button class="primary" id="btnConfirmReset">Yes, start over</button>
+      <button id="btnCancelReset">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ============================================================
+   NUMBER PUZZLES × STEROIDS — a Fill-a-pix (Mosaic) puzzle built from the
+   embedded pixel-art painting. 120×64 grid, organically shaped
+   region maps, with jigsaw-sudoku plots woven into the canvas.
+   ============================================================ */
+
+const IMG_SRC = 'data:image/png;base64,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';
+
+const GW = 120, GH = 64, N = GW * GH;
+const SEED = 1337;
+const SAVE_KEY = 'proverbs2-castle-v3';
+const ZONES_KEY = SAVE_KEY + '-plots';
+const DIFF_KEY = SAVE_KEY + '-diff';
+
+// the solution itself is woven so that no 3×3 neighborhood is ever all
+// light or all dark — 0 and 9 clues simply cannot exist, on any tier.
+// difficulty is then clue density + the deduction technique required
+// redundancy = spare clues kept overall; extremeKeep = how many of the
+// flat-pocket 0/9 clues are shown; zGivens scales sudoku givens; zSwaps
+// scales jigsaw irregularity; pHelp = fraction of picross pre-stitched
+const DIFF = {
+  veryeasy: { redundancy: 0.65, passes: 1, extremeKeep: 1.0, zGivens: 1.5,  zSwaps: 0.25, pHelp: 0.20, label: '✿ Very Easy' },
+  easy:     { redundancy: 0.40, passes: 1, extremeKeep: 0.6, zGivens: 1.25, zSwaps: 0.5,  pHelp: 0.10, label: '☘ Easy' },
+  medium:   { redundancy: 0.20, passes: 1, extremeKeep: 0.3, zGivens: 1.0,  zSwaps: 1.0,  pHelp: 0.05, label: '⚖ Medium' },
+  hard:     { redundancy: 0.08, passes: 1, extremeKeep: 0.1, zGivens: 0.85, zSwaps: 1.5,  pHelp: 0,    label: '🔥 Hard' },
+  veryhard: { redundancy: 0,    passes: 2, extremeKeep: 0,   zGivens: 0.7,  zSwaps: 2.0,  pHelp: 0,    label: '💀 Very Hard' },
+};
+const DIFF_ORDER = ['veryeasy', 'easy', 'medium', 'hard', 'veryhard'];
+let difficulty = 'medium';
+try { const d = localStorage.getItem(DIFF_KEY); if (DIFF[d]) difficulty = d; } catch (e) {}
+
+// ---------- deterministic RNG ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+// ============================================================
+//  SUDOKU PLOTS — square patches of the canvas played as
+//  sudoku; the 6×6 and 9×9 use irregular jigsaw boxes
+// ============================================================
+const ZONES = [
+  { idx: 0, x: 57, y: 4,  n: 4, boxW: 2, boxH: 2, jigsaw: false, givens: 7,  name: 'Plot I' },
+  { idx: 1, x: 18, y: 38, n: 6, boxW: 2, boxH: 3, jigsaw: true,  givens: 15, name: 'Plot II' },
+  { idx: 2, x: 86, y: 44, n: 9, boxW: 3, boxH: 3, jigsaw: true,  givens: 38, name: 'Plot III' },
+  { idx: 3, x: 100, y: 10, n: 4, boxW: 2, boxH: 2, jigsaw: false, givens: 7,  name: 'Plot IV' },
+  { idx: 4, x: 4,   y: 14, n: 6, boxW: 2, boxH: 3, jigsaw: false, givens: 15, name: 'Plot V' },
+  { idx: 5, x: 52,  y: 50, n: 9, boxW: 3, boxH: 3, jigsaw: false, givens: 36, name: 'Plot VI' },
+  { idx: 6, x: 26,  y: 16, n: 6, boxW: 2, boxH: 3, jigsaw: true,  givens: 15, name: 'Plot VII' },
+  { idx: 7, x: 28,  y: 52, n: 6, boxW: 2, boxH: 3, jigsaw: false, givens: 15, name: 'Plot VIII' },
+];
+const zoneOf = new Int8Array(N).fill(-1);
+for (const z of ZONES) {
+  z.cells = [];
+  for (let dy = 0; dy < z.n; dy++) for (let dx = 0; dx < z.n; dx++) {
+    const i = (z.y + dy) * GW + (z.x + dx);
+    zoneOf[i] = z.idx;
+    z.cells.push(i);
+  }
+}
+
+// ============================================================
+//  PICROSS PATCHES — nonograms whose solution is the painting
+//  itself; played with the same light/dark stitching controls
+// ============================================================
+const PICROSS = [
+  { idx: 0, x: 30,  y: 8,  n: 8, name: 'Patch I' },
+  { idx: 1, x: 70,  y: 20, n: 7, name: 'Patch II' },
+  { idx: 2, x: 43,  y: 41, n: 7, name: 'Patch III' },
+  { idx: 3, x: 102, y: 24, n: 8, name: 'Patch IV' },
+  { idx: 4, x: 40,  y: 26, n: 6, name: 'Patch V' },
+  { idx: 5, x: 66,  y: 42, n: 6, name: 'Patch VI' },
+  { idx: 6, x: 12,  y: 26, n: 7, name: 'Patch VII' },
+  { idx: 7, x: 108, y: 40, n: 6, name: 'Patch VIII' },
+];
+const picrossOf = new Int8Array(N).fill(-1);
+for (const p of PICROSS) {
+  p.cells = [];
+  for (let dy = 0; dy < p.n; dy++) for (let dx = 0; dx < p.n; dx++) {
+    const i = (p.y + dy) * GW + (p.x + dx);
+    picrossOf[i] = p.idx;
+    p.cells.push(i);
+  }
+}
+
+// ============================================================
+//  ORGANIC REGION MAPS — seeded random growth around the plots
+// ============================================================
+const regionOf = new Int16Array(N).fill(-1);
+let REG_PIX = 0, REG_COUNT = 0;
+let regionCells = [], regionTint = [];
+
+(function growRegions(){
+  const rng = mulberry32(SEED * 2 + 1);
+  for (let i = 0; i < N; i++) if (zoneOf[i] >= 0 || picrossOf[i] >= 0) regionOf[i] = -2;
+
+  // jittered seeds, multi-source randomized growth → organic blobs
+  const COLS = 6, ROWS = 3, cw = GW / COLS, ch = GH / ROWS;
+  const frontier = [];
+  let K = 0;
+  for (let sy = 0; sy < ROWS; sy++) for (let sx = 0; sx < COLS; sx++) {
+    let i = Math.min(GH - 1, (sy * ch + rng() * ch) | 0) * GW + Math.min(GW - 1, (sx * cw + rng() * cw) | 0);
+    let guard = 0;
+    while (regionOf[i] !== -1 && guard++ < 800) i = (rng() * N) | 0;
+    if (regionOf[i] !== -1) continue;
+    regionOf[i] = K; frontier.push(i); K++;
+  }
+  while (frontier.length) {
+    const idx = (rng() * frontier.length) | 0;
+    const i = frontier[idx];
+    frontier[idx] = frontier[frontier.length - 1]; frontier.pop();
+    const x = i % GW, y = (i / GW) | 0, r = regionOf[i];
+    if (x > 0      && regionOf[i - 1]  === -1) { regionOf[i - 1]  = r; frontier.push(i - 1); }
+    if (x < GW - 1 && regionOf[i + 1]  === -1) { regionOf[i + 1]  = r; frontier.push(i + 1); }
+    if (y > 0      && regionOf[i - GW] === -1) { regionOf[i - GW] = r; frontier.push(i - GW); }
+    if (y < GH - 1 && regionOf[i + GW] === -1) { regionOf[i + GW] = r; frontier.push(i + GW); }
+  }
+  // safety: claim any unreached pocket from an assigned neighbor
+  let stray = true;
+  while (stray) {
+    stray = false;
+    for (let i = 0; i < N; i++) {
+      if (regionOf[i] !== -1) continue;
+      const x = i % GW, y = (i / GW) | 0;
+      const nb = [x > 0 ? regionOf[i-1] : -1, x < GW-1 ? regionOf[i+1] : -1,
+                  y > 0 ? regionOf[i-GW] : -1, y < GH-1 ? regionOf[i+GW] : -1].filter(v => v >= 0);
+      if (nb.length) regionOf[i] = nb[0]; else stray = true;
+    }
+  }
+
+  // merge undersized maps into their most-adjacent neighbor
+  const MIN = 60;
+  for (;;) {
+    const sizes = new Array(K).fill(0);
+    for (let i = 0; i < N; i++) if (regionOf[i] >= 0) sizes[regionOf[i]]++;
+    let small = -1;
+    for (let r = 0; r < K; r++) if (sizes[r] > 0 && sizes[r] < MIN) { small = r; break; }
+    if (small < 0) break;
+    const border = new Map();
+    for (let i = 0; i < N; i++) {
+      if (regionOf[i] !== small) continue;
+      const x = i % GW, y = (i / GW) | 0;
+      for (const j of [x > 0 ? i-1 : -1, x < GW-1 ? i+1 : -1, y > 0 ? i-GW : -1, y < GH-1 ? i+GW : -1]) {
+        if (j < 0) continue;
+        const o = regionOf[j];
+        if (o >= 0 && o !== small) border.set(o, (border.get(o) || 0) + 1);
+      }
+    }
+    let bestR = -1, bestC = -1;
+    for (const [o, c] of border) if (c > bestC) { bestC = c; bestR = o; }
+    if (bestR < 0) break;
+    for (let i = 0; i < N; i++) if (regionOf[i] === small) regionOf[i] = bestR;
+  }
+
+  // compact pixel-region ids, then append one region per sudoku plot
+  const remap = new Map();
+  for (let i = 0; i < N; i++) {
+    const r = regionOf[i];
+    if (r < 0) continue;
+    if (!remap.has(r)) remap.set(r, remap.size);
+    regionOf[i] = remap.get(r);
+  }
+  REG_PIX = remap.size;
+  REG_COUNT = REG_PIX + ZONES.length + PICROSS.length;
+  for (const z of ZONES) {
+    z.region = REG_PIX + z.idx;
+    for (const i of z.cells) regionOf[i] = z.region;
+  }
+  for (const p of PICROSS) {
+    p.region = REG_PIX + ZONES.length + p.idx;
+    for (const i of p.cells) regionOf[i] = p.region;
+  }
+  regionCells = Array.from({ length: REG_COUNT }, () => []);
+  for (let i = 0; i < N; i++) regionCells[regionOf[i]].push(i);
+
+  // tint each map, greedily avoiding the neighbors' tints
+  const TINTS = ['#b3a995', '#a9ab9a', '#9da7ac', '#b1a0a6', '#9cab9f', '#b1a48d', '#a49fae'];
+  const adj = Array.from({ length: REG_COUNT }, () => new Set());
+  for (let i = 0; i < N; i++) {
+    const x = i % GW, y = (i / GW) | 0;
+    if (x < GW - 1 && regionOf[i] !== regionOf[i + 1])  { adj[regionOf[i]].add(regionOf[i+1]);  adj[regionOf[i+1]].add(regionOf[i]); }
+    if (y < GH - 1 && regionOf[i] !== regionOf[i + GW]) { adj[regionOf[i]].add(regionOf[i+GW]); adj[regionOf[i+GW]].add(regionOf[i]); }
+  }
+  regionTint = new Array(REG_COUNT);
+  for (let r = 0; r < REG_COUNT; r++) {
+    const used = new Set();
+    for (const o of adj[r]) if (o < r) used.add(regionTint[o]);
+    regionTint[r] = TINTS.find(t => !used.has(t)) || TINTS[r % TINTS.length];
+  }
+  for (const p of PICROSS) regionTint[p.region] = '#c8bda4';
+})();
+
+const picrossByRegion = new Map();
+for (const p of PICROSS) picrossByRegion.set(p.region, p);
+
+// region-clipped 3×3 neighborhoods (clues never see across a map
+// border, and never see into a sudoku plot)
+const nbhd = new Array(N);
+for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+  const i = y * GW + x;
+  const list = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const nx = x + dx, ny = y + dy;
+    if (nx >= 0 && nx < GW && ny >= 0 && ny < GH && regionOf[ny * GW + nx] === regionOf[i]) list.push(ny * GW + nx);
+  }
+  nbhd[i] = list;
+}
+
+// ---------- puzzle data ----------
+const sol    = new Uint8Array(N);          // 1 = light, 0 = dark
+const clue   = new Int8Array(N).fill(-1);  // -1 = no clue, else 0..9
+const state  = new Uint8Array(N);          // 0 unknown, 1 light, 2 dark
+const cellCol = new Array(N);              // art color per cell
+const locked = new Uint8Array(N);          // pre-stitched starter tiles
+const regionDone = new Array(0);
+const regionDoneAt = new Array(0);
+const wrong = new Set();
+
+// ---------- canvas / view ----------
+const cvs = document.getElementById('game');
+const ctx = cvs.getContext('2d');
+let view = { x: 0, y: 0, s: 12 };
+let dpr = 1, needsDraw = true;
+let viewAnim = null, hintCell = -1, hintT = 0;
+let gameWon = false, generated = false;
+
+function resize(){
+  dpr = window.devicePixelRatio || 1;
+  cvs.width = innerWidth * dpr; cvs.height = innerHeight * dpr;
+  cvs.style.width = innerWidth + 'px'; cvs.style.height = innerHeight + 'px';
+  needsDraw = true;
+}
+addEventListener('resize', resize); resize();
+
+function fitView(){
+  const s = Math.min(innerWidth / GW, (innerHeight - 110) / GH) * 0.96;
+  view.s = s;
+  view.x = (innerWidth  - GW * s) / 2;
+  view.y = (innerHeight - GH * s) / 2 + 14;
+  needsDraw = true;
+}
+
+// ---------- palette ----------
+const C = {
+  light:'#f6f0e0', dark:'#332b48',
+  grid:'rgba(40,30,60,.16)',
+  clue:'#42384f', clueOnDark:'#c9c0dd', clueBad:'#e05b5b',
+  regionBorder:'rgba(20,12,34,.85)', boardEdge:'#0e0a18',
+  zoneBg:'#d8cfb6', zoneGold:'#ffd76a', zoneBox:'rgba(206,150,60,.85)',
+  zoneInk:'#3a3148', zoneGiven:'#a86a1f', zoneBad:'#cc3b3b',
+  zoneSel:'rgba(232,160,76,.35)',
+  picBorder:'#8fd6c5', picClue:'#8fd6c5', picClueDim:'rgba(143,214,197,.32)',
+  picPanel:'rgba(12,9,22,.82)'
+};
+
+// ============================================================
+//  SUDOKU GENERATION (jigsaw-capable)
+// ============================================================
+function genSudoku(zone, rng, cfg){
+  const n = zone.n, NN = n * n;
+  const givensTarget = Math.min(NN - 1, Math.max(4, Math.round(zone.givens * (cfg.zGivens || 1))));
+  const swapsTarget = Math.round(n * 8 * (cfg.zSwaps || 1));
+  const boxId = new Uint8Array(NN);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+    boxId[r * n + c] = ((r / zone.boxH) | 0) * (n / zone.boxW) + ((c / zone.boxW) | 0);
+
+  function buildPeers(){
+    const peers = new Array(NN);
+    for (let p = 0; p < NN; p++) {
+      const set = new Set();
+      const r = (p / n) | 0, c = p % n;
+      for (let k = 0; k < n; k++) { set.add(r * n + k); set.add(k * n + c); }
+      for (let q = 0; q < NN; q++) if (boxId[q] === boxId[p]) set.add(q);
+      set.delete(p);
+      peers[p] = [...set];
+    }
+    return peers;
+  }
+  function popcount(m){ let c = 0; while (m) { m &= m - 1; c++; } return c; }
+
+  // 1. random complete solution on the REGULAR boxes (MRV backtracking —
+  //    always fast; irregular layouts are never searched blind)
+  let peers = buildPeers();
+  const g = new Uint8Array(NN);
+  function candMask(p){
+    let mask = (1 << n) - 1;
+    for (const q of peers[p]) if (g[q]) mask &= ~(1 << (g[q] - 1));
+    return mask;
+  }
+  function fill(){
+    let bp = -1, bm = 0, bc = n + 1;
+    for (let p = 0; p < NN; p++) {
+      if (g[p]) continue;
+      const m = candMask(p), cnt = popcount(m);
+      if (cnt === 0) return false;
+      if (cnt < bc) { bc = cnt; bp = p; bm = m; if (cnt === 1) break; }
+    }
+    if (bp < 0) return true;
+    const vals = [];
+    for (let v = 1; v <= n; v++) if (bm & (1 << (v - 1))) vals.push(v);
+    for (let a = vals.length - 1; a > 0; a--) { const b = (rng() * (a + 1)) | 0; [vals[a], vals[b]] = [vals[b], vals[a]]; }
+    for (const v of vals) { g[bp] = v; if (fill()) return true; }
+    g[bp] = 0;
+    return false;
+  }
+  fill();
+  const solution = g.slice();
+
+  // 2. jigsaw boxes via value-preserving swaps: trading two cells that hold
+  //    the same digit keeps every row, column and box valid by construction,
+  //    so the irregular layout is guaranteed solvable
+  if (zone.jigsaw) {
+    function contiguous(b){
+      let first = -1, total = 0;
+      for (let p = 0; p < NN; p++) if (boxId[p] === b) { if (first < 0) first = p; total++; }
+      const seen = new Set([first]); const stack = [first];
+      while (stack.length) {
+        const p = stack.pop(); const r = (p / n) | 0, c = p % n;
+        for (const [dr, dc] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+          const nr = r + dr, nc = c + dc;
+          if (nr < 0 || nr >= n || nc < 0 || nc >= n) continue;
+          const q = nr * n + nc;
+          if (boxId[q] === b && !seen.has(q)) { seen.add(q); stack.push(q); }
+        }
+      }
+      return seen.size === total;
+    }
+    let done = 0, tries = 0;
+    const target = swapsTarget;
+    while (done < target && tries < target * 80) {
+      tries++;
+      const a = (rng() * NN) | 0, A = boxId[a];
+      const r = (a / n) | 0, c = a % n;
+      const neighB = [];
+      for (const [dr, dc] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nr = r + dr, nc = c + dc;
+        if (nr < 0 || nr >= n || nc < 0 || nc >= n) continue;
+        const o = boxId[nr * n + nc];
+        if (o !== A) neighB.push(o);
+      }
+      if (!neighB.length) continue;
+      const B = neighB[(rng() * neighB.length) | 0];
+      let b2 = -1;     // the single cell in box B holding the same digit as a
+      for (let p = 0; p < NN; p++) if (boxId[p] === B && solution[p] === solution[a]) { b2 = p; break; }
+      if (b2 < 0 || b2 === a) continue;
+      boxId[a] = B; boxId[b2] = A;
+      if (contiguous(A) && contiguous(B)) done++;
+      else { boxId[a] = A; boxId[b2] = B; }
+    }
+    peers = buildPeers();
+  }
+
+  // 3. dig holes while the puzzle stays uniquely solvable; the MRV counter
+  //    carries a node budget so generation time is strictly bounded
+  const budget = { nodes: 0 };
+  function countSolutions(limit){
+    if (++budget.nodes > 30000) return limit;   // out of budget → treat as ambiguous
+    let bp = -1, bm = 0, bc = n + 1;
+    for (let p = 0; p < NN; p++) {
+      if (g[p]) continue;
+      const m = candMask(p), cnt = popcount(m);
+      if (cnt === 0) return 0;
+      if (cnt < bc) { bc = cnt; bp = p; bm = m; if (cnt === 1) break; }
+    }
+    if (bp < 0) return 1;
+    let total = 0;
+    for (let v = 1; v <= n; v++) {
+      if (!(bm & (1 << (v - 1)))) continue;
+      g[bp] = v;
+      total += countSolutions(limit - total);
+      g[bp] = 0;
+      if (total >= limit) break;
+    }
+    return total;
+  }
+  const order = Array.from({ length: NN }, (_, p) => p);
+  for (let a = NN - 1; a > 0; a--) { const b = (rng() * (a + 1)) | 0; [order[a], order[b]] = [order[b], order[a]]; }
+  let givens = NN;
+  for (const p of order) {
+    if (givens <= givensTarget) break;
+    const keep = g[p]; g[p] = 0;
+    budget.nodes = 0;
+    if (countSolutions(2) !== 1) g[p] = keep; else givens--;
+  }
+  zone.boxId = boxId;
+  zone.puzzle = g.slice();
+  zone.solution = solution;
+  zone.entries = g.slice();
+}
+
+function zoneConflict(zone, p){
+  const n = zone.n, v = zone.entries[p];
+  if (!v) return false;
+  const r = (p / n) | 0, c = p % n;
+  for (let k = 0; k < n; k++) {
+    if (k !== c && zone.entries[r * n + k] === v) return true;
+    if (k !== r && zone.entries[k * n + c] === v) return true;
+  }
+  for (let q = 0; q < n * n; q++)
+    if (q !== p && zone.boxId[q] === zone.boxId[p] && zone.entries[q] === v) return true;
+  return false;
+}
+
+// ============================================================
+//  PICROSS SETUP — run clues from the painting + line-solver
+//  that guarantees each patch is solvable by line logic alone
+// ============================================================
+function runsOfLine(vals){
+  const runs = [];
+  let len = 0;
+  for (const v of vals) { if (v) len++; else if (len) { runs.push(len); len = 0; } }
+  if (len) runs.push(len);
+  return runs;
+}
+
+// intersection of all placements consistent with the current line state;
+// returns null on contradiction, else array (1 fill, 2 empty, 255 varies)
+function solveLine(states, runs){
+  const L = states.length;
+  let inter = null;
+  const cur = new Uint8Array(L);
+  const minLen = new Array(runs.length);
+  let need = 0;
+  for (let i = runs.length - 1; i >= 0; i--) { need += runs[i] + (i < runs.length - 1 ? 1 : 0); minLen[i] = need; }
+  (function rec(ri, pos){
+    if (ri === runs.length) {
+      for (let k = pos; k < L; k++) { if (states[k] === 1) return; cur[k] = 2; }
+      if (!inter) inter = cur.slice();
+      else for (let k = 0; k < L; k++) if (inter[k] !== cur[k]) inter[k] = 255;
+      return;
+    }
+    const len = runs[ri], maxStart = L - minLen[ri];
+    for (let s0 = pos; s0 <= maxStart; s0++) {
+      if (s0 > pos && states[s0 - 1] === 1) break;   // a fill fell into the gap — no later start works
+      let ok = true;
+      for (let k = s0; k < s0 + len; k++) if (states[k] === 2) { ok = false; break; }
+      const next = s0 + len;
+      if (ok && ri < runs.length - 1 && states[next] === 1) ok = false;
+      if (ok) {
+        for (let k = pos; k < s0; k++) cur[k] = 2;
+        for (let k = s0; k < s0 + len; k++) cur[k] = 1;
+        if (ri < runs.length - 1) { cur[next] = 2; rec(ri + 1, next + 1); }
+        else rec(ri + 1, next);
+      }
+    }
+  })(0, 0);
+  return inter;
+}
+
+function setupPicross(pz){
+  const n = pz.n;
+  pz.rowRuns = []; pz.colRuns = [];
+  for (let r = 0; r < n; r++) {
+    const vals = [];
+    for (let c = 0; c < n; c++) vals.push(sol[(pz.y + r) * GW + pz.x + c]);
+    pz.rowRuns.push(runsOfLine(vals));
+  }
+  for (let c = 0; c < n; c++) {
+    const vals = [];
+    for (let r = 0; r < n; r++) vals.push(sol[(pz.y + r) * GW + pz.x + c]);
+    pz.colRuns.push(runsOfLine(vals));
+  }
+  pz.maxRowRuns = Math.max(1, ...pz.rowRuns.map(x => x.length));
+  pz.maxColRuns = Math.max(1, ...pz.colRuns.map(x => x.length));
+
+  // line-by-line propagation; pre-stitch stuck tiles as givens until the
+  // whole patch falls to line logic
+  const st = new Uint8Array(n * n);
+  for (;;) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let r = 0; r < n; r++) {
+        const line = [];
+        for (let c = 0; c < n; c++) line.push(st[r * n + c]);
+        const inter = solveLine(line, pz.rowRuns[r]);
+        if (!inter) continue;
+        for (let c = 0; c < n; c++) if (st[r * n + c] === 0 && (inter[c] === 1 || inter[c] === 2)) { st[r * n + c] = inter[c]; changed = true; }
+      }
+      for (let c = 0; c < n; c++) {
+        const line = [];
+        for (let r = 0; r < n; r++) line.push(st[r * n + c]);
+        const inter = solveLine(line, pz.colRuns[c]);
+        if (!inter) continue;
+        for (let r = 0; r < n; r++) if (st[r * n + c] === 0 && (inter[r] === 1 || inter[r] === 2)) { st[r * n + c] = inter[r]; changed = true; }
+      }
+    }
+    let stuck = -1;
+    for (let p = 0; p < n * n; p++) if (st[p] === 0) { stuck = p; break; }
+    if (stuck < 0) break;
+    const gi = (pz.y + ((stuck / n) | 0)) * GW + pz.x + (stuck % n);
+    const truth = sol[gi] ? 1 : 2;
+    st[stuck] = truth;
+    locked[gi] = truth;
+  }
+
+  // easier tiers pre-stitch a head start into each patch
+  const help = Math.round(n * n * (DIFF[difficulty].pHelp || 0));
+  if (help > 0) {
+    const hrng = mulberry32(SEED + pz.x * 53 + pz.y * 97);
+    const order = Array.from({ length: n * n }, (_, p) => p);
+    for (let a = order.length - 1; a > 0; a--) { const b = (hrng() * (a + 1)) | 0; [order[a], order[b]] = [order[b], order[a]]; }
+    let added = 0;
+    for (const p of order) {
+      if (added >= help) break;
+      const gi = (pz.y + ((p / n) | 0)) * GW + pz.x + (p % n);
+      if (locked[gi]) continue;
+      locked[gi] = sol[gi] ? 1 : 2;
+      added++;
+    }
+  }
+}
+
+function lineSatisfied(pz, idx, isRow){
+  const n = pz.n, runs = isRow ? pz.rowRuns[idx] : pz.colRuns[idx];
+  const cur = [];
+  let len = 0;
+  for (let k = 0; k < n; k++) {
+    const i = isRow ? (pz.y + idx) * GW + pz.x + k : (pz.y + k) * GW + pz.x + idx;
+    if (state[i] === 0) return false;
+    if (state[i] === 1) len++;
+    else if (len) { cur.push(len); len = 0; }
+  }
+  if (len) cur.push(len);
+  if (cur.length !== runs.length) return false;
+  for (let k = 0; k < cur.length; k++) if (cur[k] !== runs[k]) return false;
+  return true;
+}
+
+// ============================================================
+//  GENERATION — image → solution → solvable clue set per map
+// ============================================================
+const img = new Image();
+img.onload = () => startGeneration();
+img.src = IMG_SRC;
+
+function startGeneration(){
+  for (let r = 0; r < REG_COUNT; r++) { regionDone.push(false); regionDoneAt.push(0); }
+
+  const off = document.createElement('canvas');
+  off.width = GW; off.height = GH;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(img, 0, 0, GW, GH);
+  const d = octx.getImageData(0, 0, GW, GH).data;
+
+  // luminance → adaptive threshold (global Otsu blended with a local mean)
+  const lum = new Float32Array(N), hist = new Uint32Array(256);
+  for (let i = 0; i < N; i++) {
+    const r = d[i*4], g = d[i*4+1], b = d[i*4+2];
+    cellCol[i] = `rgb(${r},${g},${b})`;
+    const L = 0.299*r + 0.587*g + 0.114*b;
+    lum[i] = L; hist[L | 0]++;
+  }
+  let sum = 0; for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0, wB = 0, best = 0, otsu = 127;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t]; if (!wB) continue;
+    const wF = N - wB; if (!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > best) { best = between; otsu = t; }
+  }
+  const R = 5, MIX = 0.75;
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+    let s = 0, c = 0;
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && nx < GW && ny >= 0 && ny < GH) { s += lum[ny * GW + nx]; c++; }
+    }
+    const i = y * GW + x;
+    sol[i] = lum[i] > otsu * (1 - MIX) + (s / c) * MIX ? 1 : 0;
+  }
+
+  // flat pockets: pick scattered sanctuaries inside large flat fields and
+  // shield them from the weave — these small calm patches are the only
+  // places 0 and 9 clues can live, and difficulty decides how many show
+  const sheltered = new Uint8Array(N);
+  {
+    const prng = mulberry32(SEED * 9 + 3);
+    const cand = [];
+    for (let y = 2; y < GH - 2; y++) for (let x = 2; x < GW - 2; x++) {
+      const i = y * GW + x;
+      if (regionOf[i] >= REG_PIX) continue;
+      const v = sol[i];
+      let ok = true;
+      for (let dy = -2; dy <= 2 && ok; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const j = (y + dy) * GW + (x + dx);
+        if (regionOf[j] >= REG_PIX || sol[j] !== v) { ok = false; break; }
+      }
+      if (ok) cand.push(i);
+    }
+    for (let a = cand.length - 1; a > 0; a--) { const b = (prng() * (a + 1)) | 0; [cand[a], cand[b]] = [cand[b], cand[a]]; }
+    const picked = [];
+    for (const i of cand) {
+      if (picked.length >= 26) break;
+      const x = i % GW, y = (i / GW) | 0;
+      let far = true;
+      for (const p of picked) {
+        if (Math.abs(p % GW - x) < 7 && Math.abs(((p / GW) | 0) - y) < 7) { far = false; break; }
+      }
+      if (!far) continue;
+      picked.push(i);
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
+        sheltered[(y + dy) * GW + (x + dx)] = 1;
+    }
+  }
+
+  // weave pass: sprinkle specks into flat fields (outside the sheltered
+  // pockets) — the cross-stitch texture of the original. The art reveal
+  // is untouched: completed tiles always show the painting's true colors.
+  const srng = mulberry32(SEED * 5 + 7);
+  for (let guard = 0; guard < 30; guard++) {
+    let changed = false;
+    for (let i = 0; i < N; i++) {
+      if (regionOf[i] >= REG_PIX) continue;        // plots & patches keep their art
+      const nb = nbhd[i];
+      if (nb.length < 2) continue;
+      let lights = 0;
+      for (const j of nb) lights += sol[j];
+      if (lights !== 0 && lights !== nb.length) continue;
+      const free = nb.filter(j => !sheltered[j]);
+      if (!free.length) continue;                  // window inside a pocket stays calm
+      sol[free[(srng() * free.length) | 0]] = lights === 0 ? 1 : 0;
+      changed = true;
+    }
+    if (!changed) break;
+  }
+
+  regenClues(finishSetup);
+}
+
+// (re)generate sudoku plots at the current difficulty: solution grids are
+// tier-independent (same rng prefix), only the givens and jigsaw shapes
+// change — so the player's entered digits survive a switch
+function regenZones(){
+  const cfg = DIFF[difficulty];
+  for (const z of ZONES) {
+    if (z.region !== undefined && regionDone[z.region]) continue;   // solved plots stay solved
+    const old = z.puzzle ? { entries: z.entries, puzzle: z.puzzle } : null;
+    genSudoku(z, mulberry32(SEED + z.x * 131 + z.y * 977), cfg);
+    if (old) {
+      for (let p = 0; p < z.n * z.n; p++)
+        if (z.puzzle[p] === 0 && old.puzzle[p] === 0 && old.entries[p]) z.entries[p] = old.entries[p];
+    }
+  }
+}
+
+// (re)generate all fill-a-pix clues + starter givens for the current
+// difficulty; the underlying solution never changes, so player stitches
+// survive a difficulty switch
+function regenClues(done){
+  locked.fill(0);
+  clue.fill(-1);
+  for (const pz of PICROSS) setupPicross(pz);
+  regenZones();
+  let idx = 0;
+  const bar = document.getElementById('loadBar');
+  (function step(){
+    if (idx < REG_PIX) {
+      genRegionClues(idx);
+      idx++;
+      bar.style.width = (idx / REG_PIX * 100) + '%';
+      setTimeout(step, 0);
+    } else done();
+  })();
+}
+
+function setDifficulty(d){
+  if (!generated || solving || d === difficulty || !DIFF[d]) return false;
+  difficulty = d;
+  try { localStorage.setItem(DIFF_KEY, d); } catch (e) {}
+  updateDiffSel();
+  const loader = document.getElementById('loader');
+  loader.querySelector('p').textContent = 'Reweaving the clues…';
+  loader.classList.remove('done');
+  setTimeout(() => {
+    regenClues(() => {
+      applyGivens();
+      updateHUD();
+      loader.classList.add('done');
+      needsDraw = true;
+      toast('Difficulty: ' + DIFF[d].label.replace(/^\S+ /, '') + ' — the clues have been rewoven. Your stitches are safe.', true);
+    });
+  }, 80);
+  return true;
+}
+
+function updateDiffSel(){
+  document.getElementById('selDiff').value = difficulty;
+}
+
+function genRegionClues(r){
+  const rng = mulberry32(SEED + r * 7919);
+  const cells = regionCells[r];
+  const len = cells.length;
+  const local = new Map();
+  for (let a = 0; a < len; a++) local.set(cells[a], a);
+  const nbL = new Array(len), val = new Uint8Array(len);
+  for (let a = 0; a < len; a++) {
+    nbL[a] = nbhd[cells[a]].map(g => local.get(g));
+    let c = 0; for (const g of nbhd[cells[a]]) c += sol[g];
+    val[a] = c;
+  }
+
+  const cfg = DIFF[difficulty];
+  // clue pairs within reach of each other, for cross-clue subtraction
+  const pairs = new Array(len);
+  for (let a = 0; a < len; a++) {
+    const ax = cells[a] % GW, ay = (cells[a] / GW) | 0;
+    const list = [];
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      if (!dx && !dy) continue;
+      const b = local.get((ay + dy) * GW + (ax + dx));
+      if (b !== undefined) list.push(b);
+    }
+    pairs[a] = list;
+  }
+
+  const st = new Uint8Array(len);
+  const given = new Uint8Array(len);
+  let unknown = 0;
+  function basicPass(active){
+    let changed = false;
+    for (let a = 0; a < len; a++) {
+      if (!active[a]) continue;
+      let L = 0, U = 0;
+      const nb = nbL[a];
+      for (let j = 0; j < nb.length; j++) { const s = st[nb[j]]; if (s === 1) L++; else if (s === 0) U++; }
+      if (U === 0) continue;
+      const need = val[a] - L;
+      if (need === 0)      { for (let j = 0; j < nb.length; j++) if (st[nb[j]] === 0) { st[nb[j]] = 2; unknown--; } changed = true; }
+      else if (need === U) { for (let j = 0; j < nb.length; j++) if (st[nb[j]] === 0) { st[nb[j]] = 1; unknown--; } changed = true; }
+    }
+    return changed;
+  }
+  // cross-clue subtraction: lights(A∖B) − lights(B∖A) = needA − needB, so
+  // when needA − needB equals the unknowns exclusive to A, those all go
+  // light and the unknowns exclusive to B all go dark.
+  // allocation-free hot path: fixed buffers, linear membership tests
+  const UAbuf = new Int32Array(9), UBbuf = new Int32Array(9);
+  function nbHas(list, x){ for (let k = 0; k < list.length; k++) if (list[k] === x) return true; return false; }
+  function advancedPass(active){
+    let changed = false;
+    for (let a = 0; a < len; a++) {
+      if (!active[a]) continue;
+      const nbA = nbL[a];
+      let LA = 0, ua = 0;
+      for (let k = 0; k < nbA.length; k++) { const s = st[nbA[k]]; if (s === 1) LA++; else if (s === 0) UAbuf[ua++] = nbA[k]; }
+      if (!ua) continue;
+      const needA = val[a] - LA;
+      const pa = pairs[a];
+      for (let pi = 0; pi < pa.length; pi++) {
+        const b = pa[pi];
+        if (!active[b]) continue;
+        const nbB = nbL[b];
+        let LB = 0, ub = 0;
+        for (let k = 0; k < nbB.length; k++) { const s = st[nbB[k]]; if (s === 1) LB++; else if (s === 0) UBbuf[ub++] = nbB[k]; }
+        if (!ub) continue;
+        const needB = val[b] - LB;
+        let xCount = 0;
+        for (let k = 0; k < ua; k++) if (!nbHas(nbB, UAbuf[k])) xCount++;
+        if (needA - needB !== xCount) continue;
+        let applied = false;
+        for (let k = 0; k < ua; k++) { const j = UAbuf[k]; if (!nbHas(nbB, j) && st[j] === 0) { st[j] = 1; unknown--; applied = true; } }
+        for (let k = 0; k < ub; k++) { const j = UBbuf[k]; if (!nbHas(nbA, j) && st[j] === 0) { st[j] = 2; unknown--; applied = true; } }
+        // UAbuf is stale once anything is applied — bail out and recompute
+        if (applied) { changed = true; break; }
+      }
+    }
+    return changed;
+  }
+  function solvesWith(active){
+    st.fill(0);
+    unknown = len;
+    for (let a = 0; a < len; a++) if (given[a]) { st[a] = given[a]; unknown--; }
+    let changed = true;
+    while (changed && unknown > 0) {
+      changed = basicPass(active);
+      if (!changed) changed = advancedPass(active);
+    }
+    return unknown === 0;
+  }
+
+  const active = new Uint8Array(len).fill(1);
+  // basic propagation isn't complete: if even the full clue set stalls,
+  // reveal stuck tiles as pre-stitched givens until the map solves
+  while (!solvesWith(active)) {
+    let pick = -1;
+    for (let a = 0; a < len; a++) if (st[a] === 0) { pick = a; break; }
+    if (pick < 0) break;
+    given[pick] = sol[cells[pick]] ? 1 : 2;
+  }
+  // greedily strip clues while the map stays solvable at this difficulty's
+  // technique level; redundancy keeps spare clues for friendlier tiers
+  const order = Array.from({ length: len }, (_, a) => a);
+  for (let a = order.length - 1; a > 0; a--) { const b = (rng() * (a + 1)) | 0; [order[a], order[b]] = [order[b], order[a]]; }
+  for (let pass = 0; pass < cfg.passes; pass++) {
+    for (const a of order) {
+      if (!active[a]) continue;
+      if (cfg.redundancy && rng() < cfg.redundancy) continue;
+      active[a] = 0;
+      if (!solvesWith(active)) active[a] = 1;
+    }
+  }
+
+  // friendly free moves: easier tiers re-show pocket 0/9 clues that the
+  // pruner removed (re-adding clues can never break solvability)
+  const flats = [];
+  for (let a = 0; a < len; a++) if (val[a] === 0 || val[a] === nbL[a].length) flats.push(a);
+  if (flats.length && cfg.extremeKeep > 0) {
+    let have = 0;
+    for (const a of flats) if (active[a]) have++;
+    const want = Math.round(flats.length * cfg.extremeKeep);
+    if (want > have) {
+      for (let a = flats.length - 1; a > 0; a--) { const b = (rng() * (a + 1)) | 0; [flats[a], flats[b]] = [flats[b], flats[a]]; }
+      for (const a of flats) {
+        if (have >= want) break;
+        if (!active[a]) { active[a] = 1; have++; }
+      }
+    }
+  }
+
+  for (let a = 0; a < len; a++) {
+    clue[cells[a]] = active[a] ? val[a] : -1;
+    if (given[a]) locked[cells[a]] = given[a];
+  }
+}
+
+function applyGivens(){
+  for (let i = 0; i < N; i++) if (locked[i]) { state[i] = locked[i]; wrong.delete(i); }
+}
+
+function finishSetup(){
+  generated = true;
+  loadSave();
+  applyGivens();
+  for (let r = 0; r < REG_PIX; r++) checkRegion(r, true);
+  for (const z of ZONES) checkZone(z, true);
+  updateHUD();
+  fitView();
+  document.getElementById('loader').classList.add('done');
+  requestAnimationFrame(loop);
+}
+
+// ============================================================
+//  GAME STATE
+// ============================================================
+function setCell(i, s){
+  if (regionDone[regionOf[i]] || gameWon || locked[i] || zoneOf[i] >= 0) return;
+  state[i] = s;
+  if (s === 0) wrong.delete(i);
+  else if ((s === 1) !== (sol[i] === 1)) wrong.add(i);
+  else wrong.delete(i);
+  checkRegion(regionOf[i]);
+  maybeMistakePrompt();
+  updateHUD();
+  scheduleSave();
+  needsDraw = true;
+}
+
+function checkRegion(r, silent){
+  if (regionDone[r]) return;
+  const cells = regionCells[r];
+  for (const i of cells) {
+    if (sol[i] === 1 && state[i] !== 1) return;
+    if (sol[i] === 0 && state[i] === 1) return;
+  }
+  for (const i of cells) {
+    if (sol[i] === 0) state[i] = 2;
+    wrong.delete(i);
+  }
+  regionDone[r] = true;
+  regionDoneAt[r] = performance.now();
+  if (!silent) {
+    if (!solving) {
+      const pp = picrossByRegion.get(r);
+      if (pp) toast(`${pp.name} is mended — its picture joins the canvas.`, true);
+      else toast(PROVERBS[(Math.random() * PROVERBS.length) | 0]);
+    }
+    checkWin();
+  } else regionDoneAt[r] = -1e9;
+  needsDraw = true;
+}
+
+function checkZone(zone, silent){
+  if (regionDone[zone.region]) return;
+  const NN = zone.n * zone.n;
+  for (let p = 0; p < NN; p++) if (zone.entries[p] !== zone.solution[p]) return;
+  regionDone[zone.region] = true;
+  regionDoneAt[zone.region] = performance.now();
+  if (selZ === zone.idx) { selZ = -1; selP = -1; }
+  if (!silent) {
+    if (!solving) toast(`${zone.name} is solved — its piece joins the canvas.`, true);
+    checkWin();
+  } else regionDoneAt[zone.region] = -1e9;
+  needsDraw = true;
+}
+
+function checkWin(){
+  if (regionDone.every(Boolean) && !gameWon) {
+    gameWon = true;
+    scheduleSave();
+    setTimeout(() => {
+      document.getElementById('winImg').src = IMG_SRC;
+      document.getElementById('winModal').classList.add('show');
+    }, 1200);
+  }
+}
+
+let mistakePromptOpen = false;
+function maybeMistakePrompt(){
+  if (wrong.size >= 4 && !mistakePromptOpen) {
+    mistakePromptOpen = true;
+    document.getElementById('mistakeModal').classList.add('show');
+  }
+}
+function clearErrors(){
+  for (const i of wrong) state[i] = 0;
+  wrong.clear();
+  updateHUD(); scheduleSave(); needsDraw = true;
+}
+
+// ---------- HUD ----------
+function updateHUD(){
+  let correct = 0;
+  for (let i = 0; i < N; i++) {
+    if (zoneOf[i] >= 0) continue;
+    if (state[i] !== 0 && (state[i] === 1) === (sol[i] === 1)) correct++;
+  }
+  for (const z of ZONES)
+    for (let p = 0; p < z.n * z.n; p++) if (z.entries && z.entries[p] === z.solution[p]) correct++;
+  const pct = Math.floor(correct / N * 100);
+  const maps = regionDone.filter(Boolean).length;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressTxt').textContent = `${pct}% · ${maps}/${REG_COUNT} maps`;
+  document.getElementById('mistakes').innerHTML = `Mistakes <b>${wrong.size}</b>/4`;
+}
+
+// ---------- persistence ----------
+let saveTimer = null;
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(SAVE_KEY, Array.from(state).join(''));
+      localStorage.setItem(ZONES_KEY, JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
+    } catch (e) {}
+  }, 400);
+}
+function loadSave(){
+  try {
+    const s = localStorage.getItem(SAVE_KEY);
+    if (s && s.length === N) {
+      for (let i = 0; i < N; i++) {
+        if (zoneOf[i] >= 0) continue;
+        state[i] = +s[i];
+        if (state[i] !== 0 && (state[i] === 1) !== (sol[i] === 1)) wrong.add(i);
+      }
+    }
+    const ze = JSON.parse(localStorage.getItem(ZONES_KEY) || '[]');
+    ZONES.forEach((z, k) => {
+      if (Array.isArray(ze[k]) && ze[k].length === z.n * z.n) {
+        // keep givens authoritative; restore only player digits
+        for (let p = 0; p < z.n * z.n; p++) if (z.puzzle[p] === 0) z.entries[p] = ze[k][p] | 0;
+      }
+    });
+  } catch (e) {}
+}
+function resetGame(){
+  solveQueue.length = 0; solving = false;
+  state.fill(0); wrong.clear();
+  for (const z of ZONES) z.entries = z.puzzle.slice();
+  selZ = -1; selP = -1;
+  applyGivens();
+  regionDone.fill(false); regionDoneAt.fill(0);
+  gameWon = false; mistakePromptOpen = false;
+  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(ZONES_KEY); } catch (e) {}
+  updateHUD(); fitView(); needsDraw = true;
+}
+
+// ---------- proverbs ----------
+const PROVERBS = [
+  'A stitch in time saves nine.',
+  'Little by little, the bird builds its nest.',
+  'Patience is bitter, but its fruit is sweet.',
+  'Still waters run deep.',
+  'After the storm comes the calm.',
+  'Slow and steady wins the race.',
+  'Every cloud has a silver lining.',
+  'Rome wasn’t built in a day.',
+  'The darkest hour is just before the dawn.',
+  'Many hands make light work.',
+  'Fortune favors the bold.',
+  'Good things come to those who wait.',
+  'Make hay while the sun shines.',
+  'A journey of a thousand miles begins with a single step.',
+  'Where there’s a will, there’s a way.'
+];
+let toastTimer = null;
+function toast(msg, plain){
+  const t = document.getElementById('toast');
+  t.textContent = plain ? msg : '“' + msg + '”';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+// ============================================================
+//  AUTO-SOLVE
+// ============================================================
+let solving = false, solveRate = 8;
+const solveQueue = [];
+
+function regionSolveOrder(r){
+  const cells = regionCells[r];
+  const order = [], st = new Map();
+  for (const i of cells) {
+    const truth = sol[i] ? 1 : 2;
+    if (state[i] === truth) st.set(i, truth);
+    else {
+      st.set(i, 0);
+      if (state[i] !== 0) order.push({ i, s: 0 });   // wrong tile: visibly unpick it first
+    }
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const i of cells) {
+      if (clue[i] < 0) continue;
+      let L = 0, U = 0;
+      for (const j of nbhd[i]) { const s = st.get(j); if (s === 1) L++; else if (s === 0) U++; }
+      if (U === 0) continue;
+      const need = clue[i] - L;
+      if (need === 0 || need === U) {
+        const v = need === 0 ? 2 : 1;
+        for (const j of nbhd[i]) if (st.get(j) === 0) { st.set(j, v); order.push({ i: j, s: v }); }
+        changed = true;
+      }
+    }
+  }
+  for (const i of cells) if (st.get(i) === 0) order.push({ i, s: sol[i] ? 1 : 2 });
+  return order;
+}
+
+function zoneSolveOrder(zone){
+  const order = [];
+  for (let p = 0; p < zone.n * zone.n; p++)
+    if (zone.entries[p] !== zone.solution[p]) order.push({ z: zone.idx, p, v: zone.solution[p] });
+  return order;
+}
+
+function startSolve(regionIds){
+  const list = [];
+  for (const r of regionIds) {
+    if (regionDone[r]) continue;
+    if (r >= REG_PIX) list.push(...zoneSolveOrder(ZONES[r - REG_PIX]));
+    else list.push(...regionSolveOrder(r));
+  }
+  if (!list.length) return;
+  solveQueue.push(...list);
+  solveRate = Math.max(8, Math.ceil(list.length / 160));
+  solving = true;
+  needsDraw = true;
+}
+
+function applySolveStep(){
+  for (let k = 0; k < solveRate && solveQueue.length; k++) {
+    const step = solveQueue.shift();
+    if (step.z !== undefined) {
+      const zone = ZONES[step.z];
+      if (regionDone[zone.region]) continue;
+      zone.entries[step.p] = step.v;
+      checkZone(zone);
+    } else {
+      if (regionDone[regionOf[step.i]]) continue;
+      state[step.i] = step.s;
+      wrong.delete(step.i);
+      checkRegion(regionOf[step.i]);
+    }
+  }
+  if (!solveQueue.length) { solving = false; scheduleSave(); }
+  updateHUD();
+  needsDraw = true;
+}
+
+function regionAtCenter(){
+  const i = cellAt(innerWidth / 2, innerHeight / 2);
+  if (i >= 0 && !regionDone[regionOf[i]]) return regionOf[i];
+  for (let r = 0; r < REG_COUNT; r++) if (!regionDone[r]) return r;
+  return -1;
+}
+
+// ============================================================
+//  HINT
+// ============================================================
+function giveHint(){
+  if (!generated || gameWon || solving) return;
+  const candidates = [];
+  for (let i = 0; i < N; i++) {
+    if (clue[i] < 0 || regionDone[regionOf[i]]) continue;
+    let L = 0, U = 0;
+    for (const j of nbhd[i]) { if (state[j] === 1) L++; else if (state[j] === 0) U++; }
+    if (U === 0) continue;
+    const need = clue[i] - L;
+    if (need === 0 || need === U) candidates.push(i);
+  }
+  // no simple move? look for a cross-clue subtraction pair
+  if (!candidates.length) {
+    outer:
+    for (let i = 0; i < N; i++) {
+      if (clue[i] < 0 || regionDone[regionOf[i]]) continue;
+      let LA = 0; const UA = [];
+      for (const j of nbhd[i]) { if (state[j] === 1) LA++; else if (state[j] === 0) UA.push(j); }
+      if (!UA.length) continue;
+      const needA = clue[i] - LA;
+      const ix = i % GW, iy = (i / GW) | 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        if (!dx && !dy) continue;
+        const bx = ix + dx, by = iy + dy;
+        if (bx < 0 || bx >= GW || by < 0 || by >= GH) continue;
+        const b = by * GW + bx;
+        if (clue[b] < 0 || regionOf[b] !== regionOf[i]) continue;
+        let LB = 0; const UB = [];
+        for (const j of nbhd[b]) { if (state[j] === 1) LB++; else if (state[j] === 0) UB.push(j); }
+        if (!UB.length) continue;
+        const needB = clue[b] - LB;
+        let xCount = 0, zCount = 0;
+        for (const j of UA) if (!nbhd[b].includes(j)) xCount++;
+        for (const j of UB) if (!nbhd[i].includes(j)) zCount++;
+        if (needA - needB === xCount && (xCount > 0 || zCount > 0)) { candidates.push(i); continue outer; }
+      }
+    }
+  }
+  if (!candidates.length) {
+    toast('No clear deduction in sight — perhaps a stitch is out of place…', true);
+    return;
+  }
+  const i = candidates[(Math.random() * candidates.length) | 0];
+  hintCell = i; hintT = performance.now();
+  const gx = i % GW + 0.5, gy = (i / GW | 0) + 0.5;
+  const ts = Math.max(view.s, 30);
+  animateView(innerWidth / 2 - gx * ts, innerHeight / 2 - gy * ts + 14, ts);
+}
+
+function animateView(tx, ty, ts){
+  viewAnim = { fx: view.x, fy: view.y, fs: view.s, tx, ty, ts, t0: performance.now(), dur: 450 };
+  needsDraw = true;
+}
+
+// ============================================================
+//  GAMEPAD
+// ============================================================
+const PAD_ACTIONS = [
+  { key: 'light',   label: 'Stitch light / digit up' },
+  { key: 'dark',    label: 'Mark dark / digit down' },
+  { key: 'hint',    label: 'Hint' },
+  { key: 'fit',     label: 'Fit view' },
+  { key: 'zoomIn',  label: 'Zoom in (hold)' },
+  { key: 'zoomOut', label: 'Zoom out (hold)' },
+];
+const PAD_DEFAULTS = { light: 0, dark: 1, hint: 2, fit: 3, zoomIn: 5, zoomOut: 4 };
+const PAD_KEY = SAVE_KEY + '-pad';
+let padMap = Object.assign({}, PAD_DEFAULTS);
+try { const m = JSON.parse(localStorage.getItem(PAD_KEY) || 'null'); if (m) padMap = Object.assign(padMap, m); } catch (e) {}
+let padPrev = [], padActive = false, padCursorI = -1;
+let padMoveNext = 0, padMoving = false, padCaptureIdx = -1;
+
+function padBtnName(b){
+  const names = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'Select', 'Start', 'L3', 'R3'];
+  return names[b] || ('Button ' + b);
+}
+
+function renderPadList(){
+  const el = document.getElementById('padList');
+  el.innerHTML = '';
+  PAD_ACTIONS.forEach((a, k) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;gap:24px;padding:4px 2px;font-size:13px;color:var(--muted)';
+    const right = padCaptureIdx === k
+      ? '<b style="color:#ffd76a">press a button…</b>'
+      : `<b style="color:var(--text)">${padBtnName(padMap[a.key])}</b>`;
+    row.innerHTML = `<span>${a.label}</span>${right}`;
+    el.appendChild(row);
+  });
+}
+
+function updatePadStatus(){
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  let gp = null;
+  for (const g of gps) if (g && g.connected) { gp = g; break; }
+  document.getElementById('padStatus').textContent = gp
+    ? 'Connected: ' + gp.id.slice(0, 44)
+    : 'No controller detected — connect one and press any button.';
+}
+
+function ensureCursorVisible(){
+  const s = view.s;
+  const gx = padCursorI % GW, gy = (padCursorI / GW) | 0;
+  const px = view.x + gx * s, py = view.y + gy * s;
+  if (px < 20 + s) view.x += 20 + s - px;
+  if (px + 2 * s > innerWidth - 20) view.x -= px + 2 * s - innerWidth + 20;
+  if (py < 70 + s) view.y += 70 + s - py;
+  if (py + 2 * s > innerHeight - 50) view.y -= py + 2 * s - innerHeight + 50;
+}
+
+function padPrimary(){
+  const i = padCursorI;
+  if (i < 0 || !generated || solving || gameWon) return;
+  const zi = zoneOf[i];
+  if (zi >= 0) {
+    const zone = ZONES[zi];
+    if (regionDone[zone.region] || !zone.entries) return;
+    const p = (((i / GW) | 0) - zone.y) * zone.n + (i % GW - zone.x);
+    if (zone.puzzle[p] !== 0) return;
+    selZ = zi; selP = p;
+    cycleZone(zone, p, +1);
+    return;
+  }
+  setCell(i, state[i] === 1 ? 0 : 1);
+}
+
+function padSecondary(){
+  const i = padCursorI;
+  if (i < 0 || !generated || solving || gameWon) return;
+  const zi = zoneOf[i];
+  if (zi >= 0) {
+    const zone = ZONES[zi];
+    if (regionDone[zone.region] || !zone.entries) return;
+    const p = (((i / GW) | 0) - zone.y) * zone.n + (i % GW - zone.x);
+    if (zone.puzzle[p] !== 0) return;
+    selZ = zi; selP = p;
+    cycleZone(zone, p, -1);
+    return;
+  }
+  setCell(i, state[i] === 2 ? 0 : 2);
+}
+
+function pollGamepad(now){
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  let gp = null;
+  for (const g of gps) if (g && g.connected) { gp = g; break; }
+  if (!gp) { padPrev = []; return; }
+  const pressed = [];
+  for (let b = 0; b < gp.buttons.length; b++) pressed.push(gp.buttons[b].pressed);
+  const edge = b => b >= 0 && !!pressed[b] && !padPrev[b];
+
+  if (!padActive && (pressed.some(Boolean) || gp.axes.some(a => Math.abs(a) > 0.5))) {
+    padActive = true;
+    if (padCursorI < 0) padCursorI = cellAt(innerWidth / 2, innerHeight / 2);
+    if (padCursorI < 0) padCursorI = (GH >> 1) * GW + (GW >> 1);
+    needsDraw = true;
+  }
+
+  // remap capture: assign the next pressed button to the highlighted action
+  if (padCaptureIdx >= 0) {
+    for (let b = 0; b < pressed.length; b++) {
+      if (!edge(b) || (b >= 12 && b <= 15)) continue;   // d-pad reserved for movement
+      let dup = false;
+      for (let k = 0; k < padCaptureIdx; k++) if (padMap[PAD_ACTIONS[k].key] === b) dup = true;
+      if (dup) continue;
+      padMap[PAD_ACTIONS[padCaptureIdx].key] = b;
+      padCaptureIdx++;
+      if (padCaptureIdx >= PAD_ACTIONS.length) {
+        padCaptureIdx = -1;
+        try { localStorage.setItem(PAD_KEY, JSON.stringify(padMap)); } catch (e) {}
+      }
+      renderPadList();
+      break;
+    }
+    padPrev = pressed;
+    return;
+  }
+
+  // menus: stitch = confirm (primary), mark = cancel (last button)
+  const open = document.querySelector('.overlay.show');
+  if (open) {
+    if (edge(padMap.light)) {
+      const btn = open.querySelector('.btns button.primary') || open.querySelector('.btns button');
+      if (btn) btn.click();
+    } else if (edge(padMap.dark)) {
+      const btns = open.querySelectorAll('.btns button');
+      if (btns.length) btns[btns.length - 1].click();
+    }
+    padPrev = pressed;
+    return;
+  }
+  if (!generated) { padPrev = pressed; return; }
+
+  // cursor: left stick + d-pad, with gentle key-repeat
+  const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+  let dx = 0, dy = 0;
+  if (ax < -0.5 || pressed[14]) dx = -1; else if (ax > 0.5 || pressed[15]) dx = 1;
+  if (ay < -0.5 || pressed[12]) dy = -1; else if (ay > 0.5 || pressed[13]) dy = 1;
+  if (dx || dy) {
+    if (now >= padMoveNext) {
+      const gx = Math.max(0, Math.min(GW - 1, padCursorI % GW + dx));
+      const gy = Math.max(0, Math.min(GH - 1, ((padCursorI / GW) | 0) + dy));
+      padCursorI = gy * GW + gx;
+      padMoveNext = now + (padMoving ? 85 : 230);
+      padMoving = true;
+      ensureCursorVisible();
+      needsDraw = true;
+    }
+  } else { padMoving = false; padMoveNext = 0; }
+
+  // pan: right stick
+  const rx = gp.axes[2] || 0, ry = gp.axes[3] || 0;
+  if (Math.abs(rx) > 0.25 || Math.abs(ry) > 0.25) {
+    view.x -= rx * 16;
+    view.y -= ry * 16;
+    needsDraw = true;
+  }
+
+  // zoom: held buttons
+  if (pressed[padMap.zoomIn])  zoomCenter(1.035);
+  if (pressed[padMap.zoomOut]) zoomCenter(1 / 1.035);
+
+  if (edge(padMap.light)) padPrimary();
+  if (edge(padMap.dark))  padSecondary();
+  if (edge(padMap.hint))  giveHint();
+  if (edge(padMap.fit))   fitView();
+
+  padPrev = pressed;
+}
+
+addEventListener('gamepadconnected', () => {
+  updatePadStatus();
+  toast('Controller connected — A stitches, B marks. Click 🎮 to remap.', true);
+});
+addEventListener('gamepaddisconnected', () => updatePadStatus());
+
+// ============================================================
+//  RENDERING
+// ============================================================
+function loop(now){
+  requestAnimationFrame(loop);
+  pollGamepad(now);
+  let animating = false;
+  if (viewAnim) {
+    const a = viewAnim, p = Math.min(1, (now - a.t0) / a.dur);
+    const e = 1 - Math.pow(1 - p, 3);
+    view.x = a.fx + (a.tx - a.fx) * e;
+    view.y = a.fy + (a.ty - a.fy) * e;
+    view.s = a.fs + (a.ts - a.fs) * e;
+    if (p >= 1) viewAnim = null;
+    animating = true;
+  }
+  if (solveQueue.length) { applySolveStep(); animating = true; }
+  if (hintCell >= 0 && now - hintT < 2600) animating = true;
+  else if (hintCell >= 0) hintCell = -1;
+  for (let r = 0; r < REG_COUNT; r++)
+    if (regionDone[r] && now - regionDoneAt[r] < 900) { animating = true; break; }
+
+  if (!needsDraw && !animating) return;
+  needsDraw = false;
+  draw(now);
+}
+
+function draw(now){
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, innerWidth, innerHeight);
+  const s = view.s;
+
+  const gx0 = Math.max(0, Math.floor(-view.x / s));
+  const gy0 = Math.max(0, Math.floor(-view.y / s));
+  const gx1 = Math.min(GW - 1, Math.ceil((innerWidth  - view.x) / s));
+  const gy1 = Math.min(GH - 1, Math.ceil((innerHeight - view.y) / s));
+
+  ctx.fillStyle = C.boardEdge;
+  ctx.fillRect(view.x - 3, view.y - 3, GW * s + 6, GH * s + 6);
+
+  // ---- cells ----
+  for (let gy = gy0; gy <= gy1; gy++) {
+    for (let gx = gx0; gx <= gx1; gx++) {
+      const i = gy * GW + gx;
+      const px = view.x + gx * s, py = view.y + gy * s;
+      const r = regionOf[i];
+      const st = state[i];
+      ctx.fillStyle = zoneOf[i] >= 0 ? C.zoneBg
+        : st === 1 ? C.light : st === 2 ? C.dark : regionTint[r];
+      ctx.fillRect(px, py, s + 0.5, s + 0.5);
+      if (regionDone[r]) {
+        const f = Math.min(1, (now - regionDoneAt[r]) / 900);
+        ctx.globalAlpha = f;
+        ctx.fillStyle = cellCol[i];
+        ctx.fillRect(px, py, s + 0.5, s + 0.5);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // ---- grid lines ----
+  if (s >= 5) {
+    ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let gx = gx0; gx <= gx1 + 1; gx++) { const px = view.x + gx * s; ctx.moveTo(px, view.y + gy0 * s); ctx.lineTo(px, view.y + (gy1 + 1) * s); }
+    for (let gy = gy0; gy <= gy1 + 1; gy++) { const py = view.y + gy * s; ctx.moveTo(view.x + gx0 * s, py); ctx.lineTo(view.x + (gx1 + 1) * s, py); }
+    ctx.stroke();
+  }
+
+  // ---- clues ----
+  if (s >= 9) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `600 ${Math.floor(s * 0.58)}px "Segoe UI",system-ui,sans-serif`;
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const i = gy * GW + gx;
+        const c = clue[i];
+        if (c < 0 || regionDone[regionOf[i]]) continue;
+        let L = 0, U = 0;
+        for (const j of nbhd[i]) { if (state[j] === 1) L++; else if (state[j] === 0) U++; }
+        const contradicted = (c - L < 0) || (c - L > U);
+        const satisfied = U === 0 && L === c;
+        ctx.globalAlpha = satisfied ? 0.28 : 1;
+        ctx.fillStyle = contradicted ? C.clueBad : (state[i] === 2 ? C.clueOnDark : C.clue);
+        ctx.fillText(c, view.x + (gx + 0.5) * s, view.y + (gy + 0.55) * s);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // ---- region borders ----
+  ctx.strokeStyle = C.regionBorder;
+  ctx.lineWidth = Math.max(1.5, s * 0.11);
+  ctx.beginPath();
+  for (let gy = gy0; gy <= gy1; gy++) {
+    for (let gx = gx0; gx <= gx1; gx++) {
+      const i = gy * GW + gx;
+      const px = view.x + gx * s, py = view.y + gy * s;
+      if (gx < GW - 1 && regionOf[i] !== regionOf[i + 1])  { ctx.moveTo(px + s, py); ctx.lineTo(px + s, py + s); }
+      if (gy < GH - 1 && regionOf[i] !== regionOf[i + GW]) { ctx.moveTo(px, py + s); ctx.lineTo(px + s, py + s); }
+    }
+  }
+  ctx.stroke();
+
+  // ---- sudoku plots ----
+  for (const zone of ZONES) {
+    const n = zone.n;
+    if (!zone.entries) continue;
+    if (zone.x > gx1 || zone.x + n - 1 < gx0 || zone.y > gy1 || zone.y + n - 1 < gy0) continue;
+    if (regionDone[zone.region]) continue;
+    const zx = view.x + zone.x * s, zy = view.y + zone.y * s;
+
+    // selection highlight
+    if (selZ === zone.idx && selP >= 0) {
+      const sc = selP % n, sr = (selP / n) | 0;
+      ctx.fillStyle = C.zoneSel;
+      ctx.fillRect(zx + sc * s, zy + sr * s, s, s);
+    }
+
+    // jigsaw box borders
+    ctx.strokeStyle = C.zoneBox;
+    ctx.lineWidth = Math.max(1.2, s * 0.09);
+    ctx.beginPath();
+    for (let p = 0; p < n * n; p++) {
+      const c = p % n, r = (p / n) | 0;
+      if (c < n - 1 && zone.boxId[p] !== zone.boxId[p + 1]) {
+        ctx.moveTo(zx + (c + 1) * s, zy + r * s); ctx.lineTo(zx + (c + 1) * s, zy + (r + 1) * s);
+      }
+      if (r < n - 1 && zone.boxId[p] !== zone.boxId[p + n]) {
+        ctx.moveTo(zx + c * s, zy + (r + 1) * s); ctx.lineTo(zx + (c + 1) * s, zy + (r + 1) * s);
+      }
+    }
+    ctx.stroke();
+
+    // perimeter
+    ctx.strokeStyle = C.zoneGold;
+    ctx.lineWidth = Math.max(2, s * 0.14);
+    ctx.strokeRect(zx, zy, n * s, n * s);
+
+    // digits
+    if (s >= 7) {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let p = 0; p < n * n; p++) {
+        const v = zone.entries[p];
+        if (!v) continue;
+        const c = p % n, r = (p / n) | 0;
+        const given = zone.puzzle[p] !== 0;
+        ctx.font = `${given ? 700 : 500} ${Math.floor(s * 0.6)}px "Segoe UI",system-ui,sans-serif`;
+        ctx.fillStyle = given ? C.zoneGiven : (zoneConflict(zone, p) ? C.zoneBad : C.zoneInk);
+        ctx.fillText(v, zx + (c + 0.5) * s, zy + (r + 0.55) * s);
+      }
+    }
+  }
+
+  // ---- picross patches ----
+  for (const pz of PICROSS) {
+    const n = pz.n;
+    if (!pz.rowRuns || regionDone[pz.region]) continue;
+    if (pz.x > gx1 + 8 || pz.x + n - 1 < gx0 - 8 || pz.y > gy1 + 8 || pz.y + n - 1 < gy0 - 8) continue;
+    const zx = view.x + pz.x * s, zy = view.y + pz.y * s;
+
+    // perimeter
+    ctx.strokeStyle = C.picBorder;
+    ctx.lineWidth = Math.max(2, s * 0.14);
+    ctx.strokeRect(zx, zy, n * s, n * s);
+
+    // clue strips appear while the mouse or pad cursor is engaged with the patch
+    if (s >= 8) {
+      const mR = pz.maxRowRuns, mC = pz.maxColRuns;
+      const probes = [];
+      if (hoverCell >= 0) probes.push(hoverCell);
+      if (padActive && padCursorI >= 0) probes.push(padCursorI);
+      const engaged = probes.some(h => {
+        const hx = h % GW, hy = (h / GW) | 0;
+        return hx >= pz.x && hx <= pz.x + n - 1 && hy >= pz.y && hy <= pz.y + n - 1;
+      });
+      if (engaged) {
+        ctx.fillStyle = C.picPanel;
+        ctx.fillRect(zx - mR * s, zy, mR * s, n * s);
+        ctx.fillRect(zx, zy - mC * s, n * s, mC * s);
+        ctx.strokeStyle = C.picBorder;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(zx - mR * s, zy, mR * s, n * s);
+        ctx.strokeRect(zx, zy - mC * s, n * s, mC * s);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = `600 ${Math.floor(s * 0.46)}px "Segoe UI",system-ui,sans-serif`;
+        for (let r = 0; r < n; r++) {
+          const list = pz.rowRuns[r].length ? pz.rowRuns[r] : [0];
+          ctx.fillStyle = lineSatisfied(pz, r, true) ? C.picClueDim : C.picClue;
+          for (let j = 0; j < list.length; j++)
+            ctx.fillText(list[j], zx - (list.length - j - 0.5) * s, zy + (r + 0.55) * s);
+        }
+        for (let c2 = 0; c2 < n; c2++) {
+          const list = pz.colRuns[c2].length ? pz.colRuns[c2] : [0];
+          ctx.fillStyle = lineSatisfied(pz, c2, false) ? C.picClueDim : C.picClue;
+          for (let j = 0; j < list.length; j++)
+            ctx.fillText(list[j], zx + (c2 + 0.5) * s, zy - (list.length - j - 0.45) * s);
+        }
+      }
+    }
+  }
+
+  // ---- gamepad cursor ----
+  if (padActive && padCursorI >= 0) {
+    const gx = padCursorI % GW, gy = (padCursorI / GW) | 0;
+    if (gx >= gx0 - 1 && gx <= gx1 + 1 && gy >= gy0 - 1 && gy <= gy1 + 1) {
+      ctx.strokeStyle = 'rgba(20,12,34,.85)';
+      ctx.lineWidth = Math.max(3.5, s * 0.24);
+      ctx.strokeRect(view.x + gx * s, view.y + gy * s, s, s);
+      ctx.strokeStyle = '#ffd76a';
+      ctx.lineWidth = Math.max(1.8, s * 0.12);
+      ctx.strokeRect(view.x + gx * s, view.y + gy * s, s, s);
+    }
+  }
+
+  // ---- hint pulse ----
+  if (hintCell >= 0) {
+    const t = (now - hintT) / 2600;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 160);
+    const list = nbhd[hintCell];
+    let minX = GW, minY = GH, maxX = 0, maxY = 0;
+    for (const j of list) { const jx = j % GW, jy = j / GW | 0;
+      minX = Math.min(minX, jx); maxX = Math.max(maxX, jx);
+      minY = Math.min(minY, jy); maxY = Math.max(maxY, jy); }
+    ctx.globalAlpha = (1 - t) * (0.55 + 0.45 * pulse);
+    ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3;
+    ctx.strokeRect(view.x + minX * s - 2, view.y + minY * s - 2, (maxX - minX + 1) * s + 4, (maxY - minY + 1) * s + 4);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ============================================================
+//  INPUT
+// ============================================================
+let drag = null;
+let spaceHeld = false, hoverCell = -1;
+let selZ = -1, selP = -1;        // selected sudoku-plot cell
+
+function cellAt(mx, my){
+  const gx = Math.floor((mx - view.x) / view.s);
+  const gy = Math.floor((my - view.y) / view.s);
+  if (gx < 0 || gx >= GW || gy < 0 || gy >= GH) return -1;
+  return gy * GW + gx;
+}
+
+function cycleZone(zone, p, dir){
+  const n = zone.n;
+  let v = zone.entries[p] + dir;
+  if (v > n) v = 0;
+  if (v < 0) v = n;
+  zone.entries[p] = v;
+  checkZone(zone);
+  updateHUD(); scheduleSave(); needsDraw = true;
+}
+
+function setZoneDigit(zone, p, v){
+  zone.entries[p] = v;
+  checkZone(zone);
+  updateHUD(); scheduleSave(); needsDraw = true;
+}
+
+cvs.addEventListener('contextmenu', e => e.preventDefault());
+
+cvs.addEventListener('mousedown', e => {
+  if (!generated) return;
+  viewAnim = null;
+  if (e.button === 1 || spaceHeld) {
+    drag = { mode: 'pan', mx: e.clientX, my: e.clientY };
+    cvs.classList.add('panning');
+    e.preventDefault();
+    return;
+  }
+  const i = cellAt(e.clientX, e.clientY);
+  if (i < 0 || solving) { drag = { mode: 'pan', mx: e.clientX, my: e.clientY }; cvs.classList.add('panning'); return; }
+
+  const zi = zoneOf[i];
+  if (zi >= 0) {
+    const zone = ZONES[zi];
+    if (regionDone[zone.region] || !zone.entries) return;
+    const gx = i % GW, gy = (i / GW) | 0;
+    const p = (gy - zone.y) * zone.n + (gx - zone.x);
+    if (zone.puzzle[p] !== 0) { selZ = -1; selP = -1; needsDraw = true; return; }
+    if (e.button === 0) {
+      if (selZ === zi && selP === p) cycleZone(zone, p, +1);
+      else { selZ = zi; selP = p; }
+    } else if (e.button === 2) {
+      selZ = zi; selP = p;
+      cycleZone(zone, p, -1);
+    }
+    needsDraw = true;
+    return;
+  }
+  if (selZ >= 0) { selZ = -1; selP = -1; needsDraw = true; }
+
+  if (e.button === 0) {
+    if (state[i] === 1) { setCell(i, 0); drag = { mode: 'paint', erase: 1 }; }
+    else { setCell(i, 1); drag = { mode: 'paint', paint: 1 }; }
+  } else if (e.button === 2) {
+    if (state[i] === 2) { setCell(i, 0); drag = { mode: 'paint', erase: 2 }; }
+    else { setCell(i, 2); drag = { mode: 'paint', paint: 2 }; }
+  }
+});
+
+addEventListener('mousemove', e => {
+  const h = cellAt(e.clientX, e.clientY);
+  if (h !== hoverCell) { hoverCell = h; needsDraw = true; }
+  if (!drag) return;
+  if (drag.mode === 'pan') {
+    view.x += e.clientX - drag.mx; view.y += e.clientY - drag.my;
+    drag.mx = e.clientX; drag.my = e.clientY;
+    needsDraw = true;
+  } else {
+    const i = cellAt(e.clientX, e.clientY);
+    if (i < 0 || zoneOf[i] >= 0) return;
+    if (drag.paint && state[i] === 0) setCell(i, drag.paint);
+    else if (drag.erase && state[i] === drag.erase) setCell(i, 0);
+  }
+});
+
+addEventListener('mouseup', () => { drag = null; cvs.classList.remove('panning'); });
+
+cvs.addEventListener('wheel', e => {
+  e.preventDefault();
+  const k = e.deltaY < 0 ? 1.13 : 1 / 1.13;
+  const ns = Math.max(3, Math.min(48, view.s * k));
+  view.x = e.clientX - (e.clientX - view.x) * ns / view.s;
+  view.y = e.clientY - (e.clientY - view.y) * ns / view.s;
+  view.s = ns; viewAnim = null; needsDraw = true;
+}, { passive: false });
+
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  // digits go to the selected sudoku-plot cell
+  if (selZ >= 0 && selP >= 0 && !solving) {
+    const zone = ZONES[selZ];
+    if (!regionDone[zone.region]) {
+      const v = parseInt(e.key, 10);
+      if (v >= 1 && v <= zone.n) { setZoneDigit(zone, selP, v); return; }
+      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') { setZoneDigit(zone, selP, 0); return; }
+      if (e.key === 'Escape') { selZ = -1; selP = -1; needsDraw = true; return; }
+      const n = zone.n, c = selP % n, r = (selP / n) | 0;
+      if (e.key === 'ArrowLeft'  && c > 0)     { selP--; needsDraw = true; e.preventDefault(); return; }
+      if (e.key === 'ArrowRight' && c < n - 1) { selP++; needsDraw = true; e.preventDefault(); return; }
+      if (e.key === 'ArrowUp'    && r > 0)     { selP -= n; needsDraw = true; e.preventDefault(); return; }
+      if (e.key === 'ArrowDown'  && r < n - 1) { selP += n; needsDraw = true; e.preventDefault(); return; }
+    }
+  }
+  if (e.code === 'Space') { spaceHeld = true; e.preventDefault(); }
+  else if (e.key === 'h' || e.key === 'H') giveHint();
+  else if (e.key === 'f' || e.key === 'F') fitView();
+  else if (e.key === '+' || e.key === '=') zoomCenter(1.25);
+  else if (e.key === '-') zoomCenter(1 / 1.25);
+  else if ((e.key === 'z' || e.key === 'Z') && hoverCell >= 0 && !solving && zoneOf[hoverCell] < 0) setCell(hoverCell, state[hoverCell] === 1 ? 0 : 1);
+  else if ((e.key === 'x' || e.key === 'X') && hoverCell >= 0 && !solving && zoneOf[hoverCell] < 0) setCell(hoverCell, state[hoverCell] === 2 ? 0 : 2);
+});
+addEventListener('keyup', e => { if (e.code === 'Space') spaceHeld = false; });
+
+function zoomCenter(k){
+  const cx = innerWidth / 2, cy = innerHeight / 2;
+  const ns = Math.max(3, Math.min(48, view.s * k));
+  view.x = cx - (cx - view.x) * ns / view.s;
+  view.y = cy - (cy - view.y) * ns / view.s;
+  view.s = ns; needsDraw = true;
+}
+
+// ---------- buttons ----------
+{
+  const sel = document.getElementById('selDiff');
+  for (const k of DIFF_ORDER) {
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = DIFF[k].label;
+    sel.appendChild(o);
+  }
+  sel.value = difficulty;
+  sel.onchange = () => {
+    if (!setDifficulty(sel.value)) sel.value = difficulty;
+    sel.blur();   // give the keyboard back to the canvas
+  };
+}
+document.getElementById('btnHint').onclick = giveHint;
+document.getElementById('btnSolve').onclick = () => {
+  if (generated && !gameWon && !solving) document.getElementById('solveModal').classList.add('show');
+};
+document.getElementById('btnCancelSolve').onclick = () => document.getElementById('solveModal').classList.remove('show');
+document.getElementById('btnSolveRegion').onclick = () => {
+  document.getElementById('solveModal').classList.remove('show');
+  const r = regionAtCenter();
+  if (r >= 0) startSolve([r]);
+};
+document.getElementById('btnSolveAll').onclick = () => {
+  document.getElementById('solveModal').classList.remove('show');
+  startSolve(Array.from({ length: REG_COUNT }, (_, r) => r));
+};
+document.getElementById('btnPad').onclick = () => {
+  renderPadList();
+  updatePadStatus();
+  document.getElementById('padModal').classList.add('show');
+};
+document.getElementById('btnClosePad').onclick = () => {
+  padCaptureIdx = -1;
+  document.getElementById('padModal').classList.remove('show');
+};
+document.getElementById('btnPadRemap').onclick = () => {
+  padCaptureIdx = 0;
+  renderPadList();
+};
+document.getElementById('btnPadDefaults').onclick = () => {
+  padMap = Object.assign({}, PAD_DEFAULTS);
+  padCaptureIdx = -1;
+  try { localStorage.setItem(PAD_KEY, JSON.stringify(padMap)); } catch (e) {}
+  renderPadList();
+};
+document.getElementById('btnZoomIn').onclick = () => zoomCenter(1.25);
+document.getElementById('btnZoomOut').onclick = () => zoomCenter(1 / 1.25);
+document.getElementById('btnFit').onclick = fitView;
+document.getElementById('btnHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
+document.getElementById('btnCloseHelp').onclick = () => document.getElementById('helpModal').classList.remove('show');
+document.getElementById('btnReset').onclick = () => document.getElementById('resetModal').classList.add('show');
+document.getElementById('btnCancelReset').onclick = () => document.getElementById('resetModal').classList.remove('show');
+document.getElementById('btnConfirmReset').onclick = () => {
+  document.getElementById('resetModal').classList.remove('show');
+  document.getElementById('winModal').classList.remove('show');
+  resetGame();
+};
+document.getElementById('btnClearErrors').onclick = () => {
+  clearErrors();
+  document.getElementById('mistakeModal').classList.remove('show');
+  mistakePromptOpen = false;
+};
+document.getElementById('btnKeepGoing').onclick = () => {
+  document.getElementById('mistakeModal').classList.remove('show');
+  const watch = setInterval(() => { if (wrong.size < 4) { mistakePromptOpen = false; clearInterval(watch); } }, 800);
+};
+document.getElementById('btnAdmire').onclick = () => document.getElementById('winModal').classList.remove('show');
+document.getElementById('btnPlayAgain').onclick = () => {
+  document.getElementById('winModal').classList.remove('show');
+  resetGame();
+};
+</script>
+</body>
+</html>
