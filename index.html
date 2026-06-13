@@ -1558,9 +1558,9 @@ function updateHUD(){
   for (const z of ZONES)
     for (let p = 0; p < z.n * z.n; p++) if (z.entries && z.entries[p] === z.solution[p]) correct++;
   const pct = Math.floor(correct / N * 100);
-  const maps = regionDone.filter(Boolean).length;
+  const done = regionDone.filter(Boolean).length;
   document.getElementById('progressBar').style.width = pct + '%';
-  document.getElementById('progressTxt').textContent = `${pct}% · ${maps}/${REG_COUNT} maps`;
+  document.getElementById('progressTxt').textContent = `${pct}% · ${done}/${REG_COUNT} regions`;
   document.getElementById('mistakes').innerHTML = `Mistakes <b>${wrong.size}</b>/4`;
 }
 
