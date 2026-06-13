@@ -5,6 +5,17 @@ shipped to the live site.
 
 ---
 
+## [0.5.0] — 2026-06-14 — Third map
+
+### Added
+- **A third playable map — "🐉 The Fighters"** — a 16:9 character lineup, run through the same
+  pipeline: the board auto-sizes to its aspect (117×66), regions grow content-aware along the
+  image's edges (borders carry ~2.2× the average edge strength), sudoku/picross auto-place and
+  attach to home regions, and it's logic-solvable like the others. Pick it from the map dropdown;
+  it keeps its own autosaved progress. No character quotes yet.
+
+---
+
 ## [0.4.0] — 2026-06-14 — Region quotes & polish
 
 ### Added
