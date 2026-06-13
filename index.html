@@ -1359,8 +1359,8 @@ function checkRegion(r, silent){
       const pp = picrossByRegion.get(r);
       if (pp) toast(`${pp.name} is mended — its picture joins the canvas.`, true);
       else toast(PROVERBS[(Math.random() * PROVERBS.length) | 0]);
-      maybeUnlockChar();
     }
+    maybeUnlockChar();   // fires on manual completion AND during auto-solve
     checkWin();
   } else regionDoneAt[r] = -1e9;
   needsDraw = true;
@@ -1374,7 +1374,8 @@ function checkZone(zone, silent){
   regionDoneAt[zone.region] = performance.now();
   if (selZ === zone.idx) { selZ = -1; selP = -1; }
   if (!silent) {
-    if (!solving) { toast(`${zone.name} is solved — its piece joins the canvas.`, true); maybeUnlockChar(); }
+    if (!solving) toast(`${zone.name} is solved — its piece joins the canvas.`, true);
+    maybeUnlockChar();   // fires on manual completion AND during auto-solve
     checkWin();
   } else regionDoneAt[zone.region] = -1e9;
   needsDraw = true;
@@ -1533,6 +1534,7 @@ function resetGame(){
   regionDone.fill(false); regionDoneAt.fill(0);
   gameWon = false; mistakePromptOpen = false;
   clearUndo();
+  charsShown.clear(); saveCharsShown(); charQueue.length = 0;   // re-arm character unlocks
   try { localStorage.removeItem(stateKey()); localStorage.removeItem(zonesKey()); } catch (e) {}
   updateHUD(); fitView(); needsDraw = true;
 }
