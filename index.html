@@ -453,11 +453,19 @@ let dpr = 1, needsDraw = true;
 let viewAnim = null, hintCell = -1, hintT = 0;
 let gameWon = false, generated = false;
 
+let resizeTimer = null;
 function resize(){
   dpr = window.devicePixelRatio || 1;
   cvs.width = innerWidth * dpr; cvs.height = innerHeight * dpr;
   cvs.style.width = innerWidth + 'px'; cvs.style.height = innerHeight + 'px';
   needsDraw = true;
+  // once the window settles, glide the cell you were working on back to centre
+  if (!generated) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const target = (padActive && padCursorI >= 0) ? padCursorI : lastCell;
+    centerOnCell(target, view.s, true);
+  }, 140);
 }
 addEventListener('resize', resize); resize();
 
@@ -1092,10 +1100,12 @@ function finishSetup(){
 //  GAME STATE
 // ============================================================
 let lastTouchedRegion = -1;
+let lastCell = -1;          // last board/plot cell the player acted on
 
 function setCell(i, s){
   if (regionDone[regionOf[i]] || gameWon || locked[i] || zoneOf[i] >= 0) return;
   lastTouchedRegion = regionOf[i];
+  lastCell = i;
   state[i] = s;
   if (s === 0) wrong.delete(i);
   else if ((s === 1) !== (sol[i] === 1)) wrong.add(i);
@@ -1455,6 +1465,20 @@ function animateView(tx, ty, ts){
   needsDraw = true;
 }
 
+// the app's notion of "centre" (matches fitView / hint): screen middle, nudged
+// down 14px to clear the top bar
+function screenCenter(){ return { cx: innerWidth / 2, cy: innerHeight / 2 + 14 }; }
+
+// bring cell i to the centre of the screen at scale s; glides if `animate`
+function centerOnCell(i, s, animate){
+  if (i < 0) return;
+  const { cx, cy } = screenCenter();
+  const gx = (i % GW) + 0.5, gy = ((i / GW) | 0) + 0.5;
+  const tx = cx - gx * s, ty = cy - gy * s;
+  if (animate) animateView(tx, ty, s);
+  else { view.x = tx; view.y = ty; view.s = s; needsDraw = true; }
+}
+
 // ============================================================
 //  GAMEPAD
 // ============================================================
@@ -1619,9 +1643,25 @@ function pollGamepad(now){
     needsDraw = true;
   }
 
-  // zoom: held buttons
-  if (pressed[padMap.zoomIn])  zoomCenter(1.035);
-  if (pressed[padMap.zoomOut]) zoomCenter(1 / 1.035);
+  // zoom: held buttons — in controller mode the active square stays centred
+  if (pressed[padMap.zoomIn] || pressed[padMap.zoomOut]) {
+    const k = pressed[padMap.zoomIn] ? 1.035 : 1 / 1.035;
+    if (padCursorI >= 0) {
+      const { cx, cy } = screenCenter();
+      const gx = (padCursorI % GW) + 0.5, gy = ((padCursorI / GW) | 0) + 0.5;
+      const offX = (view.x + gx * view.s) - cx, offY = (view.y + gy * view.s) - cy;
+      if (Math.abs(offX) > 1 || Math.abs(offY) > 1) {
+        // there's a shift — glide the square to centre first (then it zooms in place)
+        if (!viewAnim) centerOnCell(padCursorI, view.s, true);
+      } else if (!viewAnim) {
+        const ns = Math.max(3, Math.min(48, view.s * k));
+        view.x = cx - gx * ns; view.y = cy - gy * ns; view.s = ns;
+        needsDraw = true;
+      }
+    } else {
+      zoomCenter(k);
+    }
+  }
 
   if (edge(padMap.light)) padPrimary();
   if (edge(padMap.dark))  padSecondary();
@@ -1890,6 +1930,7 @@ function cycleZone(zone, p, dir){
   if (v < 0) v = n;
   zone.entries[p] = v;
   lastTouchedRegion = zone.region;
+  lastCell = (zone.y + ((p / n) | 0)) * GW + zone.x + (p % n);
   checkZone(zone);
   updateHUD(); scheduleSave(); needsDraw = true;
 }
@@ -1899,6 +1940,7 @@ function setZoneDigit(zone, p, v){
   pushUndo();
   zone.entries[p] = v;
   lastTouchedRegion = zone.region;
+  lastCell = (zone.y + ((p / zone.n) | 0)) * GW + zone.x + (p % zone.n);
   checkZone(zone);
   updateHUD(); scheduleSave(); needsDraw = true;
 }
