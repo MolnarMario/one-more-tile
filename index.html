@@ -31,6 +31,8 @@
   button{background:rgba(255,255,255,.6);border:1px solid var(--panel-border);color:var(--text);
     border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
   button:hover{background:rgba(255,255,255,.95)}
+  button:disabled{opacity:.4;cursor:default}
+  button:disabled:hover{background:rgba(255,255,255,.6)}
   button.primary{background:linear-gradient(135deg,#c75fb0,#8a5cf5);border:none;color:#fff;font-weight:600}
   button.primary:hover{filter:brightness(1.08)}
   select{background:rgba(255,255,255,.6);border:1px solid var(--panel-border);color:var(--text);
@@ -95,6 +97,7 @@
   <span id="mistakes">Mistakes <b>0</b>/4</span>
   <div class="spacer"></div>
   <select id="selDiff" title="Difficulty — clues are rewoven, your stitches stay"></select>
+  <button id="btnUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
   <button id="btnHint">💡 Hint</button>
   <button id="btnSolve">✓ Solve</button>
   <button id="btnZoomOut">−</button>
@@ -107,7 +110,7 @@
 
 <div id="controls">
   <b>Left click</b> light · <b>Right click</b> dark · <b>drag</b> to paint · <b>wheel</b> zoom ·
-  <b>middle&nbsp;/&nbsp;space-drag</b> pan · <b>H</b> hint ·
+  <b>middle&nbsp;/&nbsp;space-drag</b> pan · <b>H</b> hint · <b>Ctrl+Z</b> undo ·
   <b style="color:#b07a1a">gold plots</b> sudoku · <b style="color:#1f9c84">teal patches</b> picross · <b>🎮</b> supported
 </div>
 
@@ -904,6 +907,7 @@ function setDifficulty(d){
   setTimeout(() => {
     regenClues(() => {
       applyGivens();
+      clearUndo();                     // starters/clues changed; old snapshots no longer valid
       updateHUD();
       loader.classList.add('done');
       needsDraw = true;
@@ -1080,6 +1084,7 @@ function finishSetup(){
   fitView();
   document.getElementById('loader').classList.add('done');
   requestAnimationFrame(loop);
+  updateUndoBtn();
   setTimeout(maybeShowAdvanced, 600);   // returning players already on Hard+
 }
 
@@ -1159,9 +1164,48 @@ function maybeMistakePrompt(){
   }
 }
 function clearErrors(){
+  if (!wrong.size) return;
+  pushUndo();
   for (const i of wrong) state[i] = 0;
   wrong.clear();
   updateHUD(); scheduleSave(); needsDraw = true;
+}
+
+// ---------- undo ----------
+// snapshot-based: capture the full mutable game state before each player
+// action and restore it wholesale, so region completions, error sweeps and
+// painted strokes all roll back cleanly. The auto-solver and reset clear it.
+const undoStack = [];
+function pushUndo(){
+  undoStack.push({
+    state: state.slice(),
+    zones: ZONES.map(z => (z.entries ? z.entries.slice() : null)),
+    regionDone: regionDone.slice(),
+    regionDoneAt: regionDoneAt.slice(),
+    wrong: Array.from(wrong),
+    gameWon, lastTouchedRegion,
+  });
+  if (undoStack.length > 100) undoStack.shift();
+  updateUndoBtn();
+}
+function clearUndo(){ undoStack.length = 0; updateUndoBtn(); }
+function updateUndoBtn(){
+  const b = document.getElementById('btnUndo');
+  if (b) b.disabled = undoStack.length === 0;
+}
+function undo(){
+  if (solving || !generated) return;
+  if (!undoStack.length) { toast('Nothing to undo.', true); return; }
+  const snap = undoStack.pop();
+  state.set(snap.state);
+  ZONES.forEach((z, k) => { if (snap.zones[k] && z.entries) z.entries.set(snap.zones[k]); });
+  for (let r = 0; r < regionDone.length; r++) { regionDone[r] = snap.regionDone[r]; regionDoneAt[r] = snap.regionDoneAt[r]; }
+  wrong.clear(); for (const i of snap.wrong) wrong.add(i);
+  gameWon = snap.gameWon;
+  lastTouchedRegion = snap.lastTouchedRegion;
+  selZ = -1; selP = -1;
+  document.getElementById('winModal').classList.remove('show');
+  updateHUD(); scheduleSave(); updateUndoBtn(); needsDraw = true;
 }
 
 // ---------- HUD ----------
@@ -1218,6 +1262,7 @@ function resetGame(){
   applyGivens();
   regionDone.fill(false); regionDoneAt.fill(0);
   gameWon = false; mistakePromptOpen = false;
+  clearUndo();
   try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(ZONES_KEY); } catch (e) {}
   updateHUD(); fitView(); needsDraw = true;
 }
@@ -1302,6 +1347,7 @@ function startSolve(regionIds){
     else list.push(...regionSolveOrder(r));   // organic maps AND picross patches are stitched
   }
   if (!list.length) return;
+  clearUndo();                         // the animated solver isn't step-undoable
   solveQueue.push(...list);
   solveRate = Math.max(8, Math.ceil(list.length / 160));
   solving = true;
@@ -1838,6 +1884,7 @@ function cellAt(mx, my){
 
 function cycleZone(zone, p, dir){
   const n = zone.n;
+  pushUndo();
   let v = zone.entries[p] + dir;
   if (v > n) v = 0;
   if (v < 0) v = n;
@@ -1848,6 +1895,8 @@ function cycleZone(zone, p, dir){
 }
 
 function setZoneDigit(zone, p, v){
+  if (zone.entries[p] === v) return;
+  pushUndo();
   zone.entries[p] = v;
   lastTouchedRegion = zone.region;
   checkZone(zone);
@@ -1887,6 +1936,8 @@ cvs.addEventListener('mousedown', e => {
   }
   if (selZ >= 0) { selZ = -1; selP = -1; needsDraw = true; }
 
+  // one undo entry per stroke: snapshot before the first painted tile
+  if (!regionDone[regionOf[i]] && !locked[i] && !gameWon) pushUndo();
   if (e.button === 0) {
     if (state[i] === 1) { setCell(i, 0); drag = { mode: 'paint', erase: 1 }; }
     else { setCell(i, 1); drag = { mode: 'paint', paint: 1 }; }
@@ -1925,6 +1976,7 @@ cvs.addEventListener('wheel', e => {
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
   // digits go to the selected sudoku-plot cell
   if (selZ >= 0 && selP >= 0 && !solving) {
     const zone = ZONES[selZ];
@@ -1945,8 +1997,8 @@ addEventListener('keydown', e => {
   else if (e.key === 'f' || e.key === 'F') fitView();
   else if (e.key === '+' || e.key === '=') zoomCenter(1.25);
   else if (e.key === '-') zoomCenter(1 / 1.25);
-  else if ((e.key === 'z' || e.key === 'Z') && hoverCell >= 0 && !solving && zoneOf[hoverCell] < 0) setCell(hoverCell, state[hoverCell] === 1 ? 0 : 1);
-  else if ((e.key === 'x' || e.key === 'X') && hoverCell >= 0 && !solving && zoneOf[hoverCell] < 0) setCell(hoverCell, state[hoverCell] === 2 ? 0 : 2);
+  else if ((e.key === 'z' || e.key === 'Z') && hoverCell >= 0 && !solving && zoneOf[hoverCell] < 0) { if (!regionDone[regionOf[hoverCell]] && !locked[hoverCell] && !gameWon) pushUndo(); setCell(hoverCell, state[hoverCell] === 1 ? 0 : 1); }
+  else if ((e.key === 'x' || e.key === 'X') && hoverCell >= 0 && !solving && zoneOf[hoverCell] < 0) { if (!regionDone[regionOf[hoverCell]] && !locked[hoverCell] && !gameWon) pushUndo(); setCell(hoverCell, state[hoverCell] === 2 ? 0 : 2); }
 });
 addEventListener('keyup', e => { if (e.code === 'Space') spaceHeld = false; });
 
@@ -1973,6 +2025,7 @@ function zoomCenter(k){
     sel.blur();   // give the keyboard back to the canvas
   };
 }
+document.getElementById('btnUndo').onclick = undo;
 document.getElementById('btnHint').onclick = giveHint;
 document.getElementById('btnSolve').onclick = () => {
   if (generated && !gameWon && !solving) document.getElementById('solveModal').classList.add('show');
