@@ -4,7 +4,9 @@ A single-file browser puzzle game inspired by [Proverbs](https://store.steampowe
 Fill-a-pix (Mosaic) — with sudoku and picross puzzles woven directly into the same canvas.
 
 Solve the 120×64 cross-stitch board to reveal a hidden pixel-art painting. No build, no
-server, no dependencies: open `proverbs.html` in a browser and play.
+server, no dependencies: open `index.html` in a browser and play.
+
+**▶ Play it now: https://molnarmario.github.io/number-puzzles-x-steroids/**
 
 ## What's inside
 
