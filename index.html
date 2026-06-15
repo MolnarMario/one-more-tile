@@ -17,18 +17,21 @@
   #game.panning{cursor:grabbing}
 
   /* ---------- HUD ---------- */
-  #hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;
-    padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--panel-border);
+  #hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;flex-wrap:wrap;
+    gap:8px 14px;padding:9px 16px;background:var(--panel);border-bottom:1px solid var(--panel-border);
     backdrop-filter:blur(8px);z-index:10}
   #hud h1{font-size:15px;letter-spacing:3px;font-weight:600;color:var(--accent);white-space:nowrap}
   #hud h1 small{display:block;font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:400}
-  #progressWrap{flex:1;max-width:340px;height:10px;border-radius:5px;background:rgba(96,66,158,.14);overflow:hidden}
+  /* a cluster of related controls — stays on one line; the header wraps between clusters */
+  .hud-group{display:flex;align-items:center;gap:7px}
+  .hud-stats{flex:1 1 240px;min-width:0;gap:12px}          /* grows to fill the middle; holds the progress bar */
+  .hud-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+  #progressWrap{flex:1;min-width:70px;max-width:340px;height:10px;border-radius:5px;background:rgba(96,66,158,.14);overflow:hidden}
   #progressBar{height:100%;width:0%;border-radius:5px;background:linear-gradient(90deg,#c75fb0,#8a5cf5);transition:width .3s}
   #progressTxt{font-size:12px;color:var(--muted);min-width:88px}
-  #mistakes{font-size:13px;color:var(--muted)}
+  #mistakes{font-size:13px;color:var(--muted);white-space:nowrap}
   #mistakes b{color:var(--accent2)}
-  #timer{font-size:13px;color:var(--muted);min-width:64px;font-variant-numeric:tabular-nums}
-  .spacer{flex:1}
+  #timer{font-size:13px;color:var(--muted);min-width:60px;font-variant-numeric:tabular-nums;white-space:nowrap}
   button{background:rgba(255,255,255,.6);border:1px solid var(--panel-border);color:var(--text);
     border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
   button:hover{background:rgba(255,255,255,.95)}
@@ -46,6 +49,24 @@
   #btnMusic{min-width:34px;padding:7px 11px;font-size:14px;line-height:1}
   #btnMusic.playing{background:linear-gradient(135deg,#c75fb0,#8a5cf5);border:none;color:#fff}
   #musicVol{width:72px;height:4px;cursor:pointer;accent-color:var(--accent)}
+
+  /* responsive header — placed after the base button/select rules so these
+     overrides win the cascade. flex-wrap (above) already prevents clipping;
+     these just tighten spacing/type so more fits before it needs to wrap. */
+  @media (max-width:820px){
+    #hud{gap:7px 9px;padding:8px 11px}
+    #hud h1{font-size:13px;letter-spacing:2px}
+    .hud-controls{gap:6px 8px}
+    #hud button{padding:6px 10px;font-size:12px}
+    #hud select{padding:6px 7px;font-size:12px}
+  }
+  @media (max-width:480px){
+    #hud h1 small{display:none}
+    .hud-stats{flex-basis:100%;order:5}                    /* progress drops to its own full-width row */
+    #progressTxt{min-width:0;font-size:11px}
+    #mistakes,#timer{font-size:12px}
+    #musicVol{width:52px}
+  }
 
   #controls{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:8px;
     font-size:12px;color:var(--muted);background:var(--panel);border-top:1px solid var(--panel-border);z-index:10}
@@ -106,27 +127,42 @@
 
 <div id="hud">
   <h1>NUMBER PUZZLES<small>× steroids</small></h1>
-  <div id="progressWrap"><div id="progressBar"></div></div>
-  <span id="progressTxt">0%</span>
-  <span id="mistakes">Mistakes <b>0</b>/4</span>
-  <span id="timer" title="Time since your first stitch">⏱ 00:00</span>
-  <div class="spacer"></div>
-  <select id="selMap" title="Pick a canvas — each keeps its own progress"></select>
-  <select id="selDiff" title="Difficulty — clues are rewoven, your stitches stay"></select>
-  <button id="btnUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
-  <button id="btnHint">💡 Hint</button>
-  <button id="btnSolve">✓ Solve</button>
-  <button id="btnZoomOut">−</button>
-  <button id="btnZoomIn">+</button>
-  <button id="btnFit">⛶ Fit</button>
-  <span id="music" title="Background music">
-    <button id="btnMusic" aria-label="Play or pause background music">▶</button>
-    <input id="musicVol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Music volume" title="Music volume">
-  </span>
-  <button id="btnPad">🎮</button>
-  <button id="btnHelp">?</button>
-  <button id="btnShare" title="Export your canvas as a code, or import one">⇄ Share</button>
-  <button id="btnReset">Reset</button>
+
+  <!-- stats cluster: grows to fill the middle, wraps to its own row when tight -->
+  <div class="hud-group hud-stats">
+    <div id="progressWrap"><div id="progressBar"></div></div>
+    <span id="progressTxt">0%</span>
+    <span id="mistakes">Mistakes <b>0</b>/4</span>
+    <span id="timer" title="Time since your first stitch">⏱ 00:00</span>
+  </div>
+
+  <!-- control clusters: each group stays intact; the row wraps between groups -->
+  <div class="hud-controls">
+    <div class="hud-group">
+      <select id="selMap" title="Pick a canvas — each keeps its own progress"></select>
+      <select id="selDiff" title="Difficulty — clues are rewoven, your stitches stay"></select>
+    </div>
+    <div class="hud-group">
+      <button id="btnUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
+      <button id="btnHint" title="Hint (H)">💡 Hint</button>
+      <button id="btnSolve">✓ Solve</button>
+    </div>
+    <div class="hud-group">
+      <button id="btnZoomOut" title="Zoom out (−)">−</button>
+      <button id="btnZoomIn" title="Zoom in (+)">+</button>
+      <button id="btnFit" title="Fit to view (F)">⛶ Fit</button>
+    </div>
+    <div class="hud-group">
+      <span id="music" title="Background music">
+        <button id="btnMusic" aria-label="Play or pause background music">▶</button>
+        <input id="musicVol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Music volume" title="Music volume">
+      </span>
+      <button id="btnPad" title="Controller setup">🎮</button>
+      <button id="btnHelp" title="How to play">?</button>
+      <button id="btnShare" title="Export your canvas as a code, or import one">⇄ Share</button>
+      <button id="btnReset">Reset</button>
+    </div>
+  </div>
 </div>
 
 <div id="controls">
