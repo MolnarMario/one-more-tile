@@ -41,6 +41,12 @@
   select:hover{background:rgba(255,255,255,.95)}
   select option{background:#f7f3fd;color:var(--text)}
 
+  /* ---------- music player ---------- */
+  #music{display:flex;align-items:center;gap:7px}
+  #btnMusic{min-width:34px;padding:7px 11px;font-size:14px;line-height:1}
+  #btnMusic.playing{background:linear-gradient(135deg,#c75fb0,#8a5cf5);border:none;color:#fff}
+  #musicVol{width:72px;height:4px;cursor:pointer;accent-color:var(--accent)}
+
   #controls{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:8px;
     font-size:12px;color:var(--muted);background:var(--panel);border-top:1px solid var(--panel-border);z-index:10}
   #controls b{color:var(--text);font-weight:600}
@@ -113,6 +119,10 @@
   <button id="btnZoomOut">−</button>
   <button id="btnZoomIn">+</button>
   <button id="btnFit">⛶ Fit</button>
+  <span id="music" title="Background music">
+    <button id="btnMusic" aria-label="Play or pause background music">▶</button>
+    <input id="musicVol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Music volume" title="Music volume">
+  </span>
   <button id="btnPad">🎮</button>
   <button id="btnHelp">?</button>
   <button id="btnShare" title="Export your canvas as a code, or import one">⇄ Share</button>
@@ -274,6 +284,10 @@
     <div class="btns"><button class="primary" id="btnCharClose">Continue ▸</button></div>
   </div>
 </div>
+
+<!-- background music: src is attached lazily in JS (initBgm), long after the
+     puzzle has generated, so this ~58 MB file never slows core loading -->
+<audio id="bgm" loop preload="none"></audio>
 
 <div id="version"></div>
 <div id="toast"></div>
@@ -1351,6 +1365,13 @@ function finishSetup(){
   requestAnimationFrame(loop);
   updateUndoBtn();
   setTimeout(maybeShowAdvanced, 600);   // returning players already on Hard+
+  // dead last: kick off the (large) background-music download, well after the
+  // first frames are on screen, when the main thread is idle — never competes
+  // with core game loading. initBgm() guards against running twice.
+  setTimeout(() => {
+    if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 5000 });
+    else initBgm();
+  }, 1200);
 }
 
 // ============================================================
@@ -2312,11 +2333,11 @@ function draw(now){
     if (hi >= 0) {
       const hx = hi % GW, hy = (hi / GW) | 0;
       ctx.fillStyle = 'rgba(240,162,36,.22)';
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const nx = hx + dx, ny = hy + dy;
-        if (nx < 0 || nx >= GW || ny < 0 || ny >= GH) continue;
-        const j = ny * GW + nx;
-        if (zoneOf[j] >= 0 || picrossOf[j] >= 0) continue;   // skip plot cells
+      // only the region-clipped 3×3 (nbhd) — the tiles a clue on this square
+      // would actually count. Cells that spill across a region border (or into
+      // a plot) are irrelevant to this square, so they're left unhighlighted.
+      for (const j of nbhd[hi]) {
+        const nx = j % GW, ny = (j / GW) | 0;
         ctx.fillRect(view.x + nx * s, view.y + ny * s, s + 0.5, s + 0.5);
       }
       // outline the exact square you're on (the controller draws its own box)
@@ -2637,6 +2658,69 @@ function zoomCenter(k){
   view.y = cy - (cy - view.y) * ns / view.s;
   view.s = ns; needsDraw = true;
 }
+
+// ============================================================
+//  BACKGROUND MUSIC — a deliberately deferred, lightweight player.
+//  The track (~58 MB) is the LAST asset touched: its `src` is attached
+//  only by initBgm(), fired from finishSetup() once the puzzle has
+//  generated and drawn, so it never competes with core game loading.
+//  Browsers block autoplay-with-sound until a user gesture, so if the
+//  initial play() is refused we start on the player's first interaction.
+// ============================================================
+const bgm = document.getElementById('bgm');
+const btnMusic = document.getElementById('btnMusic');
+const musicVol = document.getElementById('musicVol');
+const MUSIC_SRC = 'Chill-music-1hour.mp3';
+const MUSIC_VOL_KEY = 'proverbs2-musicvol';
+let bgmInit = false;        // has the track been attached yet?
+let bgmReady = false;       // enough buffered to play?
+let bgmWanted = true;       // should it be playing? (autoplay on by default)
+
+// restore the saved volume; default to a gentle 0.5
+try { const v = parseFloat(localStorage.getItem(MUSIC_VOL_KEY)); if (v >= 0 && v <= 1) musicVol.value = v; } catch (e) {}
+
+function setMusicUI(){
+  const playing = bgmReady && !bgm.paused;
+  btnMusic.textContent = playing ? '⏸' : '▶';
+  btnMusic.classList.toggle('playing', playing);
+}
+function playBgm(){
+  if (!bgmReady) return;
+  const p = bgm.play();
+  if (p && p.catch) p.catch(() => {});   // swallow the autoplay rejection; armAutoplay() handles it
+}
+// if the browser refuses autoplay, start on the very first user gesture
+function armAutoplay(){
+  const kick = () => {
+    removeEventListener('pointerdown', kick); removeEventListener('keydown', kick);
+    if (bgmWanted && bgmReady && bgm.paused) playBgm();
+  };
+  addEventListener('pointerdown', kick); addEventListener('keydown', kick);
+}
+// attach the (large) track and try to autoplay — runs at most once
+function initBgm(){
+  if (bgmInit) return;
+  bgmInit = true;
+  bgm.volume = parseFloat(musicVol.value);
+  bgm.addEventListener('canplay', () => { bgmReady = true; setMusicUI(); if (bgmWanted) playBgm(); }, { once: true });
+  bgm.addEventListener('play', setMusicUI);
+  bgm.addEventListener('pause', setMusicUI);
+  bgm.src = MUSIC_SRC;     // ← the only point the 58 MB download begins
+  bgm.load();
+  armAutoplay();
+}
+btnMusic.onclick = () => {
+  if (!bgmInit) initBgm();             // first click also boots it if the deferred load hasn't fired yet
+  if (bgm.paused) { bgmWanted = true; playBgm(); }
+  else { bgmWanted = false; bgm.pause(); }
+  setMusicUI();
+  btnMusic.blur();                     // hand the keyboard back to the canvas
+};
+musicVol.oninput = () => {
+  bgm.volume = parseFloat(musicVol.value);
+  try { localStorage.setItem(MUSIC_VOL_KEY, musicVol.value); } catch (e) {}
+};
+setMusicUI();
 
 // ---------- buttons ----------
 {
