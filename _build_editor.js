@@ -67,8 +67,14 @@ const out = `<!doctype html><html><head><meta charset="utf-8"><title>Region edit
     <button id="btnReroll" title="New random plot placement">⟳ plots</button>
   </div>
   <div class="grp">
+    <span style="font-size:12px;color:var(--muted)">Resolution</span>
+    <input type="range" id="res" min="2500" max="57600" value="7680" step="250" style="width:140px;vertical-align:middle" title="Pixel-art resolution (aspect locked). Higher = longer game + more detail.">
+    <span id="resLabel" style="font-size:12px;color:var(--ink);min-width:118px;display:inline-block">— × — · —</span>
+  </div>
+  <div class="grp">
+    <span style="font-size:11px;color:var(--muted)" title="Manual override (can break aspect)">exact</span>
     <input type="number" id="dimW" placeholder="auto"> × <input type="number" id="dimH" placeholder="auto">
-    <button id="btnRescan" title="Re-scan with these dimensions">rescan</button>
+    <button id="btnRescan" title="Re-scan with these exact dimensions">rescan</button>
   </div>
   <div class="grp">
     <button id="btnDraw" class="on">✎ Draw</button>

@@ -56,9 +56,22 @@ function loadImageSrc(src){
   im.onerror = () => setStatus('Could not load that image.');
   im.src = src;
 }
-function onImage(){
-  const fw = parseInt($('dimW').value, 10), fh = parseInt($('dimH').value, 10);
-  const forced = (fw >= 20 && fh >= 20) ? { gw: fw, gh: fh } : {};
+const RES_MIN = 2500;                                  // resolution-slider low end (cell budget)
+// aspect-locked board dims from a target cell budget, never exceeding the engine cap
+function dimsFromBudget(B){
+  const a = ED.aspect || 1;
+  let gw = Math.max(40, Math.round(Math.sqrt(B * a)));
+  let gh = Math.max(40, Math.round(B / gw));
+  while (gw * gh > MAXN) { if (gw >= gh) gw--; else gh--; }   // shrink the longer side until N ≤ MAXN
+  return { gw, gh };
+}
+function resReadout(){
+  const { gw, gh } = dimsFromBudget(+$('res').value);
+  $('resLabel').textContent = `${gw} × ${gh} · ${(gw * gh).toLocaleString()} cells`;
+  return { gw, gh };
+}
+// (re)scan the image at forced dims ({} = aspect-default), resetting walls/regions
+function rescan(forced){
   dimsForImage(ED.img, forced);          // sets GW, GH, N (Block A)
   $('dimW').value = GW; $('dimH').value = GH;
   sampleImage(ED.img);                   // fills cellCol[], edge[], sol[] (Block B)
@@ -70,7 +83,16 @@ function onImage(){
   ED.haveImage = true;
   detect();
   resizeCanvas(); fitView(); render();
-  setStatus(`Scanned ${GW}×${GH}. Plots auto-placed. Draw borders to carve regions.`);
+}
+// fresh image: lock to its aspect ratio, default the resolution slider, scan
+function onImage(){
+  ED.aspect = (ED.img.naturalWidth || 1) / (ED.img.naturalHeight || 1);
+  const res = $('res');
+  res.min = RES_MIN; res.max = MAXN; res.step = 250;
+  res.value = Math.min(MAXN, CELL_TARGET);             // default ≈ the game's standard cell budget
+  const { gw, gh } = resReadout();
+  rescan({ gw, gh });
+  setStatus(`Scanned ${GW}×${GH} (${(GW * GH).toLocaleString()} cells). Set the Resolution slider, then draw borders.`);
 }
 function placePlotsNow(){
   SEED = parseInt($('seed').value, 10) || 1;
@@ -116,6 +138,15 @@ function detect(){
 
   carryQuotes(lab);
   ED.prevLabel = lab; ED.label = lab;
+  // cache each region's label position (centroid-nearest cell) so render() needn't scan all cells
+  ED.labelPos = [];
+  for (let r = 0; r < REG_PIX; r++) {
+    const cells = regionCells[r]; if (!cells || !cells.length) { ED.labelPos[r] = null; continue; }
+    let sx = 0, sy = 0; for (const i of cells) { sx += i % GW; sy += (i / GW) | 0; }
+    sx /= cells.length; sy /= cells.length;
+    let bi = cells[0], bd = 1e9; for (const i of cells) { const dx = i % GW - sx, dy = (i / GW | 0) - sy, d = dx * dx + dy * dy; if (d < bd) { bd = d; bi = i; } }
+    ED.labelPos[r] = { x: bi % GW, y: (bi / GW) | 0 };
+  }
   rebuildPanel();
 }
 
@@ -172,37 +203,43 @@ function label(t, x, y, size, fill){
 function render(){
   if (!ED.haveImage) return;
   cx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  cx.clearRect(0, 0, cv.clientWidth, cv.clientHeight);
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cx.clearRect(0, 0, W, H);
   const { x: ox, y: oy, s } = ED.view;
+  // viewport cull — only iterate visible cells/edges (keeps high-res boards smooth)
+  const gx0 = Math.max(0, Math.floor(-ox / s)), gy0 = Math.max(0, Math.floor(-oy / s));
+  const gx1 = Math.min(GW - 1, Math.ceil((W - ox) / s)), gy1 = Math.min(GH - 1, Math.ceil((H - oy) / s));
 
-  for (let i = 0; i < N; i++) { const gx = i % GW, gy = (i / GW) | 0; cx.fillStyle = cellCol[i] || '#000'; cx.fillRect(ox + gx * s, oy + gy * s, s + 0.6, s + 0.6); }
-
+  for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
+    const i = gy * GW + gx; cx.fillStyle = cellCol[i] || '#000'; cx.fillRect(ox + gx * s, oy + gy * s, s + 0.6, s + 0.6);
+  }
   if (ED.showRegions) {
     cx.globalAlpha = 0.34;
-    for (let i = 0; i < N; i++) { const r = regionOf[i]; if (r < 0 || r >= REG_PIX) continue; const gx = i % GW, gy = (i / GW) | 0; cx.fillStyle = regColor(r); cx.fillRect(ox + gx * s, oy + gy * s, s + 0.6, s + 0.6); }
+    for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
+      const i = gy * GW + gx, r = regionOf[i]; if (r < 0 || r >= REG_PIX) continue;
+      cx.fillStyle = regColor(r); cx.fillRect(ox + gx * s, oy + gy * s, s + 0.6, s + 0.6);
+    }
     cx.globalAlpha = 1;
   }
 
   for (const z of ZONES) drawPlotBox(z, '#e8a04c', 'rgba(240,234,251,.55)', 'S' + z.idx);
   for (const p of PICROSS) drawPlotBox(p, '#2fb39a', 'rgba(47,179,154,.20)', 'P' + p.idx);
 
-  // the drawn walls
+  // the drawn walls (culled to the visible edge range)
   cx.strokeStyle = '#15102b'; cx.lineWidth = Math.max(2, s * 0.18); cx.lineCap = 'round';
   cx.beginPath();
-  for (let y = 0; y < GH; y++) for (let x = 0; x < GW - 1; x++) if (vW(x, y)) strokeEdge({ type: 'v', x, y });
-  for (let y = 0; y < GH - 1; y++) for (let x = 0; x < GW; x++) if (hW(x, y)) strokeEdge({ type: 'h', x, y });
+  for (let y = gy0; y <= gy1; y++) for (let x = Math.max(0, gx0 - 1); x <= Math.min(GW - 2, gx1); x++) if (vW(x, y)) strokeEdge({ type: 'v', x, y });
+  for (let y = Math.max(0, gy0 - 1); y <= Math.min(GH - 2, gy1); y++) for (let x = gx0; x <= gx1; x++) if (hW(x, y)) strokeEdge({ type: 'h', x, y });
   cx.stroke();
 
   if (ED.hoverEdge) { cx.strokeStyle = ED.tool === 'erase' ? 'rgba(210,60,78,.9)' : 'rgba(240,162,36,.95)'; cx.lineWidth = Math.max(2, s * 0.18); cx.beginPath(); strokeEdge(ED.hoverEdge); cx.stroke(); }
 
-  // region id labels at each region's centroid-nearest cell
+  // region id labels (positions cached in detect())
+  const pos = ED.labelPos || [];
   for (let r = 0; r < REG_PIX; r++) {
-    const cells = regionCells[r]; if (!cells || !cells.length) continue;
-    let sx = 0, sy = 0; for (const i of cells) { sx += i % GW; sy += (i / GW) | 0; }
-    sx /= cells.length; sy /= cells.length;
-    let bi = cells[0], bd = 1e9; for (const i of cells) { const dx = i % GW - sx, dy = (i / GW | 0) - sy, d = dx * dx + dy * dy; if (d < bd) { bd = d; bi = i; } }
+    const p = pos[r]; if (!p) continue;
     const hasQuote = ED.quotes[r] && ED.quotes[r].trim();
-    label((hasQuote ? '“ ' : '') + 'R' + r, ox + (bi % GW + 0.5) * s, oy + ((bi / GW | 0) + 0.5) * s, Math.max(10, s * 1.1 | 0), '#1b1330');
+    label((hasQuote ? '“ ' : '') + 'R' + r, ox + (p.x + 0.5) * s, oy + (p.y + 0.5) * s, Math.max(10, s * 1.1 | 0), '#1b1330');
   }
 }
 
@@ -426,7 +463,10 @@ $('btnMagnet').onclick = wallsFromEdges;
 $('btnCheck').onclick = checkSolvable;
 $('btnExport').onclick = exportMapDef;
 $('btnReroll').onclick = () => { if (!ED.haveImage) return; $('seed').value = ((Math.random() * 1e6) | 0) + 1; placePlotsNow(); detect(); render(); };
-$('btnRescan').onclick = () => { if (ED.img) onImage(); };
+$('btnRescan').onclick = () => { if (!ED.img) return; const fw = parseInt($('dimW').value, 10), fh = parseInt($('dimH').value, 10); rescan((fw >= 20 && fh >= 20) ? { gw: fw, gh: fh } : {}); setStatus(`Rescanned ${GW}×${GH} (${(GW * GH).toLocaleString()} cells).`); };
+// resolution slider (aspect-locked): live readout while dragging; apply (resets walls) on release
+$('res').addEventListener('input', () => { if (ED.haveImage) resReadout(); });
+$('res').addEventListener('change', () => { if (!ED.haveImage) return; const { gw, gh } = resReadout(); rescan({ gw, gh }); setStatus(`Resolution: ${GW}×${GH} · ${(GW * GH).toLocaleString()} cells. Borders reset — draw away.`); });
 $('btnCopy').onclick = () => { $('exportArea').select(); try { document.execCommand('copy'); setStatus('Copied JSON to clipboard.'); } catch (e) { setStatus('Select the text and copy manually.'); } };
 function captureAll(){ const st = []; for (let k = 0; k < ED.vWall.length; k++) if (ED.vWall[k]) st.push({ type: 'v', idx: k, old: 1 }); for (let k = 0; k < ED.hWall.length; k++) if (ED.hWall[k]) st.push({ type: 'h', idx: k, old: 1 }); return st; }
 
