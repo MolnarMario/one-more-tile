@@ -26,6 +26,25 @@ if (html.includes(`layout: '${id}'`) || html.includes(`layout: "${id}"`) || html
 const N = def.gw * def.gh;
 let sum = 0; for (let k = 1; k < def.regionRLE.length; k += 2) sum += def.regionRLE[k];
 if (sum !== N) { console.error(`regionRLE sums to ${sum} but gw*gh=${N} — refusing to bake a malformed partition.`); process.exit(1); }
+// connectivity check: each organic region should be ONE connected piece. The game
+// also self-heals at load (healRegions), but flag it here so a transcription slip
+// is caught at bake time rather than silently relying on the runtime repair.
+{
+  const GW = def.gw, GH = def.gh, ro = new Int16Array(N);
+  let i = 0; for (let k = 0; k < def.regionRLE.length && i < N; k += 2) { const id = def.regionRLE[k] | 0, len = def.regionRLE[k + 1] | 0; for (let n = 0; n < len && i < N; n++) ro[i++] = id; }
+  const seen = new Uint8Array(N), disc = [];
+  for (let r = 0; r < def.regPix; r++) {
+    let pieces = 0;
+    for (let s = 0; s < N; s++) {
+      if (ro[s] !== r || seen[s]) continue;
+      pieces++; const st = [s]; seen[s] = 1;
+      while (st.length) { const c = st.pop(), x = c % GW, y = (c / GW) | 0;
+        for (const j of [x > 0 ? c-1 : -1, x < GW-1 ? c+1 : -1, y > 0 ? c-GW : -1, y < GH-1 ? c+GW : -1]) if (j >= 0 && ro[j] === r && !seen[j]) { seen[j] = 1; st.push(j); } }
+    }
+    if (pieces > 1) disc.push('R' + r + ' (' + pieces + ' pieces)');
+  }
+  if (disc.length) console.warn('⚠ WARNING: disconnected region(s): ' + disc.join(', ') + ' — the game auto-heals these at load, but this usually means a corrupted/hand-transcribed partition. Prefer baking from the editor’s downloaded file.');
+}
 
 // next IMG_SRC index
 let max = 0;

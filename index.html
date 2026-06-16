@@ -679,6 +679,56 @@ function applyHandPartition(L){
   for (const p of PICROSS) regionTint[p.region] = '#e1d8f4';
 }
 
+// Guarantee every organic region is a SINGLE connected blob. The editor (flood
+// fill) and the watershed both produce connected regions by construction, but a
+// corrupted/edited/imported baked partition could scatter a few stray cells into
+// a region far from its body — forcing players to "hunt" cells. This pass finds
+// any region split into multiple pieces, keeps its largest piece, and dissolves
+// the smaller fragment(s) into whichever neighbouring region they border most.
+// No region ids change (a region keeps its main body), so quotes/saves are safe.
+// Runs on every map; a no-op for well-formed ones.
+function healRegions(){
+  const comp = new Int32Array(N).fill(-1);
+  const fragSet = new Uint8Array(N);
+  let frag = [];
+  for (let r = 0; r < REG_PIX; r++) {
+    const comps = [];
+    for (const start of regionCells[r]) {
+      if (comp[start] !== -1) continue;
+      const cells = []; const st = [start]; comp[start] = comps.length;
+      while (st.length) {
+        const c = st.pop(); cells.push(c); const x = c % GW, y = (c / GW) | 0;
+        for (const j of [x > 0 ? c-1 : -1, x < GW-1 ? c+1 : -1, y > 0 ? c-GW : -1, y < GH-1 ? c+GW : -1])
+          if (j >= 0 && regionOf[j] === r && comp[j] === -1) { comp[j] = comps.length; st.push(j); }
+      }
+      comps.push(cells);
+    }
+    if (comps.length <= 1) continue;                       // already one piece
+    let big = 0; for (let k = 1; k < comps.length; k++) if (comps[k].length > comps[big].length) big = k;
+    for (let k = 0; k < comps.length; k++) if (k !== big) for (const c of comps[k]) { frag.push(c); fragSet[c] = 1; }
+  }
+  if (!frag.length) return 0;
+  const total = frag.length;
+  // dissolve fragments into the region they border most, growing inward from the edge
+  while (frag.length) {
+    const next = []; let progress = false;
+    for (const c of frag) {
+      const x = c % GW, y = (c / GW) | 0; const tally = new Map();
+      for (const j of [x > 0 ? c-1 : -1, x < GW-1 ? c+1 : -1, y > 0 ? c-GW : -1, y < GH-1 ? c+GW : -1]) {
+        if (j < 0 || fragSet[j]) continue;                 // ignore other unsettled fragment cells
+        const o = regionOf[j]; if (o >= 0 && o < REG_PIX) tally.set(o, (tally.get(o) || 0) + 1);
+      }
+      if (tally.size) { let best = -1, bc = -1; for (const [o, n] of tally) if (n > bc) { bc = n; best = o; } regionOf[c] = best; fragSet[c] = 0; progress = true; }
+      else next.push(c);
+    }
+    if (!progress) break;                                  // remainder fully enclosed (rare) — leave as-is
+    frag = next;
+  }
+  regionCells = Array.from({ length: REG_COUNT }, () => []);
+  for (let i = 0; i < N; i++) regionCells[regionOf[i]].push(i);
+  return total;
+}
+
 const picrossByRegion = new Map();
 // region-clipped 3×3 neighborhoods (clues never see across a map
 // border, and never see into a sudoku plot)
@@ -712,6 +762,7 @@ function buildLayout(){
   fillPlotCells();
   const L = mapDef().layout && HAND_LAYOUTS[mapDef().layout];
   if (L) applyHandPartition(L); else growRegions();   // hand-drawn partition, or the watershed
+  healRegions();   // guarantee every region is one connected blob (no stray cells to hunt)
   attachPlots();
   picrossByRegion.clear();
   for (const p of PICROSS) picrossByRegion.set(p.region, p);
