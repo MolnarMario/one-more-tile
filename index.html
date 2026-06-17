@@ -88,10 +88,10 @@
     align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .4s}
   .overlay.show{opacity:1;pointer-events:auto}
   .card{background:#f7f3fd;border:1px solid var(--panel-border);border-radius:16px;
-    padding:28px 32px;max-width:560px;text-align:center;box-shadow:0 24px 70px rgba(70,48,130,.35)}
+    padding:28px 32px;max-width:min(560px, calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;text-align:center;box-shadow:0 24px 70px rgba(70,48,130,.35)}
   .card h2{color:var(--accent);font-size:19px;margin-bottom:10px;letter-spacing:1px}
   .card p{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:18px}
-  .card .btns{display:flex;gap:10px;justify-content:center}
+  .card .btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
   .card img{width:100%;image-rendering:pixelated;border-radius:10px;margin-bottom:16px;border:1px solid var(--panel-border)}
   .card .proverb{font-style:italic;font-size:17px;color:var(--text);margin-bottom:6px}
   .card ul{text-align:left;color:var(--muted);font-size:13px;line-height:1.9;list-style:none}
@@ -331,7 +331,7 @@
 </div>
 
 <div class="overlay" id="onlineModal">
-  <div class="card" style="max-width:560px">
+  <div class="card" style="max-width:min(560px, calc(100vw - 24px))">
     <h2>🌐 Online co-op</h2>
     <p>Play this exact board with a friend over the internet — share the code, hop on Discord, and solve together. Their edits and cursor show up live; press <b>⊟ Watch</b> any time to peek at their view.</p>
     <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin:4px 0 12px">
@@ -381,7 +381,7 @@
 </div>
 
 <div class="overlay" id="shareModal">
-  <div class="card" style="max-width:600px">
+  <div class="card" style="max-width:min(600px, calc(100vw - 24px))">
     <h2>⇄ Share this canvas</h2>
     <p>The picture is the same on every copy of the game — so a code carries only your difficulty, stitches and digits. Copy yours below, or paste a friend's to load it.</p>
     <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Your code</b> — copy and share it</p>
@@ -459,7 +459,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.12.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.12.1';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';

@@ -5,6 +5,16 @@ shipped to the live site.
 
 ---
 
+## [0.12.1] — 2026-06-17 — Modal button wrapping fix
+
+### Fixed
+- **The auto-solve dialog's buttons no longer overflow the box.** Its four buttons sat in a single
+  non-wrapping row and spilled off both edges of the card; modal button rows now wrap, so they lay
+  out tidily on any width. Modals are also capped to the viewport (with internal scroll if needed),
+  so none can overflow a small or short window.
+
+---
+
 ## [0.12.0] — 2026-06-17 — Up to 4 players + a Multiplayer menu
 
 ### Added
