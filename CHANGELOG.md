@@ -5,6 +5,16 @@ shipped to the live site.
 
 ---
 
+## [0.12.4] — 2026-06-17 — Clean seams on revealed art
+
+### Fixed
+- **No more faint light/dark lines between tiles in a finished region.** A solved cell used to paint
+  the picture colour *on top of* the light/dark solving square, and at fractional-pixel cell edges
+  the near-white / near-black underlay bled through as thin seams. A fully revealed cell now paints
+  only its pixel-art colour (the cross-fade reveal is unchanged), so the finished picture is clean.
+
+---
+
 ## [0.12.3] — 2026-06-17 — Esc closes any modal
 
 ### Added
