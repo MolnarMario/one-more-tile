@@ -5,6 +5,29 @@ shipped to the live site.
 
 ---
 
+## [0.12.0] — 2026-06-17 — Up to 4 players + a Multiplayer menu
+
+### Added
+- **One 👥 Multiplayer button** replaces the separate Co-op/Online buttons: click it and pick **Local
+  co-op** or **Online co-op**. (You can be in one mode at a time; the other becomes available again
+  once everyone disconnects.)
+- **2–4 players.** Local co-op now has a player-count picker (2–4); online hosts choose how many
+  guests (1–3) and hand out the **same code** to all. The screen tiles to fit: **side-by-side** for
+  2, **three columns** for 3, a **2×2 grid** for 4.
+- **Join any time.** Players don't have to be there at the start. Locally, an extra player presses
+  any controller button to claim the next spot mid-game; online, a friend can connect to the host's
+  code whenever — they're handed the current board on arrival. Everyone's cursor shows live, in their
+  own colour, with an edge arrow when they're off your screen; **⊟ Watch** tiles everyone's views.
+
+### Changed
+- **Responsive at any window size.** Panes are computed from the live window dimensions and re-fit on
+  resize, so split-screen works beyond the usual 16:9 fullscreen.
+- **Online stays host-authoritative for everyone.** All guests play on the host's board and every
+  move — whoever makes it — is saved on the **host's** side; the host's map is never wiped. Each
+  guest's own solo progress is untouched and restored when they leave.
+
+---
+
 ## [0.11.1] — 2026-06-17 — Controller follows the mouse
 
 ### Fixed

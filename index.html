@@ -158,9 +158,8 @@
         <input id="musicVol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Music volume" title="Music volume">
       </span>
       <button id="btnPad" title="Controller setup">🎮</button>
-      <button id="btnCoop" title="Two-player split-screen co-op">👥 Co-op</button>
-      <button id="btnOnline" title="Play online with a friend">🌐 Online</button>
-      <button id="btnWatch" title="Watch your partner's view" style="display:none">⊟ Watch</button>
+      <button id="btnMP" title="Play with others — local split-screen or online">👥 Multiplayer</button>
+      <button id="btnWatch" title="Watch your partners' views" style="display:none">⊟ Watch</button>
       <button id="btnHelp" title="How to play">?</button>
       <button id="btnShare" title="Export your canvas as a code, or import one">⇄ Share</button>
       <button id="btnReset">Reset</button>
@@ -285,13 +284,47 @@
   </div>
 </div>
 
+<div class="overlay" id="mpModal">
+  <div class="card">
+    <h2>👥 Multiplayer</h2>
+    <div id="mpIdle">
+      <p>Play together on one screen, or online with friends.</p>
+      <div class="btns">
+        <button class="primary" id="btnPickLocal">👥 Local co-op</button>
+        <button id="btnPickOnline">🌐 Online co-op</button>
+        <button id="btnCloseMP">Close</button>
+      </div>
+    </div>
+    <div id="mpLocalActive" style="display:none">
+      <p>Local split-screen co-op is running (<span id="mpLocalCount">1</span> player<span id="mpLocalS"></span>). More can join any time by pressing a controller button.</p>
+      <div class="btns">
+        <button id="btnExitLocal">Exit local co-op</button>
+        <button id="btnCloseMP2">Close</button>
+      </div>
+    </div>
+    <div id="mpOnlineActive" style="display:none">
+      <p>You're in an online session.</p>
+      <div class="btns">
+        <button class="primary" id="btnOpenOnline">Online settings</button>
+        <button id="btnCloseMP3">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="coopModal">
   <div class="card">
-    <h2>👥 Two-player co-op</h2>
-    <p>Player 1 keeps the <b>mouse &amp; keyboard</b>. <b>Player 2: press any button on your controller</b> to join. You'll share one board on a split screen, each with your own cursor and zoom. (Two controllers? Press P2's first, then P1 can grab the other one.)</p>
-    <p id="coopStatus" style="font-size:13px;color:var(--muted)">Waiting for Player 2…</p>
+    <h2>👥 Local co-op</h2>
+    <p>Pick how many can play on this screen. <b>Player 1 keeps the mouse &amp; keyboard</b>; everyone else presses any button on a controller to claim a spot — they can join now or partway through. Each gets their own cursor, pan and zoom on a split screen.</p>
+    <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin:10px 0 16px">
+      <span style="font-size:13px;color:var(--muted)">Up to</span>
+      <button id="btnCoopMinus" style="width:38px">−</button>
+      <b id="coopCount" style="font-size:20px;min-width:1.5em;text-align:center">2</b>
+      <button id="btnCoopPlus" style="width:38px">+</button>
+      <span style="font-size:13px;color:var(--muted)">players</span>
+    </div>
     <div class="btns">
-      <button class="primary" id="btnCoopStart" disabled>Start co-op</button>
+      <button class="primary" id="btnCoopStart">Start co-op</button>
       <button id="btnCoopCancel">Cancel</button>
     </div>
   </div>
@@ -301,12 +334,19 @@
   <div class="card" style="max-width:560px">
     <h2>🌐 Online co-op</h2>
     <p>Play this exact board with a friend over the internet — share the code, hop on Discord, and solve together. Their edits and cursor show up live; press <b>⊟ Watch</b> any time to peek at their view.</p>
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin:4px 0 12px">
+      <span style="font-size:13px;color:var(--muted)">Host — allow up to</span>
+      <button id="btnGuestMinus" style="width:34px">−</button>
+      <b id="guestCount" style="font-size:18px;min-width:1.2em;text-align:center">1</b>
+      <button id="btnGuestPlus" style="width:34px">+</button>
+      <span id="guestLabel" style="font-size:13px;color:var(--muted)">guest</span>
+    </div>
     <div class="btns" style="margin-bottom:6px">
       <button class="primary" id="btnHost">Host a game</button>
       <button id="btnJoinShow">Join a game</button>
       <button id="btnDisconnect" style="display:none">Disconnect</button>
     </div>
-    <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px"><input type="checkbox" id="onlineLoopback" style="vertical-align:middle"> Test in two tabs of this browser (no internet)</label>
+    <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px"><input type="checkbox" id="onlineLoopback" style="vertical-align:middle"> Test in tabs of this browser (no internet)</label>
     <div id="onlineHost" style="display:none;text-align:left">
       <p style="font-size:13px;margin-bottom:6px"><b>Your code</b> — send it to your friend</p>
       <div style="display:flex;gap:8px;margin-bottom:6px">
@@ -419,7 +459,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.11.1';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.12.0';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -863,16 +903,47 @@ let players = [ makePlayer(0) ];
 let coop = false;
 let view = players[0].view;   // alias: solo mutation sites write view.x/y/s in place
 
-// routing + pane-sizing helpers, shared by solo and split-screen co-op.
-// In co-op each player's camera lives in PANE-LOCAL coordinates (drawViewport
-// translates by the pane origin), so paneW/paneH/screenCenter are pane-relative.
 function mousePlayer(){ for (const p of players) if (p.device === 'mouse') return p; return players[0]; }
 function resetSelections(){ for (const p of players) { p.selZ = -1; p.selP = -1; } }
-function paneH(){ return innerHeight; }
-function paneW(pl){ if (!coop) return innerWidth; const hw = Math.floor(innerWidth / 2); return pl.id === 0 ? hw : innerWidth - hw; }
-function paneX(pl){ return (coop && pl.id === 1) ? Math.floor(innerWidth / 2) : 0; }
-function playerAtX(clientX){ return (coop && clientX >= Math.floor(innerWidth / 2)) ? players[1] : players[0]; }
+
+// ---- pane layout: tile the window for 1–4 viewports, at any window size ----
+// 1 = full · 2 = side-by-side · 3 = three columns · 4 = 2×2 grid. Each player's
+// camera lives in PANE-LOCAL coords (drawViewport translates by the pane origin),
+// so the camera helpers below are all pane-relative.
+function paneRect(idx, total){
+  const W = innerWidth, H = innerHeight;
+  if (total <= 1) return { x: 0, y: 0, w: W, h: H };
+  if (total === 2) { const a = Math.floor(W / 2); return idx === 0 ? { x: 0, y: 0, w: a, h: H } : { x: a, y: 0, w: W - a, h: H }; }
+  if (total === 3) { const a = Math.floor(W / 3); return { x: idx * a, y: 0, w: idx === 2 ? W - 2 * a : a, h: H }; }
+  const a = Math.floor(W / 2), b = Math.floor(H / 2), col = idx % 2, row = (idx / 2) | 0;   // 4 → 2×2
+  return { x: col * a, y: row * b, w: col ? W - a : a, h: row ? H - b : b };
+}
+// the viewports to render this frame, as {pl, idx, total}
+function paneList(){
+  if (coop) { const t = players.length; return players.map((pl, i) => ({ pl, idx: i, total: t })); }
+  if (online && watchPartner) {
+    const ids = peerIds(), t = 1 + ids.length;
+    return [{ pl: players[0], idx: 0, total: t }, ...ids.map((id, k) => ({ pl: peerPlayerFor(id, k + 1), idx: k + 1, total: t }))];
+  }
+  return [{ pl: players[0], idx: 0, total: 1 }];
+}
+// the pane rect for a LOCAL (input-receiving) player this frame
+function localPaneRect(pl){
+  if (coop) return paneRect(players.indexOf(pl), players.length);
+  if (online && watchPartner) return paneRect(0, 1 + peerIds().length);
+  return { x: 0, y: 0, w: innerWidth, h: innerHeight };
+}
+function paneW(pl = players[0]){ return localPaneRect(pl).w; }
+function paneH(pl = players[0]){ return localPaneRect(pl).h; }
+function paneX(pl = players[0]){ return localPaneRect(pl).x; }
+function paneY(pl = players[0]){ return localPaneRect(pl).y; }
 function localX(clientX, pl){ return clientX - paneX(pl); }
+function localY(clientY, pl){ return clientY - paneY(pl); }
+// which local player's pane a screen point falls in (mouse routing)
+function playerAt(clientX, clientY){
+  for (const pl of players){ const r = localPaneRect(pl); if (clientX >= r.x && clientX < r.x + r.w && clientY >= r.y && clientY < r.y + r.h) return pl; }
+  return players[0];
+}
 
 let dpr = 1, needsDraw = true;
 let hintCell = -1, hintT = 0;
@@ -898,8 +969,9 @@ function resize(){
 addEventListener('resize', resize); resize();
 
 function fitView(pl = players[0]){
-  const W = paneW(pl), H = paneH();
-  const s = Math.min(W / GW, (H - 110) / GH) * 0.96;
+  const r = localPaneRect(pl), W = r.w, H = r.h;
+  const usableH = Math.max(GH, H - 90);   // leave room for the top HUD; guard tiny panes
+  const s = Math.max(3, Math.min(48, Math.min(W / GW, usableH / GH) * 0.96));
   pl.view.s = s;
   pl.view.x = (W - GW * s) / 2;
   pl.view.y = (H - GH * s) / 2 + 14;
@@ -2252,7 +2324,7 @@ function applySolveStep(){
 }
 
 function regionAtCenter(pl = players[0]){
-  const i = cellAt(paneW(pl) / 2, paneH() / 2, pl.view);
+  const i = cellAt(paneW(pl) / 2, paneH(pl) / 2, pl.view);
   if (i >= 0 && !regionDone[regionOf[i]]) return regionOf[i];
   for (let r = 0; r < REG_COUNT; r++) if (!regionDone[r]) return r;
   return -1;
@@ -2310,7 +2382,7 @@ function giveHint(pl = mousePlayer()){
   const focus = (lastTouchedRegion >= 0 && !regionDone[lastTouchedRegion]) ? lastTouchedRegion : regionAtCenter(pl);
   let pool = cands.filter(c => regionOf[c.i] === focus);
   if (!pool.length) pool = cands;
-  const cx = (paneW(pl) / 2 - pl.view.x) / pl.view.s, cy = (paneH() / 2 - pl.view.y) / pl.view.s;
+  const cx = (paneW(pl) / 2 - pl.view.x) / pl.view.s, cy = (paneH(pl) / 2 - pl.view.y) / pl.view.s;
   let best = pool[0], bestD = Infinity;
   for (const c of pool) {
     const gx = c.i % GW + 0.5, gy = (c.i / GW | 0) + 0.5;
@@ -2321,7 +2393,7 @@ function giveHint(pl = mousePlayer()){
   hintCell = i; hintT = performance.now();
   const gx = i % GW + 0.5, gy = (i / GW | 0) + 0.5;
   const ts = Math.max(pl.view.s, 30);
-  animateView(paneW(pl) / 2 - gx * ts, paneH() / 2 - gy * ts + 14, ts, pl);
+  animateView(paneW(pl) / 2 - gx * ts, paneH(pl) / 2 - gy * ts + 14, ts, pl);
   toast(best.type === 'dark'  ? 'Hint: this clue already sees all its light tiles — every unstitched tile in the ring is dark.'
       : best.type === 'light' ? 'Hint: every unstitched tile in the highlighted ring must be light.'
       : 'Hint: compare this clue with an overlapping neighbour — together they force tiles in the ring.', true);
@@ -2334,7 +2406,7 @@ function animateView(tx, ty, ts, pl = players[0]){
 
 // the app's notion of "centre" (matches fitView / hint): pane middle, nudged
 // down 14px to clear the top bar
-function screenCenter(pl = players[0]){ return { cx: paneW(pl) / 2, cy: paneH() / 2 + 14 }; }
+function screenCenter(pl = players[0]){ return { cx: paneW(pl) / 2, cy: paneH(pl) / 2 + 14 }; }
 
 // bring cell i to the centre of the player's pane at scale s; glides if `animate`
 function centerOnCell(i, s, animate, pl = players[0]){
@@ -2394,7 +2466,7 @@ function updatePadStatus(){
 }
 
 function ensureCursorVisible(pl = players[0]){
-  const v = pl.view, s = v.s, W = paneW(pl), H = paneH();
+  const v = pl.view, s = v.s, W = paneW(pl), H = paneH(pl);
   const gx = pl.cursor % GW, gy = (pl.cursor / GW) | 0;
   const px = v.x + gx * s, py = v.y + gy * s;
   if (px < 20 + s) v.x += 20 + s - px;
@@ -2441,18 +2513,16 @@ function padSecondary(pl){
 
 function pollGamepad(now){
   const gps = navigator.getGamepads ? navigator.getGamepads() : [];
-  // while the co-op assignment modal is open, controller input does ONE thing —
-  // claim Player 2 + un-grey Start — and never leaks into menu/game actions
-  if (assigningCoop || document.getElementById('coopModal').classList.contains('show')) { handleCoopAssign(gps); return; }
   if (!coop) {
-    // solo: the first connected pad drives player 0 (original behaviour)
+    // solo / online (one local player): the first connected pad drives player 0
     let gp = null;
     for (const g of gps) if (g && g.connected) { gp = g; break; }
     players[0].padIndex = gp ? gp.index : -1;
     pollPad(players[0], gp, now);
     return;
   }
-  // co-op: each player polls its bound pad index independently
+  // local co-op: a fresh controller can claim an open spot, then each bound pad polls
+  tryLocalJoin(gps);
   for (const pl of players) pollPad(pl, pl.padIndex >= 0 ? gps[pl.padIndex] : null, now);
 }
 
@@ -2468,7 +2538,7 @@ function pollPad(pl, gp, now){
 
   if (!pl.padActive && (pressed.some(Boolean) || gp.axes.some(a => Math.abs(a) > 0.5))) {
     pl.padActive = true;
-    if (pl.cursor < 0) pl.cursor = cellAt(paneW(pl) / 2, paneH() / 2, pl.view);
+    if (pl.cursor < 0) pl.cursor = cellAt(paneW(pl) / 2, paneH(pl) / 2, pl.view);
     if (pl.cursor < 0) pl.cursor = (GH >> 1) * GW + (GW >> 1);
     needsDraw = true;
   }
@@ -2569,67 +2639,53 @@ addEventListener('gamepadconnected', () => {
 addEventListener('gamepaddisconnected', () => updatePadStatus());
 
 // ============================================================
-//  LOCAL SPLIT-SCREEN CO-OP
+//  LOCAL SPLIT-SCREEN CO-OP (2–4 players, join any time)
 // ============================================================
-let assigningCoop = false;
-let coopAssignPrev = {};   // per-pad-index "any button was pressed" last frame
+let maxPlayers = 2;            // cap chosen in the modal
+let localJoinPrev = {};        // per-pad "any button pressed" last frame, for join detection
 
-// while the co-op modal is open, the first controller to press a button becomes
-// Player 2. (Player 1 keeps mouse/keyboard; a second pad, if any, binds to P1 on
-// Start so two controllers also work.)
-function handleCoopAssign(gps){
+// during local co-op, an unbound controller's first button press claims the next
+// open spot (a new pane). Players can join at the start or partway through.
+function tryLocalJoin(gps){
+  if (players.length >= maxPlayers) return;
+  const bound = new Set(players.map(p => p.padIndex));
   for (const g of gps) {
-    if (!g || !g.connected) continue;
+    if (!g || !g.connected || bound.has(g.index)) continue;
     const any = g.buttons.some(b => b.pressed);
-    const was = coopAssignPrev[g.index];
-    coopAssignPrev[g.index] = any;
-    // the FIRST button press (on any pad, any button) claims Player 2 and simply
-    // un-greys "Start co-op" — nothing else. Later presses are absorbed, so a held
-    // button can't confirm the menu or stitch a tile.
-    if (any && !was && !players[1]) {
-      players.push(makePlayer(1));
-      players[1].padIndex = g.index;
-      players[1].padPrev = [];
-      players[1].device = 'pad';
-      players[1].padActive = true;
-      assigningCoop = false;
-      const st = document.getElementById('coopStatus');
-      if (st) st.textContent = '✓ Controller ' + (g.index + 1) + ' is Player 2 — press Start.';
-      document.getElementById('btnCoopStart').disabled = false;
+    const was = localJoinPrev[g.index];
+    localJoinPrev[g.index] = any;
+    if (any && !was) {
+      const pl = makePlayer(players.length);
+      pl.padIndex = g.index; pl.device = 'pad'; pl.padActive = true;
+      pl.cursor = (GH >> 1) * GW + (GW >> 1);
+      players.push(pl);
+      for (const q of players) fitView(q);   // the split reflowed — re-fit everyone into their new pane
+      toast('Player ' + players.length + ' joined!', true);
       needsDraw = true;
+      if (players.length >= maxPlayers) break;
     }
   }
 }
 
-function startCoop(){
-  if (!players[1]) return;
+function startCoop(n){
+  maxPlayers = Math.max(2, Math.min(4, n | 0));
   coop = true;
-  assigningCoop = false;
   document.getElementById('coopModal').classList.remove('show');
-  // P1 keeps mouse + keyboard; bind a *second* controller to P1 if one is free
   players[0].device = 'mouse';
-  players[0].padIndex = -1;
-  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
-  for (const g of gps) if (g && g.connected && g.index !== players[1].padIndex) { players[0].padIndex = g.index; break; }
-  // keep P1's camera (its window coords are valid pane-local coords for the left
-  // pane); fit P2's board into the right pane; seed any missing cursor
-  fitView(players[1]);
-  for (const pl of players) if (pl.cursor < 0) pl.cursor = (GH >> 1) * GW + (GW >> 1);
-  document.getElementById('btnCoop').textContent = '✕ Co-op';
-  setOnlineUI();   // lock out the Online button while local co-op is active
-  toast('Co-op on — split screen. Click 👥 again to go solo.', true);
+  players[0].padIndex = -1;    // P1 is mouse + keyboard; controllers claim the other spots
+  fitView(players[0]);
+  setOnlineUI();
+  toast('Local co-op — up to ' + maxPlayers + '. Others: press a controller button to join.', true);
   needsDraw = true;
 }
 
 function exitCoop(){
   coop = false;
-  assigningCoop = false;
-  players.length = 1;          // drop Player 2
+  players.length = 1;          // drop the extra players
   players[0].device = 'mouse';
   players[0].padIndex = -1;    // solo pollGamepad re-binds the first connected pad
-  document.getElementById('btnCoop').textContent = '👥 Co-op';
   fitView(players[0]);         // P1 reclaims the full window
-  setOnlineUI();               // online becomes available again
+  setOnlineUI();
   needsDraw = true;
 }
 
@@ -2642,20 +2698,32 @@ function exitCoop(){
 // ============================================================
 const PROTO_V = 1;
 let net = null;             // active transport, or null
-let online = false;         // connected AND handshake complete
+let online = false;         // in a session (host: hosting; guest: handshake done)
 let onlineRole = null;      // 'host' | 'join'
 let myPeerId = 'me';
 let netSeq = 0;
 let applyingRemote = false;  // true while replaying a peer move (echo-loop guard)
-let coopPeer = null;         // remote presence: { cell, view:{x,y,s}, seq }
-let watchPartner = false;    // split-screen mirror of the partner's viewport
+let coopPeers = {};          // pid -> { cell, view:{x,y,s}, seq } — every OTHER participant
+let hostPid = null;          // (guest side) the host's id — only its leaving ends the session
+let watchPartner = false;    // split-screen mirror of everyone's viewports
+let maxGuests = 1;           // host's chosen guest cap (1..3 → 2..4 players total)
 let lastPresenceAt = 0, lastPresenceKey = '';
 let pendingRemote = [];      // moves received while a joiner is still importing the snapshot
 let joinerBackup = null;     // joiner's own solo board, snapshotted at join, restored on disconnect
 
+function peerIds(){ return Object.keys(coopPeers); }
+function peerCount(){ return peerIds().length; }
+// synthetic, read-only "player" mirroring a remote participant's viewport (watch grid)
+function peerPlayerFor(id, idx){
+  const pp = coopPeers[id] || {};
+  return { id: idx, view: pp.view || players[0].view, cursor: (pp.cell != null) ? pp.cell : -1,
+           hoverCell: -1, lastInput: 'pad', padActive: true, selZ: -1, selP: -1, _remote: true };
+}
+
 function netEnvelope(type, data){ return { v: PROTO_V, app: APP_VERSION, pid: myPeerId, seq: netSeq++, type, data }; }
-function netSend(type, data){ if (net) net.send(netEnvelope(type, data)); }
-// emit a local move to the peer — no-op unless online and not currently replaying
+function netSend(type, data){ if (net) net.send(netEnvelope(type, data)); }                       // broadcast to all
+function netSendTo(pid, type, data){ if (net && net.sendTo) net.sendTo(pid, netEnvelope(type, data)); }
+// emit a local move to everyone — no-op unless online and not currently replaying
 function netEmit(ev){ if (online && !applyingRemote && net) netSend('move', ev); }
 function netResync(){ if (online && net) netSend('resync', { code: exportCode() }); }
 
@@ -2680,32 +2748,37 @@ function applyRemote(ev){
   needsDraw = true;
 }
 
-// ---- protocol message router ----
+// ---- protocol message router. The host relays guests' moves/cursors to the
+//      other guests at the transport layer, so this stays a simple broadcast model. ----
 function onNetMessage(msg){
   if (!msg || typeof msg !== 'object') return;
   switch (msg.type) {
     case 'hello':       // host → joiner: version handshake
+      if (onlineRole !== 'join') break;
+      hostPid = msg.pid;   // remember the host so we know whose leaving ends the session
       if (msg.app !== APP_VERSION) {
         netSend('hello-ack', { ok: false, reason: 'version' });
-        toast('Version mismatch — your friend is on v' + msg.app + ', you are on v' + APP_VERSION + '. Update to play together.', true);
-        netClose(); setOnlineUI();
-      } else {
-        netSend('hello-ack', { ok: true });   // joiner now waits for the snapshot
-      }
+        toast('Version mismatch — host is on v' + msg.app + ', you are on v' + APP_VERSION + '. Update to play together.', true);
+        leaveOnline();
+      } else netSend('hello-ack', { ok: true });   // then wait for the snapshot
       break;
-    case 'hello-ack':   // joiner → host
-      if (!msg.data || !msg.data.ok) { toast('Co-op declined (' + ((msg.data && msg.data.reason) || '?') + ').', true); netClose(); setOnlineUI(); break; }
-      netSend('snapshot', { code: exportCode() });
-      online = true; setOnlineUI();
-      toast('Co-op connected — your friend is joining your board.', true);
+    case 'full':
+      if (onlineRole === 'join') { toast('That game is full.', true); leaveOnline(); }
+      break;
+    case 'hello-ack':   // joiner → host: send that specific joiner the current board
+      if (onlineRole !== 'host' || !msg.data) break;
+      if (!msg.data.ok) { toast('A player could not join (' + (msg.data.reason || '?') + ').', true); break; }
+      netSendTo(msg.pid, 'snapshot', { code: exportCode() });
+      toast('A player is joining your board.', true);
       break;
     case 'snapshot':    // host → joiner: adopt the host's board + progress
+      if (onlineRole !== 'join') break;
       if (msg.data && msg.data.code) {
-        joinerBackup = exportCode();   // remember our own solo board to restore when we disconnect
+        joinerBackup = joinerBackup || exportCode();   // remember our own solo board
         importCode(msg.data.code, () => {
           online = true;
           pendingRemote.forEach(applyRemote); pendingRemote = [];   // flush moves that arrived mid-import
-          setOnlineUI(); toast('Joined! You’re on your friend’s board now.', true); needsDraw = true;
+          setOnlineUI(); toast('Joined! You’re on the host’s board now.', true); needsDraw = true;
         });
       }
       break;
@@ -2714,13 +2787,16 @@ function onNetMessage(msg){
       else if (net) pendingRemote.push(msg.data);   // buffer until the snapshot import finishes
       break;
     case 'cursor':
-      if (msg.data && (!coopPeer || msg.seq > (coopPeer.seq || -1))) { coopPeer = { cell: msg.data.cell, view: msg.data.view, seq: msg.seq }; needsDraw = true; }
+      if (msg.data && msg.pid) {
+        const prev = coopPeers[msg.pid];
+        if (!prev || msg.seq > (prev.seq || -1)) { coopPeers[msg.pid] = { cell: msg.data.cell, view: msg.data.view, seq: msg.seq }; needsDraw = true; }
+      }
       break;
     case 'resync':      // drift self-heal / post-undo: adopt a fresh full snapshot
       if (online && msg.data && msg.data.code) importCode(msg.data.code, () => { needsDraw = true; });
       break;
     case 'bye':
-      handlePeerGone('Partner left.');
+      handlePeerGone('A player left.', msg.pid);
       break;
   }
 }
@@ -2740,34 +2816,56 @@ function maybeSendPresence(now){
 // ---- connection lifecycle ----
 function startNet(impl, role, roomId, onReady, onErr){
   netClose();
-  net = impl; onlineRole = role; coopPeer = null;
-  net.on('peer', () => { if (role === 'host') netSend('hello', { app: APP_VERSION }); });   // joiner waits for hello
+  net = impl; onlineRole = role; coopPeers = {};
+  net.on('peer', pid => {
+    if (role !== 'host') return;                  // joiner just waits for the host's hello
+    if (peerCount() >= maxGuests) { netSendTo(pid, 'full', {}); return; }
+    coopPeers[pid] = { cell: -1, view: null, seq: -1 };   // reserve the slot; fills in with presence
+    netSendTo(pid, 'hello', { app: APP_VERSION });
+    online = true; setOnlineUI(); needsDraw = true;
+  });
   net.on('message', onNetMessage);
-  net.on('close', () => handlePeerGone('Connection closed.'));
+  net.on('close', pid => handlePeerGone('Connection closed.', pid));
   net.on('error', e => { toast('Connection error: ' + ((e && e.message) || e), true); if (onErr) onErr(e); });
   Promise.resolve(net.connect({ role, roomId }))
-    .then(info => { myPeerId = (info && info.peerId) || myPeerId; if (onReady) onReady(info || {}); })
+    .then(info => { myPeerId = (info && info.peerId) || myPeerId; if (role === 'host') { online = true; setOnlineUI(); } if (onReady) onReady(info || {}); })
     .catch(e => { toast('Could not connect: ' + ((e && e.message) || e), true); if (onErr) onErr(e); netClose(); setOnlineUI(); });
 }
 function netClose(){
   if (net) { try { net.send(netEnvelope('bye', {})); } catch (e) {} try { net.close(); } catch (e) {} }
-  net = null; online = false; onlineRole = null; coopPeer = null; watchPartner = false; pendingRemote = []; joinerBackup = null;
+  net = null; online = false; onlineRole = null; coopPeers = {}; hostPid = null; watchPartner = false; pendingRemote = []; joinerBackup = null;
 }
-function handlePeerGone(reason){
-  if (!net && !online) return;
+// user-initiated full disconnect (host or guest)
+function leaveOnline(){
   const wasJoin = onlineRole === 'join', backup = joinerBackup;
   netClose(); setOnlineUI(); needsDraw = true;
-  if (wasJoin && backup) importCode(backup, null, true);   // joiner returns to its own solo board (now saved again)
-  toast((reason || 'Disconnected') + (wasJoin && backup ? ' Your own board is back.' : ' Back to solo.'), true);
+  if (wasJoin && backup) importCode(backup, null, true);
+}
+// a remote participant dropped: the host just loses that one (keeps hosting); a
+// guest losing the host falls back to solo and gets its own board back
+function handlePeerGone(reason, pid){
+  if (!net) return;
+  if (onlineRole === 'host') {
+    if (pid && coopPeers[pid]) { delete coopPeers[pid]; toast('A player left.', true); setOnlineUI(); needsDraw = true; }
+    return;
+  }
+  // guest: another guest leaving just removes them; only the host leaving ends it
+  if (pid && hostPid && pid !== hostPid) { if (coopPeers[pid]) { delete coopPeers[pid]; needsDraw = true; } return; }
+  const backup = joinerBackup;
+  netClose(); setOnlineUI(); needsDraw = true;
+  if (backup) importCode(backup, null, true);
+  toast((reason || 'Disconnected') + (backup ? ' Your own board is back.' : ' Back to solo.'), true);
 }
 
-// ---- transports (both implement: on(ev,fn), connect({role,roomId})→{peerId,roomId}, send(msg), close()) ----
+// ---- transports. Interface: on('peer'|'message'|'close'|'error'), connect({role,roomId})
+//      →{peerId,roomId}, send(msg) [broadcast], sendTo(pid,msg) [targeted], close(). ----
 function makeEmitter(){ const h = {}; return { on(e, f){ (h[e] || (h[e] = [])).push(f); }, emit(e, ...a){ (h[e] || []).forEach(f => f(...a)); } }; }
 
-// dev/testing transport: two tabs of the SAME browser via BroadcastChannel
+// dev/testing transport: N tabs of the SAME browser via a shared BroadcastChannel
+// (a broadcast bus, so no relay needed — everyone hears everyone).
 function LoopbackNet(){
   const em = makeEmitter();
-  let chan = null, myId = 'lb' + Math.floor(Math.random() * 1e6), seenPeer = false;
+  let chan = null, myId = 'lb' + Math.floor(Math.random() * 1e6), seen = {};
   return {
     on: em.on,
     connect({ roomId }){
@@ -2775,38 +2873,45 @@ function LoopbackNet(){
       chan = new BroadcastChannel('npxs-coop-' + room);
       chan.onmessage = e => {
         const m = e.data; if (!m || m.__from === myId) return;
-        if (m.__hello) { if (!seenPeer) { seenPeer = true; chan.postMessage({ __from: myId, __hello: true }); em.emit('peer', m.__from); } return; }
-        if (m.__bye) { em.emit('close'); return; }
-        em.emit('message', m);
+        if (m.__to && m.__to !== '*' && m.__to !== myId) return;            // targeted to someone else
+        if (m.__hello) { if (!seen[m.__from]) { seen[m.__from] = true; chan.postMessage({ __from: myId, __to: '*', __hello: true }); em.emit('peer', m.__from); } return; }
+        if (m.__bye) { if (seen[m.__from]) { delete seen[m.__from]; } em.emit('close', m.__from); return; }
+        em.emit('message', m, m.__from);
       };
-      chan.postMessage({ __from: myId, __hello: true });
+      chan.postMessage({ __from: myId, __to: '*', __hello: true });
       return Promise.resolve({ peerId: myId, roomId: room });
     },
-    send(msg){ if (chan) { msg.__from = myId; chan.postMessage(msg); } },
-    close(){ if (chan) { try { chan.close(); } catch (e) {} chan = null; } },
-    isConnected(){ return seenPeer; },
+    send(msg){ if (chan) { msg.__from = myId; msg.__to = '*'; chan.postMessage(msg); } },
+    sendTo(pid, msg){ if (chan) { msg.__from = myId; msg.__to = pid; chan.postMessage(msg); } },
+    close(){ if (chan) { try { chan.postMessage({ __from: myId, __to: '*', __bye: true }); chan.close(); } catch (e) {} chan = null; } },
+    isConnected(){ return Object.keys(seen).length > 0; },
   };
 }
 
 // real transport: WebRTC P2P via PeerJS (free public broker for signaling only).
-// Host's peer id IS the shareable code; the data channel is peer-to-peer.
+// Host's peer id IS the shareable code. STAR topology: guests connect to the host,
+// and the host relays each guest's data to the other guests.
 function PeerNet(){
   const em = makeEmitter();
-  let peer = null, conn = null;
+  let peer = null, isHost = false;
+  const conns = {};                       // pid -> DataConnection
   const wire = c => {
-    conn = c;
-    c.on('open', () => em.emit('peer', c.peer));
-    c.on('data', d => em.emit('message', d));
-    c.on('close', () => em.emit('close'));
+    c.on('open', () => { conns[c.peer] = c; em.emit('peer', c.peer); });
+    c.on('data', d => {
+      em.emit('message', d, c.peer);
+      if (isHost) for (const pid in conns) if (pid !== c.peer && conns[pid].open) conns[pid].send(d);   // relay
+    });
+    c.on('close', () => { delete conns[c.peer]; em.emit('close', c.peer); });
     c.on('error', e => em.emit('error', e));
   };
   return {
     on: em.on,
     async connect({ role, roomId }){
+      isHost = role === 'host';
       const mod = await import('https://esm.sh/peerjs@1.5.4');
       const Peer = mod.default || mod.Peer || mod;
       const opts = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } };
-      if (role === 'host') {
+      if (isHost) {
         const id = roomId || ('npxs-' + Math.random().toString(36).slice(2, 8));
         peer = new Peer(id, opts);
         await new Promise((res, rej) => { peer.on('open', res); peer.on('error', rej); });
@@ -2821,17 +2926,11 @@ function PeerNet(){
         return { peerId: peer.id, roomId };
       }
     },
-    send(msg){ if (conn && conn.open) conn.send(msg); },
-    close(){ try { if (conn) conn.close(); } catch (e) {} try { if (peer) peer.destroy(); } catch (e) {} conn = null; peer = null; },
-    isConnected(){ return !!(conn && conn.open); },
+    send(msg){ for (const pid in conns) if (conns[pid].open) conns[pid].send(msg); },   // host→all, guest→host
+    sendTo(pid, msg){ const c = conns[pid]; if (c && c.open) c.send(msg); },
+    close(){ for (const pid in conns) { try { conns[pid].close(); } catch (e) {} delete conns[pid]; } try { if (peer) peer.destroy(); } catch (e) {} peer = null; },
+    isConnected(){ return Object.keys(conns).length > 0; },
   };
-}
-
-// synthetic "player" that mirrors the peer's viewport for the watch-partner split
-function peerPlayer(){
-  return { id: 1, view: (coopPeer && coopPeer.view) || players[0].view,
-           cursor: (coopPeer && coopPeer.cell != null) ? coopPeer.cell : -1,
-           hoverCell: -1, lastInput: 'pad', padActive: true, selZ: -1, selP: -1, _remote: true };
 }
 
 // ============================================================
@@ -2875,23 +2974,28 @@ function workingCell(pl){
 function draw(now){
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, innerWidth, innerHeight);
-  const split = coop || (online && watchPartner);
-  if (!split) {
-    drawViewport(players[0], now, 0, 0, innerWidth, innerHeight);
-  } else {
-    const hw = Math.floor(innerWidth / 2);
-    const right = coop ? players[1] : peerPlayer();   // online watch: synthetic peer viewport
-    drawViewport(players[0], now, 0, 0, hw, innerHeight);
-    drawViewport(right, now, hw, 0, innerWidth - hw, innerHeight);
-    // divider
-    ctx.fillStyle = 'rgba(70,50,120,.85)';
-    ctx.fillRect(hw - 1, 0, 2, innerHeight);
-    // per-pane labels
+  const panes = paneList();
+  for (const { pl, idx, total } of panes) {
+    const r = paneRect(idx, total);
+    drawViewport(pl, now, r.x, r.y, r.w, r.h);
+  }
+  if (panes.length > 1) {
+    // dividers + a small per-pane label
     ctx.font = '700 13px "Segoe UI",system-ui,sans-serif';
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillStyle = PLAYER_COLOR[0]; ctx.fillText(coop ? 'P1' : 'You', 12, 64);
-    ctx.fillStyle = PLAYER_COLOR[1]; ctx.fillText(coop ? 'P2' : 'Partner', hw + 12, 64);
+    for (const { pl, idx, total } of panes) {
+      const r = paneRect(idx, total);
+      ctx.fillStyle = 'rgba(70,50,120,.85)';
+      if (r.x > 0) ctx.fillRect(r.x - 1, 0, 2, innerHeight);
+      if (r.y > 0) ctx.fillRect(r.x, r.y - 1, r.w, 2);
+      ctx.fillStyle = PLAYER_COLOR[pl.id % PLAYER_COLOR.length] || '#fff';
+      ctx.fillText(paneLabel(pl, idx), r.x + 12, r.y + (r.y > 0 ? 8 : 64));
+    }
   }
+}
+function paneLabel(pl, idx){
+  if (coop) return 'P' + (idx + 1);
+  return idx === 0 ? 'You' : 'Partner ' + idx;   // online watch
 }
 
 // Render the shared board for ONE player's camera into the sub-rect
@@ -3100,23 +3204,28 @@ function drawViewport(player, now, px, py, pw, ph){
 
   // ---- this player's gamepad cursor ----
   if (player.lastInput === 'pad' && player.padActive && player.cursor >= 0) {
-    drawCursorBox(v, s, player.cursor, gx0, gy0, gx1, gy1, 'rgba(70,50,120,.9)', PLAYER_COLOR[player.id] || '#f0a224', false);
+    drawCursorBox(v, s, player.cursor, gx0, gy0, gx1, gy1, 'rgba(70,50,120,.9)', PLAYER_COLOR[player.id % PLAYER_COLOR.length] || '#f0a224', false);
   }
 
-  // ---- ghost of the OTHER local player's cursor (split-screen coordination) ----
+  // ---- ghosts of the OTHER local players' cursors (split-screen coordination) ----
   if (coop && SHOW_PARTNER_GHOST) {
-    const other = players[player.id ^ 1];
-    if (other) {
+    for (const other of players) {
+      if (other === player) continue;
       const oc = (other.lastInput === 'pad' && other.padActive) ? other.cursor : other.hoverCell;
       if (oc >= 0 && oc !== player.cursor)
-        drawCursorBox(v, s, oc, gx0, gy0, gx1, gy1, null, PLAYER_COLOR[other.id] || '#3fb3ff', true);
+        drawCursorBox(v, s, oc, gx0, gy0, gx1, gy1, null, PLAYER_COLOR[other.id % PLAYER_COLOR.length] || '#3fb3ff', true);
     }
   }
 
-  // ---- online partner's cursor, mapped through THIS pane's view (so you see
-  //      where they are on your own map); an edge arrow points to them off-screen ----
-  if (online && coopPeer && !player._remote) {
-    drawRemoteCursorOrArrow(v, s, coopPeer.cell, gx0, gy0, gx1, gy1, pw, ph);
+  // ---- online partners' cursors, mapped through THIS pane's view (so you see
+  //      where each of them is on your own map); edge arrows point to off-screen ones ----
+  if (online && !player._remote) {
+    let k = 1;
+    for (const id of peerIds()) {
+      const pp = coopPeers[id];
+      if (pp && pp.cell != null) drawRemoteCursorOrArrow(v, s, pp.cell, gx0, gy0, gx1, gy1, pw, ph, PLAYER_COLOR[k % PLAYER_COLOR.length]);
+      k++;
+    }
   }
 
   // ---- hint pulse ----
@@ -3137,8 +3246,8 @@ function drawViewport(player, now, px, py, pw, ph){
   ctx.restore();
 }
 
-// per-player accent colors; toggle for the dimmed partner-cursor ghost
-const PLAYER_COLOR = ['#f0a224', '#3fb3ff'];
+// per-player accent colors (P1..P4 / you + up to 3 partners); ghost toggle
+const PLAYER_COLOR = ['#f0a224', '#3fb3ff', '#22d39a', '#e85af0'];
 let SHOW_PARTNER_GHOST = true;
 
 // draw a cell-sized cursor box in the current viewport transform; `ghost` dims
@@ -3161,11 +3270,12 @@ function drawCursorBox(v, s, cell, gx0, gy0, gx1, gy1, outer, inner, ghost){
 
 // online partner: draw their cursor box if it's within this pane, else a small
 // arrow on the pane edge pointing toward where they're working
-function drawRemoteCursorOrArrow(v, s, cell, gx0, gy0, gx1, gy1, pw, ph){
+function drawRemoteCursorOrArrow(v, s, cell, gx0, gy0, gx1, gy1, pw, ph, color){
   if (cell == null || cell < 0) return;
+  color = color || PLAYER_COLOR[1];
   const gx = cell % GW, gy = (cell / GW) | 0;
   if (gx >= gx0 - 1 && gx <= gx1 + 1 && gy >= gy0 - 1 && gy <= gy1 + 1) {
-    drawCursorBox(v, s, cell, gx0, gy0, gx1, gy1, null, PLAYER_COLOR[1], true);
+    drawCursorBox(v, s, cell, gx0, gy0, gx1, gy1, null, color, true);
     return;
   }
   const tx = v.x + (gx + 0.5) * s, ty = v.y + (gy + 0.5) * s;   // peer cell centre, pane-local
@@ -3175,7 +3285,7 @@ function drawRemoteCursorOrArrow(v, s, cell, gx0, gy0, gx1, gy1, pw, ph){
   ctx.translate(ex, ey);
   ctx.rotate(Math.atan2(ty - ph / 2, tx - pw / 2));
   ctx.globalAlpha = 0.85;
-  ctx.fillStyle = PLAYER_COLOR[1];
+  ctx.fillStyle = color;
   ctx.beginPath(); ctx.moveTo(11, 0); ctx.lineTo(-7, -7); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fill();
   ctx.globalAlpha = 1;
   ctx.restore();
@@ -3224,15 +3334,16 @@ cvs.addEventListener('mousedown', e => {
   if (!generated) return;
   const pl = mousePlayer();
   pl.viewAnim = null;
-  // in co-op the mouse acts only within player 1's pane
-  if (coop && e.clientX >= Math.floor(innerWidth / 2)) return;
+  // the mouse acts only within its own pane (player 0's)
+  const r = localPaneRect(pl);
+  if (e.clientX < r.x || e.clientX >= r.x + r.w || e.clientY < r.y || e.clientY >= r.y + r.h) return;
   if (e.button === 1 || pl.spaceHeld) {
     pl.drag = { mode: 'pan', mx: e.clientX, my: e.clientY };
     cvs.classList.add('panning');
     e.preventDefault();
     return;
   }
-  const i = cellAt(localX(e.clientX, pl), e.clientY, pl.view);
+  const i = cellAt(localX(e.clientX, pl), localY(e.clientY, pl), pl.view);
   if (i < 0 || solving) { pl.drag = { mode: 'pan', mx: e.clientX, my: e.clientY }; cvs.classList.add('panning'); return; }
   pl.cursor = i;   // so picking up the controller resumes from the square you just clicked
 
@@ -3271,9 +3382,9 @@ cvs.addEventListener('mousedown', e => {
 });
 
 addEventListener('mousemove', e => {
-  const pl = mousePlayer();
-  const inPane = !coop || e.clientX < Math.floor(innerWidth / 2);
-  const h = inPane ? cellAt(localX(e.clientX, pl), e.clientY, pl.view) : -1;
+  const pl = mousePlayer(), r = localPaneRect(pl);
+  const inPane = e.clientX >= r.x && e.clientX < r.x + r.w && e.clientY >= r.y && e.clientY < r.y + r.h;
+  const h = inPane ? cellAt(localX(e.clientX, pl), localY(e.clientY, pl), pl.view) : -1;
   if (h !== pl.hoverCell || pl.lastInput !== 'mouse') { pl.hoverCell = h; pl.lastInput = 'mouse'; needsDraw = true; }
   if (!pl.drag) return;
   if (pl.drag.mode === 'pan') {
@@ -3281,25 +3392,25 @@ addEventListener('mousemove', e => {
     pl.drag.mx = e.clientX; pl.drag.my = e.clientY;
     needsDraw = true;
   } else if (inPane) {
-    const i = cellAt(localX(e.clientX, pl), e.clientY, pl.view);
+    const i = cellAt(localX(e.clientX, pl), localY(e.clientY, pl), pl.view);
     if (i < 0 || zoneOf[i] >= 0) return;
     pl.cursor = i;   // a paint stroke also moves the controller cursor with it
     if (pl.drag.paint && state[i] === 0) setCell(i, pl.drag.paint);
     else if (pl.drag.erase && state[i] === pl.drag.erase) setCell(i, 0);
   }
-
 });
 
 addEventListener('mouseup', () => { mousePlayer().drag = null; cvs.classList.remove('panning'); });
 
 cvs.addEventListener('wheel', e => {
   e.preventDefault();
-  const pl = playerAtX(e.clientX);   // zoom whichever pane the pointer is over
-  const v = pl.view, lx = localX(e.clientX, pl);
+  const pl = playerAt(e.clientX, e.clientY);   // zoom whichever pane the pointer is over
+  if (pl._remote) return;                      // can't zoom a partner's mirrored view
+  const v = pl.view, lx = localX(e.clientX, pl), ly = localY(e.clientY, pl);
   const k = e.deltaY < 0 ? 1.13 : 1 / 1.13;
   const ns = Math.max(3, Math.min(48, v.s * k));
   v.x = lx - (lx - v.x) * ns / v.s;
-  v.y = e.clientY - (e.clientY - v.y) * ns / v.s;
+  v.y = ly - (ly - v.y) * ns / v.s;
   v.s = ns; pl.viewAnim = null; needsDraw = true;
 }, { passive: false });
 
@@ -3333,7 +3444,7 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { if (e.code === 'Space') mousePlayer().spaceHeld = false; });
 
 function zoomCenter(k, pl = players[0]){
-  const v = pl.view, cx = paneW(pl) / 2, cy = paneH() / 2;
+  const v = pl.view, cx = paneW(pl) / 2, cy = paneH(pl) / 2;
   const ns = Math.max(3, Math.min(48, v.s * k));
   v.x = cx - (cx - v.x) * ns / v.s;
   v.y = cy - (cy - v.y) * ns / v.s;
@@ -3517,52 +3628,63 @@ document.getElementById('btnPadRemap').onclick = () => {
   padCapturePlayer = players.find(p => p.padIndex >= 0) || players[0];
   renderPadList();
 };
-document.getElementById('btnCoop').onclick = () => {
-  if (coop) { exitCoop(); return; }
-  if (online || net) { toast('Finish the online game first — one multiplayer mode at a time.', true); return; }
+// ---- Multiplayer chooser (one entry point → Local or Online) ----
+function openMP(){
   if (!generated) return;
-  players.length = 1;            // clear any half-assigned Player 2 from a prior attempt
-  assigningCoop = true;
-  coopAssignPrev = {};
-  document.getElementById('coopStatus').textContent = 'Waiting for Player 2 — press a button on the controller…';
-  document.getElementById('btnCoopStart').disabled = true;
+  const idle = !coop && !online && !net;
+  document.getElementById('mpIdle').style.display = idle ? '' : 'none';
+  document.getElementById('mpLocalActive').style.display = coop ? '' : 'none';
+  document.getElementById('mpOnlineActive').style.display = (!coop && (online || net)) ? '' : 'none';
+  if (coop) { document.getElementById('mpLocalCount').textContent = players.length; document.getElementById('mpLocalS').textContent = players.length === 1 ? '' : 's'; }
+  document.getElementById('mpModal').classList.add('show');
+}
+function closeMP(){ document.getElementById('mpModal').classList.remove('show'); }
+document.getElementById('btnMP').onclick = openMP;
+['btnCloseMP', 'btnCloseMP2', 'btnCloseMP3'].forEach(id => document.getElementById(id).onclick = closeMP);
+document.getElementById('btnPickLocal').onclick = () => {
+  closeMP();
+  document.getElementById('coopCount').textContent = String(Math.max(2, maxPlayers));
   document.getElementById('coopModal').classList.add('show');
 };
-document.getElementById('btnCoopStart').onclick = startCoop;
-document.getElementById('btnCoopCancel').onclick = () => {
-  assigningCoop = false;
-  if (!coop) players.length = 1;   // discard a half-assigned Player 2
-  document.getElementById('coopModal').classList.remove('show');
-};
-
-// ---- online co-op wiring ----
-function setOnlineUI(){
-  const cb = document.getElementById('btnCoop'), ob = document.getElementById('btnOnline'),
-        wb = document.getElementById('btnWatch'), dc = document.getElementById('btnDisconnect');
-  const onlineActive = online || !!net;
-  // only one multiplayer mode at a time: lock out the other until this one ends
-  if (cb) cb.disabled = onlineActive;
-  if (ob) { ob.disabled = coop; ob.textContent = online ? '🌐 Connected' : (net ? '🌐 Connecting…' : '🌐 Online'); }
-  if (!online) watchPartner = false;
-  if (wb) { wb.style.display = online ? '' : 'none'; wb.textContent = watchPartner ? '⊟ Unwatch' : '⊟ Watch'; }
-  if (dc) dc.style.display = onlineActive ? '' : 'none';
-}
-function chosenTransport(){ return document.getElementById('onlineLoopback').checked ? LoopbackNet() : PeerNet(); }
-document.getElementById('btnOnline').onclick = () => {
-  if (!generated) return;
-  if (coop) { toast('Exit local split-screen co-op first — one multiplayer mode at a time.', true); return; }
+document.getElementById('btnPickOnline').onclick = () => {
+  closeMP();
   document.getElementById('onlineHost').style.display = 'none';
   document.getElementById('onlineJoin').style.display = 'none';
   setOnlineUI();
   document.getElementById('onlineModal').classList.add('show');
 };
+document.getElementById('btnExitLocal').onclick = () => { exitCoop(); closeMP(); };
+document.getElementById('btnOpenOnline').onclick = () => { closeMP(); setOnlineUI(); document.getElementById('onlineModal').classList.add('show'); };
+
+// local co-op: player-count stepper + start
+const coopCountEl = () => document.getElementById('coopCount');
+document.getElementById('btnCoopMinus').onclick = () => { coopCountEl().textContent = String(Math.max(2, (+coopCountEl().textContent) - 1)); };
+document.getElementById('btnCoopPlus').onclick = () => { coopCountEl().textContent = String(Math.min(4, (+coopCountEl().textContent) + 1)); };
+document.getElementById('btnCoopStart').onclick = () => startCoop(+coopCountEl().textContent);
+document.getElementById('btnCoopCancel').onclick = () => document.getElementById('coopModal').classList.remove('show');
+
+// ---- online co-op wiring ----
+function setOnlineUI(){
+  const mp = document.getElementById('btnMP'), wb = document.getElementById('btnWatch'), dc = document.getElementById('btnDisconnect');
+  if (mp) mp.textContent = coop ? '👥 Co-op on' : (online || net) ? '🌐 Online on' : '👥 Multiplayer';
+  if (!online) watchPartner = false;
+  if (wb) { wb.style.display = online ? '' : 'none'; wb.textContent = watchPartner ? '⊟ Unwatch' : '⊟ Watch'; }
+  if (dc) dc.style.display = (online || net) ? '' : 'none';
+}
+function chosenTransport(){ return document.getElementById('onlineLoopback').checked ? LoopbackNet() : PeerNet(); }
+// host guest-count stepper (1–3 guests → 2–4 players total)
+const guestCountEl = () => document.getElementById('guestCount');
+function refreshGuestLabel(){ document.getElementById('guestLabel').textContent = (+guestCountEl().textContent === 1) ? 'guest' : 'guests'; }
+document.getElementById('btnGuestMinus').onclick = () => { guestCountEl().textContent = String(Math.max(1, (+guestCountEl().textContent) - 1)); refreshGuestLabel(); };
+document.getElementById('btnGuestPlus').onclick = () => { guestCountEl().textContent = String(Math.min(3, (+guestCountEl().textContent) + 1)); refreshGuestLabel(); };
 document.getElementById('btnHost').onclick = () => {
+  maxGuests = Math.max(1, Math.min(3, +guestCountEl().textContent));
   document.getElementById('onlineJoin').style.display = 'none';
   document.getElementById('onlineHost').style.display = '';
   document.getElementById('onlineCode').value = '';
   document.getElementById('onlineHostStatus').textContent = 'Starting…';
   startNet(chosenTransport(), 'host', null,
-    info => { document.getElementById('onlineCode').value = (info && info.roomId) || ''; document.getElementById('onlineHostStatus').textContent = 'Share this code, then wait for your friend to join.'; setOnlineUI(); },
+    info => { document.getElementById('onlineCode').value = (info && info.roomId) || ''; document.getElementById('onlineHostStatus').textContent = 'Share this code with up to ' + maxGuests + ' friend' + (maxGuests === 1 ? '' : 's') + ' — they can join any time.'; setOnlineUI(); },
     () => { document.getElementById('onlineHostStatus').textContent = 'Could not start — try again.'; setOnlineUI(); });
   setOnlineUI();
 };
@@ -3585,7 +3707,7 @@ document.getElementById('btnCopyCode').onclick = () => {
   el.select();
   try { navigator.clipboard.writeText(el.value); toast('Code copied.', true); } catch (e) {}
 };
-document.getElementById('btnDisconnect').onclick = () => { handlePeerGone('Disconnected.'); };
+document.getElementById('btnDisconnect').onclick = () => { leaveOnline(); };
 document.getElementById('btnCloseOnline').onclick = () => document.getElementById('onlineModal').classList.remove('show');
 document.getElementById('btnWatch').onclick = () => {
   if (!online) return;
