@@ -5,6 +5,24 @@ shipped to the live site.
 
 ---
 
+## [0.10.0] — 2026-06-17 — Local split-screen co-op
+
+### Added
+- **Two-player local split-screen co-op.** A new **👥 Co-op** button splits the canvas left/right so
+  two players share one board, each with their own cursor and independent pan/zoom — solve together
+  without fighting over the view. Player 1 keeps mouse & keyboard; Player 2 presses any button to
+  join with a controller (two controllers also work — claim P2 first, then P1 grabs the other).
+  Each pane shows its own cursor plus a dimmed ghost of where your partner is working; completing a
+  region reveals it in both panes. Click 👥 again to return to solo.
+
+### Changed
+- **The camera and cursor are now per-player.** Rendering was refactored so the board draws once per
+  viewport (`drawViewport`) and every camera/cursor/selection is owned by a player object. Solo play
+  is unchanged — it's simply "one player" — but this is the groundwork that also enables an upcoming
+  online co-op mode (a partner's view can be mirrored into the second pane).
+
+---
+
 ## [0.9.4] — 2026-06-17 — Solver: "leave one square" debug option
 
 ### Added

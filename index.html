@@ -158,6 +158,7 @@
         <input id="musicVol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Music volume" title="Music volume">
       </span>
       <button id="btnPad" title="Controller setup">🎮</button>
+      <button id="btnCoop" title="Two-player split-screen co-op">👥 Co-op</button>
       <button id="btnHelp" title="How to play">?</button>
       <button id="btnShare" title="Export your canvas as a code, or import one">⇄ Share</button>
       <button id="btnReset">Reset</button>
@@ -168,7 +169,7 @@
 <div id="controls">
   <b>Left click</b> light · <b>Right click</b> dark · <b>drag</b> to paint · <b>wheel</b> zoom ·
   <b>middle&nbsp;/&nbsp;space-drag</b> pan · <b>H</b> hint · <b>Ctrl+Z</b> undo ·
-  <b style="color:#b07a1a">gold plots</b> sudoku · <b style="color:#1f9c84">teal patches</b> picross · <b>🎮</b> supported
+  <b style="color:#b07a1a">gold plots</b> sudoku · <b style="color:#1f9c84">teal patches</b> picross · <b>🎮</b> supported · <b>👥</b> local split-screen co-op
 </div>
 
 <div id="loader">
@@ -282,6 +283,18 @@
   </div>
 </div>
 
+<div class="overlay" id="coopModal">
+  <div class="card">
+    <h2>👥 Two-player co-op</h2>
+    <p>Player 1 keeps the <b>mouse &amp; keyboard</b>. <b>Player 2: press any button on your controller</b> to join. You'll share one board on a split screen, each with your own cursor and zoom. (Two controllers? Press P2's first, then P1 can grab the other one.)</p>
+    <p id="coopStatus" style="font-size:13px;color:var(--muted)">Waiting for Player 2…</p>
+    <div class="btns">
+      <button class="primary" id="btnCoopStart" disabled>Start co-op</button>
+      <button id="btnCoopCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="resetModal">
   <div class="card">
     <h2>Unravel everything?</h2>
@@ -372,7 +385,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.9.4';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.10.0';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -801,12 +814,36 @@ const wrong = new Set();
 // ---------- canvas / view ----------
 const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
-let view = { x: 0, y: 0, s: 12 };
+// ---- players (local co-op) ----
+// Each player owns its own camera + cursor + selection; the board itself
+// (state, zone entries, regionDone, …) is shared. Solo = one player; engaging
+// split-screen co-op adds a second. The global `view` aliases players[0].view
+// so the many solo sites that mutate view.x/y/s in place keep working.
+function makePlayer(id){
+  return { id, view:{ x:0, y:0, s:12 }, viewAnim:null,
+           cursor:-1, hoverCell:-1, selZ:-1, selP:-1, drag:null,
+           spaceHeld:false, lastInput:'mouse', padIndex:-1,
+           padPrev:[], padActive:false, padMoveNext:0, padMoving:false, device:'mouse' };
+}
+let players = [ makePlayer(0) ];
+let coop = false;
+let view = players[0].view;   // alias: solo mutation sites write view.x/y/s in place
+
+// routing + pane-sizing helpers, shared by solo and split-screen co-op.
+// In co-op each player's camera lives in PANE-LOCAL coordinates (drawViewport
+// translates by the pane origin), so paneW/paneH/screenCenter are pane-relative.
+function mousePlayer(){ for (const p of players) if (p.device === 'mouse') return p; return players[0]; }
+function resetSelections(){ for (const p of players) { p.selZ = -1; p.selP = -1; } }
+function paneH(){ return innerHeight; }
+function paneW(pl){ if (!coop) return innerWidth; const hw = Math.floor(innerWidth / 2); return pl.id === 0 ? hw : innerWidth - hw; }
+function paneX(pl){ return (coop && pl.id === 1) ? Math.floor(innerWidth / 2) : 0; }
+function playerAtX(clientX){ return (coop && clientX >= Math.floor(innerWidth / 2)) ? players[1] : players[0]; }
+function localX(clientX, pl){ return clientX - paneX(pl); }
+
 let dpr = 1, needsDraw = true;
-let viewAnim = null, hintCell = -1, hintT = 0;
+let hintCell = -1, hintT = 0;
 let gameWon = false, generated = false;
 let timerStart = -1;        // wall-clock ms when the player placed their first tile; -1 = not started
-let lastInput = 'mouse';    // 'mouse' | 'pad' — which input drives the highlight
 
 let resizeTimer = null;
 function resize(){
@@ -818,17 +855,20 @@ function resize(){
   if (!generated) return;
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    const target = (padActive && padCursorI >= 0) ? padCursorI : lastCell;
-    centerOnCell(target, view.s, true);
+    for (const pl of players) {
+      const target = (pl.padActive && pl.cursor >= 0) ? pl.cursor : lastCell;
+      centerOnCell(target, pl.view.s, true, pl);
+    }
   }, 140);
 }
 addEventListener('resize', resize); resize();
 
-function fitView(){
-  const s = Math.min(innerWidth / GW, (innerHeight - 110) / GH) * 0.96;
-  view.s = s;
-  view.x = (innerWidth  - GW * s) / 2;
-  view.y = (innerHeight - GH * s) / 2 + 14;
+function fitView(pl = players[0]){
+  const W = paneW(pl), H = paneH();
+  const s = Math.min(W / GW, (H - 110) / GH) * 0.96;
+  pl.view.s = s;
+  pl.view.x = (W - GW * s) / 2;
+  pl.view.y = (H - GH * s) / 2 + 14;
   needsDraw = true;
 }
 
@@ -1277,7 +1317,7 @@ function loadMap(id){
     state.fill(0); wrong.clear();
     for (const z of ZONES) z.entries = z.puzzle.slice();
     regionDone.fill(false); regionDoneAt.fill(0);
-    gameWon = false; mistakePromptOpen = false; selZ = -1; selP = -1;
+    gameWon = false; mistakePromptOpen = false; resetSelections();
     quoteQueue.length = 0; document.getElementById('charModal').classList.remove('show');
     clearUndo();
     loadSave();
@@ -1633,7 +1673,7 @@ function checkZone(zone, silent){
   for (let p = 0; p < NN; p++) if (zone.entries[p] !== zone.solution[p]) return;
   regionDone[zone.region] = true;
   regionDoneAt[zone.region] = performance.now();
-  if (selZ === zone.idx) { selZ = -1; selP = -1; }
+  for (const pl of players) if (pl.selZ === zone.idx) { pl.selZ = -1; pl.selP = -1; }
   if (!silent) {
     if (!solving) toast(`${zone.name} is solved — its piece joins the canvas.`, true);
     maybeShowQuote();    // region+attached plots done -> quote (also during auto-solve)
@@ -1794,7 +1834,7 @@ function undo(){
   wrong.clear(); for (const i of snap.wrong) wrong.add(i);
   gameWon = snap.gameWon;
   lastTouchedRegion = snap.lastTouchedRegion;
-  selZ = -1; selP = -1;
+  resetSelections();
   document.getElementById('winModal').classList.remove('show');
   updateHUD(); scheduleSave(); updateUndoBtn(); needsDraw = true;
 }
@@ -1865,7 +1905,7 @@ function resetGame(){
   solveQueue.length = 0; solving = false;
   state.fill(0); wrong.clear();
   for (const z of ZONES) z.entries = z.puzzle.slice();
-  selZ = -1; selP = -1;
+  resetSelections();
   applyGivens();
   regionDone.fill(false); regionDoneAt.fill(0);
   gameWon = false; mistakePromptOpen = false;
@@ -2010,7 +2050,7 @@ function applyImported(data){
   applyGivens();
   regionDone.fill(false); regionDoneAt.fill(0);
   gameWon = false; mistakePromptOpen = false;
-  selZ = -1; selP = -1;
+  resetSelections();
   for (let r = 0; r < REG_PIX; r++) checkRegion(r, true);
   for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
   for (const z of ZONES) checkZone(z, true);
@@ -2169,8 +2209,8 @@ function applySolveStep(){
   needsDraw = true;
 }
 
-function regionAtCenter(){
-  const i = cellAt(innerWidth / 2, innerHeight / 2);
+function regionAtCenter(pl = players[0]){
+  const i = cellAt(paneW(pl) / 2, paneH() / 2, pl.view);
   if (i >= 0 && !regionDone[regionOf[i]]) return regionOf[i];
   for (let r = 0; r < REG_COUNT; r++) if (!regionDone[r]) return r;
   return -1;
@@ -2179,7 +2219,7 @@ function regionAtCenter(){
 // ============================================================
 //  HINT
 // ============================================================
-function giveHint(){
+function giveHint(pl = mousePlayer()){
   if (!generated || gameWon || solving) return;
   const cands = [];   // { i, type: 'dark' | 'light' | 'adv' }
   for (let i = 0; i < N; i++) {
@@ -2225,10 +2265,10 @@ function giveHint(){
   // keep hints useful: stay in the map you're working on, and of those pick
   // the clue nearest the centre of the screen — no more teleporting to a
   // random 0/9 across the canvas
-  const focus = (lastTouchedRegion >= 0 && !regionDone[lastTouchedRegion]) ? lastTouchedRegion : regionAtCenter();
+  const focus = (lastTouchedRegion >= 0 && !regionDone[lastTouchedRegion]) ? lastTouchedRegion : regionAtCenter(pl);
   let pool = cands.filter(c => regionOf[c.i] === focus);
   if (!pool.length) pool = cands;
-  const cx = (innerWidth / 2 - view.x) / view.s, cy = (innerHeight / 2 - view.y) / view.s;
+  const cx = (paneW(pl) / 2 - pl.view.x) / pl.view.s, cy = (paneH() / 2 - pl.view.y) / pl.view.s;
   let best = pool[0], bestD = Infinity;
   for (const c of pool) {
     const gx = c.i % GW + 0.5, gy = (c.i / GW | 0) + 0.5;
@@ -2238,30 +2278,30 @@ function giveHint(){
   const i = best.i;
   hintCell = i; hintT = performance.now();
   const gx = i % GW + 0.5, gy = (i / GW | 0) + 0.5;
-  const ts = Math.max(view.s, 30);
-  animateView(innerWidth / 2 - gx * ts, innerHeight / 2 - gy * ts + 14, ts);
+  const ts = Math.max(pl.view.s, 30);
+  animateView(paneW(pl) / 2 - gx * ts, paneH() / 2 - gy * ts + 14, ts, pl);
   toast(best.type === 'dark'  ? 'Hint: this clue already sees all its light tiles — every unstitched tile in the ring is dark.'
       : best.type === 'light' ? 'Hint: every unstitched tile in the highlighted ring must be light.'
       : 'Hint: compare this clue with an overlapping neighbour — together they force tiles in the ring.', true);
 }
 
-function animateView(tx, ty, ts){
-  viewAnim = { fx: view.x, fy: view.y, fs: view.s, tx, ty, ts, t0: performance.now(), dur: 450 };
+function animateView(tx, ty, ts, pl = players[0]){
+  pl.viewAnim = { fx: pl.view.x, fy: pl.view.y, fs: pl.view.s, tx, ty, ts, t0: performance.now(), dur: 450 };
   needsDraw = true;
 }
 
-// the app's notion of "centre" (matches fitView / hint): screen middle, nudged
+// the app's notion of "centre" (matches fitView / hint): pane middle, nudged
 // down 14px to clear the top bar
-function screenCenter(){ return { cx: innerWidth / 2, cy: innerHeight / 2 + 14 }; }
+function screenCenter(pl = players[0]){ return { cx: paneW(pl) / 2, cy: paneH() / 2 + 14 }; }
 
-// bring cell i to the centre of the screen at scale s; glides if `animate`
-function centerOnCell(i, s, animate){
+// bring cell i to the centre of the player's pane at scale s; glides if `animate`
+function centerOnCell(i, s, animate, pl = players[0]){
   if (i < 0) return;
-  const { cx, cy } = screenCenter();
+  const { cx, cy } = screenCenter(pl);
   const gx = (i % GW) + 0.5, gy = ((i / GW) | 0) + 0.5;
   const tx = cx - gx * s, ty = cy - gy * s;
-  if (animate) animateView(tx, ty, s);
-  else { view.x = tx; view.y = ty; view.s = s; needsDraw = true; }
+  if (animate) animateView(tx, ty, s, pl);
+  else { pl.view.x = tx; pl.view.y = ty; pl.view.s = s; needsDraw = true; }
 }
 
 // ============================================================
@@ -2279,8 +2319,9 @@ const PAD_DEFAULTS = { light: 0, dark: 1, hint: 2, fit: 3, zoomIn: 5, zoomOut: 4
 const PAD_KEY = 'proverbs2-pad';
 let padMap = Object.assign({}, PAD_DEFAULTS);
 try { const m = JSON.parse(localStorage.getItem(PAD_KEY) || 'null'); if (m) padMap = Object.assign(padMap, m); } catch (e) {}
-let padPrev = [], padActive = false, padCursorI = -1;
-let padMoveNext = 0, padMoving = false, padCaptureIdx = -1;
+// per-player pad state now lives on the player object (padPrev/padActive/cursor/
+// padMoveNext/padMoving). Remap capture is global — one pad configured at a time.
+let padCaptureIdx = -1, padCapturePlayer = null;
 
 function padBtnName(b){
   const names = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'Select', 'Start', 'L3', 'R3'];
@@ -2310,18 +2351,18 @@ function updatePadStatus(){
     : 'No controller detected — connect one and press any button.';
 }
 
-function ensureCursorVisible(){
-  const s = view.s;
-  const gx = padCursorI % GW, gy = (padCursorI / GW) | 0;
-  const px = view.x + gx * s, py = view.y + gy * s;
-  if (px < 20 + s) view.x += 20 + s - px;
-  if (px + 2 * s > innerWidth - 20) view.x -= px + 2 * s - innerWidth + 20;
-  if (py < 70 + s) view.y += 70 + s - py;
-  if (py + 2 * s > innerHeight - 50) view.y -= py + 2 * s - innerHeight + 50;
+function ensureCursorVisible(pl = players[0]){
+  const v = pl.view, s = v.s, W = paneW(pl), H = paneH();
+  const gx = pl.cursor % GW, gy = (pl.cursor / GW) | 0;
+  const px = v.x + gx * s, py = v.y + gy * s;
+  if (px < 20 + s) v.x += 20 + s - px;
+  if (px + 2 * s > W - 20) v.x -= px + 2 * s - W + 20;
+  if (py < 70 + s) v.y += 70 + s - py;
+  if (py + 2 * s > H - 50) v.y -= py + 2 * s - H + 50;
 }
 
-function padPrimary(){
-  const i = padCursorI;
+function padPrimary(pl){
+  const i = pl.cursor;
   if (i < 0 || !generated || solving) return;
   if (tryReplayQuote(i)) return;           // A on a finished region replays its quote
   if (gameWon) return;
@@ -2331,7 +2372,7 @@ function padPrimary(){
     if (regionDone[zone.region] || !zone.entries) return;
     const p = (((i / GW) | 0) - zone.y) * zone.n + (i % GW - zone.x);
     if (zone.puzzle[p] !== 0) return;
-    selZ = zi; selP = p;
+    pl.selZ = zi; pl.selP = p;
     cycleZone(zone, p, +1);
     return;
   }
@@ -2339,8 +2380,8 @@ function padPrimary(){
   setCell(i, state[i] === 1 ? 0 : 1);
 }
 
-function padSecondary(){
-  const i = padCursorI;
+function padSecondary(pl){
+  const i = pl.cursor;
   if (i < 0 || !generated || solving || gameWon) return;
   const zi = zoneOf[i];
   if (zi >= 0) {
@@ -2348,7 +2389,7 @@ function padSecondary(){
     if (regionDone[zone.region] || !zone.entries) return;
     const p = (((i / GW) | 0) - zone.y) * zone.n + (i % GW - zone.x);
     if (zone.puzzle[p] !== 0) return;
-    selZ = zi; selP = p;
+    pl.selZ = zi; pl.selP = p;
     cycleZone(zone, p, -1);
     return;
   }
@@ -2358,26 +2399,39 @@ function padSecondary(){
 
 function pollGamepad(now){
   const gps = navigator.getGamepads ? navigator.getGamepads() : [];
-  let gp = null;
-  for (const g of gps) if (g && g.connected) { gp = g; break; }
-  if (!gp) { padPrev = []; return; }
+  if (assigningCoop) { handleCoopAssign(gps); return; }
+  if (!coop) {
+    // solo: the first connected pad drives player 0 (original behaviour)
+    let gp = null;
+    for (const g of gps) if (g && g.connected) { gp = g; break; }
+    players[0].padIndex = gp ? gp.index : -1;
+    pollPad(players[0], gp, now);
+    return;
+  }
+  // co-op: each player polls its bound pad index independently
+  for (const pl of players) pollPad(pl, pl.padIndex >= 0 ? gps[pl.padIndex] : null, now);
+}
+
+function pollPad(pl, gp, now){
+  if (!gp || !gp.connected) { pl.padPrev = []; return; }
   const pressed = [];
   for (let b = 0; b < gp.buttons.length; b++) pressed.push(gp.buttons[b].pressed);
-  const edge = b => b >= 0 && !!pressed[b] && !padPrev[b];
+  const edge = b => b >= 0 && !!pressed[b] && !pl.padPrev[b];
 
-  // any real controller activity takes the highlight back from the mouse
+  // any real controller activity takes this player's highlight back from the mouse
   if (pressed.some(Boolean) || Math.abs(gp.axes[0] || 0) > 0.5 || Math.abs(gp.axes[1] || 0) > 0.5
-      || Math.abs(gp.axes[2] || 0) > 0.25 || Math.abs(gp.axes[3] || 0) > 0.25) lastInput = 'pad';
+      || Math.abs(gp.axes[2] || 0) > 0.25 || Math.abs(gp.axes[3] || 0) > 0.25) pl.lastInput = 'pad';
 
-  if (!padActive && (pressed.some(Boolean) || gp.axes.some(a => Math.abs(a) > 0.5))) {
-    padActive = true;
-    if (padCursorI < 0) padCursorI = cellAt(innerWidth / 2, innerHeight / 2);
-    if (padCursorI < 0) padCursorI = (GH >> 1) * GW + (GW >> 1);
+  if (!pl.padActive && (pressed.some(Boolean) || gp.axes.some(a => Math.abs(a) > 0.5))) {
+    pl.padActive = true;
+    if (pl.cursor < 0) pl.cursor = cellAt(paneW(pl) / 2, paneH() / 2, pl.view);
+    if (pl.cursor < 0) pl.cursor = (GH >> 1) * GW + (GW >> 1);
     needsDraw = true;
   }
 
-  // remap capture: assign the next pressed button to the highlighted action
+  // remap capture: assign the next pressed button — only the pad being configured
   if (padCaptureIdx >= 0) {
+    if ((padCapturePlayer || players[0]) !== pl) { pl.padPrev = pressed; return; }
     for (let b = 0; b < pressed.length; b++) {
       if (!edge(b) || (b >= 12 && b <= 15)) continue;   // d-pad reserved for movement
       let dup = false;
@@ -2392,7 +2446,7 @@ function pollGamepad(now){
       renderPadList();
       break;
     }
-    padPrev = pressed;
+    pl.padPrev = pressed;
     return;
   }
 
@@ -2406,10 +2460,10 @@ function pollGamepad(now){
       const btns = open.querySelectorAll('.btns button');
       if (btns.length) btns[btns.length - 1].click();
     }
-    padPrev = pressed;
+    pl.padPrev = pressed;
     return;
   }
-  if (!generated) { padPrev = pressed; return; }
+  if (!generated) { pl.padPrev = pressed; return; }
 
   // cursor: left stick + d-pad, with gentle key-repeat
   const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
@@ -2417,51 +2471,51 @@ function pollGamepad(now){
   if (ax < -0.5 || pressed[14]) dx = -1; else if (ax > 0.5 || pressed[15]) dx = 1;
   if (ay < -0.5 || pressed[12]) dy = -1; else if (ay > 0.5 || pressed[13]) dy = 1;
   if (dx || dy) {
-    if (now >= padMoveNext) {
-      const gx = Math.max(0, Math.min(GW - 1, padCursorI % GW + dx));
-      const gy = Math.max(0, Math.min(GH - 1, ((padCursorI / GW) | 0) + dy));
-      padCursorI = gy * GW + gx;
-      padMoveNext = now + (padMoving ? 85 : 230);
-      padMoving = true;
-      ensureCursorVisible();
+    if (now >= pl.padMoveNext) {
+      const gx = Math.max(0, Math.min(GW - 1, pl.cursor % GW + dx));
+      const gy = Math.max(0, Math.min(GH - 1, ((pl.cursor / GW) | 0) + dy));
+      pl.cursor = gy * GW + gx;
+      pl.padMoveNext = now + (pl.padMoving ? 85 : 230);
+      pl.padMoving = true;
+      ensureCursorVisible(pl);
       needsDraw = true;
     }
-  } else { padMoving = false; padMoveNext = 0; }
+  } else { pl.padMoving = false; pl.padMoveNext = 0; }
 
   // pan: right stick
   const rx = gp.axes[2] || 0, ry = gp.axes[3] || 0;
   if (Math.abs(rx) > 0.25 || Math.abs(ry) > 0.25) {
-    view.x -= rx * 16;
-    view.y -= ry * 16;
+    pl.view.x -= rx * 16;
+    pl.view.y -= ry * 16;
     needsDraw = true;
   }
 
   // zoom: held buttons — in controller mode the active square stays centred
   if (pressed[padMap.zoomIn] || pressed[padMap.zoomOut]) {
     const k = pressed[padMap.zoomIn] ? 1.035 : 1 / 1.035;
-    if (padCursorI >= 0) {
-      const { cx, cy } = screenCenter();
-      const gx = (padCursorI % GW) + 0.5, gy = ((padCursorI / GW) | 0) + 0.5;
-      const offX = (view.x + gx * view.s) - cx, offY = (view.y + gy * view.s) - cy;
+    if (pl.cursor >= 0) {
+      const { cx, cy } = screenCenter(pl);
+      const gx = (pl.cursor % GW) + 0.5, gy = ((pl.cursor / GW) | 0) + 0.5;
+      const offX = (pl.view.x + gx * pl.view.s) - cx, offY = (pl.view.y + gy * pl.view.s) - cy;
       if (Math.abs(offX) > 1 || Math.abs(offY) > 1) {
         // there's a shift — glide the square to centre first (then it zooms in place)
-        if (!viewAnim) centerOnCell(padCursorI, view.s, true);
-      } else if (!viewAnim) {
-        const ns = Math.max(3, Math.min(48, view.s * k));
-        view.x = cx - gx * ns; view.y = cy - gy * ns; view.s = ns;
+        if (!pl.viewAnim) centerOnCell(pl.cursor, pl.view.s, true, pl);
+      } else if (!pl.viewAnim) {
+        const ns = Math.max(3, Math.min(48, pl.view.s * k));
+        pl.view.x = cx - gx * ns; pl.view.y = cy - gy * ns; pl.view.s = ns;
         needsDraw = true;
       }
     } else {
-      zoomCenter(k);
+      zoomCenter(k, pl);
     }
   }
 
-  if (edge(padMap.light)) padPrimary();
-  if (edge(padMap.dark))  padSecondary();
-  if (edge(padMap.hint))  giveHint();
-  if (edge(padMap.fit))   fitView();
+  if (edge(padMap.light)) padPrimary(pl);
+  if (edge(padMap.dark))  padSecondary(pl);
+  if (edge(padMap.hint))  giveHint(pl);
+  if (edge(padMap.fit))   fitView(pl);
 
-  padPrev = pressed;
+  pl.padPrev = pressed;
 }
 
 addEventListener('gamepadconnected', () => {
@@ -2471,6 +2525,67 @@ addEventListener('gamepadconnected', () => {
 addEventListener('gamepaddisconnected', () => updatePadStatus());
 
 // ============================================================
+//  LOCAL SPLIT-SCREEN CO-OP
+// ============================================================
+let assigningCoop = false;
+let coopAssignPrev = {};   // per-pad-index "any button was pressed" last frame
+
+// while the co-op modal is open, the first controller to press a button becomes
+// Player 2. (Player 1 keeps mouse/keyboard; a second pad, if any, binds to P1 on
+// Start so two controllers also work.)
+function handleCoopAssign(gps){
+  for (const g of gps) {
+    if (!g || !g.connected) continue;
+    const any = g.buttons.some(b => b.pressed);
+    const was = coopAssignPrev[g.index];
+    coopAssignPrev[g.index] = any;
+    if (any && !was) {
+      if (!players[1]) players.push(makePlayer(1));
+      players[1].padIndex = g.index;
+      players[1].padPrev = [];
+      players[1].device = 'pad';
+      players[1].padActive = true;
+      assigningCoop = false;
+      const st = document.getElementById('coopStatus');
+      if (st) st.textContent = '✓ Controller ' + (g.index + 1) + ' is Player 2 — press Start.';
+      document.getElementById('btnCoopStart').disabled = false;
+      needsDraw = true;
+      return;
+    }
+  }
+}
+
+function startCoop(){
+  if (!players[1]) return;
+  coop = true;
+  assigningCoop = false;
+  document.getElementById('coopModal').classList.remove('show');
+  // P1 keeps mouse + keyboard; bind a *second* controller to P1 if one is free
+  players[0].device = 'mouse';
+  players[0].padIndex = -1;
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const g of gps) if (g && g.connected && g.index !== players[1].padIndex) { players[0].padIndex = g.index; break; }
+  // keep P1's camera (its window coords are valid pane-local coords for the left
+  // pane); fit P2's board into the right pane; seed any missing cursor
+  fitView(players[1]);
+  for (const pl of players) if (pl.cursor < 0) pl.cursor = (GH >> 1) * GW + (GW >> 1);
+  document.getElementById('btnCoop').textContent = '✕ Co-op';
+  toast('Co-op on — split screen. Click 👥 again to go solo.', true);
+  needsDraw = true;
+}
+
+function exitCoop(){
+  coop = false;
+  assigningCoop = false;
+  players.length = 1;          // drop Player 2
+  players[0].device = 'mouse';
+  players[0].padIndex = -1;    // solo pollGamepad re-binds the first connected pad
+  document.getElementById('btnCoop').textContent = '👥 Co-op';
+  fitView(players[0]);         // P1 reclaims the full window
+  needsDraw = true;
+}
+
+// ============================================================
 //  RENDERING
 // ============================================================
 function loop(now){
@@ -2478,13 +2593,14 @@ function loop(now){
   pollGamepad(now);
   updateTimer();              // live session clock; ticks every frame, re-renders only on change
   let animating = false;
-  if (viewAnim) {
-    const a = viewAnim, p = Math.min(1, (now - a.t0) / a.dur);
+  for (const pl of players) {
+    if (!pl.viewAnim) continue;
+    const a = pl.viewAnim, p = Math.min(1, (now - a.t0) / a.dur);
     const e = 1 - Math.pow(1 - p, 3);
-    view.x = a.fx + (a.tx - a.fx) * e;
-    view.y = a.fy + (a.ty - a.fy) * e;
-    view.s = a.fs + (a.ts - a.fs) * e;
-    if (p >= 1) viewAnim = null;
+    pl.view.x = a.fx + (a.tx - a.fx) * e;
+    pl.view.y = a.fy + (a.ty - a.fy) * e;
+    pl.view.s = a.fs + (a.ts - a.fs) * e;
+    if (p >= 1) pl.viewAnim = null;
     animating = true;
   }
   if (solveQueue.length) { applySolveStep(); animating = true; }
@@ -2500,8 +2616,8 @@ function loop(now){
 
 // the cell whose 3×3 neighbourhood we highlight: the controller cursor when
 // active, otherwise the mouse hover. Suppressed inside sudoku / picross plots.
-function workingCell(){
-  const hi = (lastInput === 'pad' && padActive && padCursorI >= 0) ? padCursorI : hoverCell;
+function workingCell(pl){
+  const hi = (pl.lastInput === 'pad' && pl.padActive && pl.cursor >= 0) ? pl.cursor : pl.hoverCell;
   if (hi < 0 || zoneOf[hi] >= 0 || picrossOf[hi] >= 0) return -1;
   return hi;
 }
@@ -2509,21 +2625,47 @@ function workingCell(){
 function draw(now){
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, innerWidth, innerHeight);
-  const s = view.s;
+  if (!coop) {
+    drawViewport(players[0], now, 0, 0, innerWidth, innerHeight);
+  } else {
+    const hw = Math.floor(innerWidth / 2);
+    drawViewport(players[0], now, 0, 0, hw, innerHeight);
+    drawViewport(players[1], now, hw, 0, innerWidth - hw, innerHeight);
+    // divider
+    ctx.fillStyle = 'rgba(70,50,120,.85)';
+    ctx.fillRect(hw - 1, 0, 2, innerHeight);
+    // per-pane labels
+    ctx.font = '700 13px "Segoe UI",system-ui,sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = PLAYER_COLOR[0]; ctx.fillText('P1', 12, 64);
+    ctx.fillStyle = PLAYER_COLOR[1]; ctx.fillText('P2', hw + 12, 64);
+  }
+}
 
-  const gx0 = Math.max(0, Math.floor(-view.x / s));
-  const gy0 = Math.max(0, Math.floor(-view.y / s));
-  const gx1 = Math.min(GW - 1, Math.ceil((innerWidth  - view.x) / s));
-  const gy1 = Math.min(GH - 1, Math.ceil((innerHeight - view.y) / s));
+// Render the shared board for ONE player's camera into the sub-rect
+// [px,py,pw,ph]. translate(px,py) keeps the body math in pane-local space, so a
+// player's view coords are interpreted relative to their pane. In solo this is
+// called once full-screen (px=py=0, translate is a no-op → identical to before).
+function drawViewport(player, now, px, py, pw, ph){
+  const v = player.view;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
+  ctx.translate(px, py);
+  const s = v.s;
+
+  const gx0 = Math.max(0, Math.floor(-v.x / s));
+  const gy0 = Math.max(0, Math.floor(-v.y / s));
+  const gx1 = Math.min(GW - 1, Math.ceil((pw - v.x) / s));
+  const gy1 = Math.min(GH - 1, Math.ceil((ph - v.y) / s));
 
   ctx.fillStyle = C.boardEdge;
-  ctx.fillRect(view.x - 3, view.y - 3, GW * s + 6, GH * s + 6);
+  ctx.fillRect(v.x - 3, v.y - 3, GW * s + 6, GH * s + 6);
 
   // ---- cells ----
   for (let gy = gy0; gy <= gy1; gy++) {
     for (let gx = gx0; gx <= gx1; gx++) {
       const i = gy * GW + gx;
-      const px = view.x + gx * s, py = view.y + gy * s;
+      const px = v.x + gx * s, py = v.y + gy * s;
       const r = regionOf[i];
       const st = state[i];
       ctx.fillStyle = zoneOf[i] >= 0 ? C.zoneBg
@@ -2543,15 +2685,15 @@ function draw(now){
   if (s >= 5) {
     ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let gx = gx0; gx <= gx1 + 1; gx++) { const px = view.x + gx * s; ctx.moveTo(px, view.y + gy0 * s); ctx.lineTo(px, view.y + (gy1 + 1) * s); }
-    for (let gy = gy0; gy <= gy1 + 1; gy++) { const py = view.y + gy * s; ctx.moveTo(view.x + gx0 * s, py); ctx.lineTo(view.x + (gx1 + 1) * s, py); }
+    for (let gx = gx0; gx <= gx1 + 1; gx++) { const px = v.x + gx * s; ctx.moveTo(px, v.y + gy0 * s); ctx.lineTo(px, v.y + (gy1 + 1) * s); }
+    for (let gy = gy0; gy <= gy1 + 1; gy++) { const py = v.y + gy * s; ctx.moveTo(v.x + gx0 * s, py); ctx.lineTo(v.x + (gx1 + 1) * s, py); }
     ctx.stroke();
   }
 
   // ---- 3×3 neighbourhood highlight around the working cell ----
   // (drawn under the clue numbers so they stay crisp; never over plots)
   {
-    const hi = workingCell();
+    const hi = workingCell(player);
     if (hi >= 0) {
       const hx = hi % GW, hy = (hi / GW) | 0;
       ctx.fillStyle = 'rgba(240,162,36,.22)';
@@ -2560,13 +2702,13 @@ function draw(now){
       // a plot) are irrelevant to this square, so they're left unhighlighted.
       for (const j of nbhd[hi]) {
         const nx = j % GW, ny = (j / GW) | 0;
-        ctx.fillRect(view.x + nx * s, view.y + ny * s, s + 0.5, s + 0.5);
+        ctx.fillRect(v.x + nx * s, v.y + ny * s, s + 0.5, s + 0.5);
       }
       // outline the exact square you're on (the controller draws its own box)
-      if (lastInput !== 'pad') {
+      if (player.lastInput !== 'pad') {
         ctx.strokeStyle = 'rgba(240,162,36,.85)';
         ctx.lineWidth = Math.max(1.5, s * 0.1);
-        ctx.strokeRect(view.x + hx * s + 0.6, view.y + hy * s + 0.6, s - 1.2, s - 1.2);
+        ctx.strokeRect(v.x + hx * s + 0.6, v.y + hy * s + 0.6, s - 1.2, s - 1.2);
       }
     }
   }
@@ -2586,7 +2728,7 @@ function draw(now){
         const satisfied = U === 0 && L === c;
         ctx.globalAlpha = satisfied ? 0.28 : 1;
         ctx.fillStyle = contradicted ? C.clueBad : (state[i] === 2 ? C.clueOnDark : C.clue);
-        ctx.fillText(c, view.x + (gx + 0.5) * s, view.y + (gy + 0.55) * s);
+        ctx.fillText(c, v.x + (gx + 0.5) * s, v.y + (gy + 0.55) * s);
         ctx.globalAlpha = 1;
       }
     }
@@ -2599,7 +2741,7 @@ function draw(now){
   for (let gy = gy0; gy <= gy1; gy++) {
     for (let gx = gx0; gx <= gx1; gx++) {
       const i = gy * GW + gx;
-      const px = view.x + gx * s, py = view.y + gy * s;
+      const px = v.x + gx * s, py = v.y + gy * s;
       if (gx < GW - 1 && regionOf[i] !== regionOf[i + 1])  { ctx.moveTo(px + s, py); ctx.lineTo(px + s, py + s); }
       if (gy < GH - 1 && regionOf[i] !== regionOf[i + GW]) { ctx.moveTo(px, py + s); ctx.lineTo(px + s, py + s); }
     }
@@ -2612,11 +2754,11 @@ function draw(now){
     if (!zone.entries) continue;
     if (zone.x > gx1 || zone.x + n - 1 < gx0 || zone.y > gy1 || zone.y + n - 1 < gy0) continue;
     if (regionDone[zone.region]) continue;
-    const zx = view.x + zone.x * s, zy = view.y + zone.y * s;
+    const zx = v.x + zone.x * s, zy = v.y + zone.y * s;
 
     // selection highlight
-    if (selZ === zone.idx && selP >= 0) {
-      const sc = selP % n, sr = (selP / n) | 0;
+    if (player.selZ === zone.idx && player.selP >= 0) {
+      const sc = player.selP % n, sr = (player.selP / n) | 0;
       ctx.fillStyle = C.zoneSel;
       ctx.fillRect(zx + sc * s, zy + sr * s, s, s);
     }
@@ -2645,13 +2787,13 @@ function draw(now){
     if (s >= 7) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       for (let p = 0; p < n * n; p++) {
-        const v = zone.entries[p];
-        if (!v) continue;
+        const val = zone.entries[p];
+        if (!val) continue;
         const c = p % n, r = (p / n) | 0;
         const given = zone.puzzle[p] !== 0;
         ctx.font = `${given ? 700 : 500} ${Math.floor(s * 0.6)}px "Segoe UI",system-ui,sans-serif`;
         ctx.fillStyle = given ? C.zoneGiven : (zoneConflict(zone, p) ? C.zoneBad : C.zoneInk);
-        ctx.fillText(v, zx + (c + 0.5) * s, zy + (r + 0.55) * s);
+        ctx.fillText(val, zx + (c + 0.5) * s, zy + (r + 0.55) * s);
       }
     }
   }
@@ -2661,19 +2803,19 @@ function draw(now){
     const n = pz.n;
     if (!pz.rowRuns || regionDone[pz.region]) continue;
     if (pz.x > gx1 + 8 || pz.x + n - 1 < gx0 - 8 || pz.y > gy1 + 8 || pz.y + n - 1 < gy0 - 8) continue;
-    const zx = view.x + pz.x * s, zy = view.y + pz.y * s;
+    const zx = v.x + pz.x * s, zy = v.y + pz.y * s;
 
     // perimeter
     ctx.strokeStyle = C.picBorder;
     ctx.lineWidth = Math.max(2, s * 0.14);
     ctx.strokeRect(zx, zy, n * s, n * s);
 
-    // clue strips appear while the mouse or pad cursor is engaged with the patch
+    // clue strips appear while this player's mouse or pad cursor is on the patch
     if (s >= 8) {
       const mR = pz.maxRowRuns, mC = pz.maxColRuns;
       const probes = [];
-      if (hoverCell >= 0) probes.push(hoverCell);
-      if (padActive && padCursorI >= 0) probes.push(padCursorI);
+      if (player.hoverCell >= 0) probes.push(player.hoverCell);
+      if (player.padActive && player.cursor >= 0) probes.push(player.cursor);
       const engaged = probes.some(h => {
         const hx = h % GW, hy = (h / GW) | 0;
         return hx >= pz.x && hx <= pz.x + n - 1 && hy >= pz.y && hy <= pz.y + n - 1;
@@ -2704,16 +2846,18 @@ function draw(now){
     }
   }
 
-  // ---- gamepad cursor ----
-  if (lastInput === 'pad' && padActive && padCursorI >= 0) {
-    const gx = padCursorI % GW, gy = (padCursorI / GW) | 0;
-    if (gx >= gx0 - 1 && gx <= gx1 + 1 && gy >= gy0 - 1 && gy <= gy1 + 1) {
-      ctx.strokeStyle = 'rgba(70,50,120,.9)';
-      ctx.lineWidth = Math.max(3.5, s * 0.24);
-      ctx.strokeRect(view.x + gx * s, view.y + gy * s, s, s);
-      ctx.strokeStyle = '#f0a224';
-      ctx.lineWidth = Math.max(1.8, s * 0.12);
-      ctx.strokeRect(view.x + gx * s, view.y + gy * s, s, s);
+  // ---- this player's gamepad cursor ----
+  if (player.lastInput === 'pad' && player.padActive && player.cursor >= 0) {
+    drawCursorBox(v, s, player.cursor, gx0, gy0, gx1, gy1, 'rgba(70,50,120,.9)', PLAYER_COLOR[player.id] || '#f0a224', false);
+  }
+
+  // ---- ghost of the OTHER player's cursor (co-op coordination) ----
+  if (coop && SHOW_PARTNER_GHOST) {
+    const other = players[player.id ^ 1];
+    if (other) {
+      const oc = (other.lastInput === 'pad' && other.padActive) ? other.cursor : other.hoverCell;
+      if (oc >= 0 && oc !== player.cursor)
+        drawCursorBox(v, s, oc, gx0, gy0, gx1, gy1, null, PLAYER_COLOR[other.id] || '#3fb3ff', true);
     }
   }
 
@@ -2728,21 +2872,43 @@ function draw(now){
       minY = Math.min(minY, jy); maxY = Math.max(maxY, jy); }
     ctx.globalAlpha = (1 - t) * (0.55 + 0.45 * pulse);
     ctx.strokeStyle = '#f0a224'; ctx.lineWidth = 3;
-    ctx.strokeRect(view.x + minX * s - 2, view.y + minY * s - 2, (maxX - minX + 1) * s + 4, (maxY - minY + 1) * s + 4);
+    ctx.strokeRect(v.x + minX * s - 2, v.y + minY * s - 2, (maxX - minX + 1) * s + 4, (maxY - minY + 1) * s + 4);
     ctx.globalAlpha = 1;
   }
+
+  ctx.restore();
+}
+
+// per-player accent colors; toggle for the dimmed partner-cursor ghost
+const PLAYER_COLOR = ['#f0a224', '#3fb3ff'];
+let SHOW_PARTNER_GHOST = true;
+
+// draw a cell-sized cursor box in the current viewport transform; `ghost` dims
+// it (for showing the other player's cursor). `outer` may be null to skip the
+// dark backing stroke.
+function drawCursorBox(v, s, cell, gx0, gy0, gx1, gy1, outer, inner, ghost){
+  const gx = cell % GW, gy = (cell / GW) | 0;
+  if (gx < gx0 - 1 || gx > gx1 + 1 || gy < gy0 - 1 || gy > gy1 + 1) return;
+  ctx.globalAlpha = ghost ? 0.4 : 1;
+  if (outer) {
+    ctx.strokeStyle = outer;
+    ctx.lineWidth = Math.max(3.5, s * 0.24);
+    ctx.strokeRect(v.x + gx * s, v.y + gy * s, s, s);
+  }
+  ctx.strokeStyle = inner;
+  ctx.lineWidth = Math.max(1.8, s * 0.12);
+  ctx.strokeRect(v.x + gx * s, v.y + gy * s, s, s);
+  ctx.globalAlpha = 1;
 }
 
 // ============================================================
 //  INPUT
 // ============================================================
-let drag = null;
-let spaceHeld = false, hoverCell = -1;
-let selZ = -1, selP = -1;        // selected sudoku-plot cell
+// drag / spaceHeld / hoverCell / selZ / selP now live per-player on the player object
 
-function cellAt(mx, my){
-  const gx = Math.floor((mx - view.x) / view.s);
-  const gy = Math.floor((my - view.y) / view.s);
+function cellAt(mx, my, v = view){
+  const gx = Math.floor((mx - v.x) / v.s);
+  const gy = Math.floor((my - v.y) / v.s);
   if (gx < 0 || gx >= GW || gy < 0 || gy >= GH) return -1;
   return gy * GW + gx;
 }
@@ -2774,15 +2940,18 @@ cvs.addEventListener('contextmenu', e => e.preventDefault());
 
 cvs.addEventListener('mousedown', e => {
   if (!generated) return;
-  viewAnim = null;
-  if (e.button === 1 || spaceHeld) {
-    drag = { mode: 'pan', mx: e.clientX, my: e.clientY };
+  const pl = mousePlayer();
+  pl.viewAnim = null;
+  // in co-op the mouse acts only within player 1's pane
+  if (coop && e.clientX >= Math.floor(innerWidth / 2)) return;
+  if (e.button === 1 || pl.spaceHeld) {
+    pl.drag = { mode: 'pan', mx: e.clientX, my: e.clientY };
     cvs.classList.add('panning');
     e.preventDefault();
     return;
   }
-  const i = cellAt(e.clientX, e.clientY);
-  if (i < 0 || solving) { drag = { mode: 'pan', mx: e.clientX, my: e.clientY }; cvs.classList.add('panning'); return; }
+  const i = cellAt(localX(e.clientX, pl), e.clientY, pl.view);
+  if (i < 0 || solving) { pl.drag = { mode: 'pan', mx: e.clientX, my: e.clientY }; cvs.classList.add('panning'); return; }
 
   // clicking a finished region replays its quote (a finished region has no
   // other click action anyway)
@@ -2794,91 +2963,96 @@ cvs.addEventListener('mousedown', e => {
     if (regionDone[zone.region] || !zone.entries) return;
     const gx = i % GW, gy = (i / GW) | 0;
     const p = (gy - zone.y) * zone.n + (gx - zone.x);
-    if (zone.puzzle[p] !== 0) { selZ = -1; selP = -1; needsDraw = true; return; }
+    if (zone.puzzle[p] !== 0) { pl.selZ = -1; pl.selP = -1; needsDraw = true; return; }
     if (e.button === 0) {
-      if (selZ === zi && selP === p) cycleZone(zone, p, +1);
-      else { selZ = zi; selP = p; }
+      if (pl.selZ === zi && pl.selP === p) cycleZone(zone, p, +1);
+      else { pl.selZ = zi; pl.selP = p; }
     } else if (e.button === 2) {
-      selZ = zi; selP = p;
+      pl.selZ = zi; pl.selP = p;
       cycleZone(zone, p, -1);
     }
     needsDraw = true;
     return;
   }
-  if (selZ >= 0) { selZ = -1; selP = -1; needsDraw = true; }
+  if (pl.selZ >= 0) { pl.selZ = -1; pl.selP = -1; needsDraw = true; }
 
   // one undo entry per stroke: snapshot before the first painted tile
   if (!regionDone[regionOf[i]] && !locked[i] && !gameWon) pushUndo();
   if (e.button === 0) {
-    if (state[i] === 1) { setCell(i, 0); drag = { mode: 'paint', erase: 1 }; }
-    else { setCell(i, 1); drag = { mode: 'paint', paint: 1 }; }
+    if (state[i] === 1) { setCell(i, 0); pl.drag = { mode: 'paint', erase: 1 }; }
+    else { setCell(i, 1); pl.drag = { mode: 'paint', paint: 1 }; }
   } else if (e.button === 2) {
-    if (state[i] === 2) { setCell(i, 0); drag = { mode: 'paint', erase: 2 }; }
-    else { setCell(i, 2); drag = { mode: 'paint', paint: 2 }; }
+    if (state[i] === 2) { setCell(i, 0); pl.drag = { mode: 'paint', erase: 2 }; }
+    else { setCell(i, 2); pl.drag = { mode: 'paint', paint: 2 }; }
   }
 });
 
 addEventListener('mousemove', e => {
-  const h = cellAt(e.clientX, e.clientY);
-  if (h !== hoverCell || lastInput !== 'mouse') { hoverCell = h; lastInput = 'mouse'; needsDraw = true; }
-  if (!drag) return;
-  if (drag.mode === 'pan') {
-    view.x += e.clientX - drag.mx; view.y += e.clientY - drag.my;
-    drag.mx = e.clientX; drag.my = e.clientY;
+  const pl = mousePlayer();
+  const inPane = !coop || e.clientX < Math.floor(innerWidth / 2);
+  const h = inPane ? cellAt(localX(e.clientX, pl), e.clientY, pl.view) : -1;
+  if (h !== pl.hoverCell || pl.lastInput !== 'mouse') { pl.hoverCell = h; pl.lastInput = 'mouse'; needsDraw = true; }
+  if (!pl.drag) return;
+  if (pl.drag.mode === 'pan') {
+    pl.view.x += e.clientX - pl.drag.mx; pl.view.y += e.clientY - pl.drag.my;
+    pl.drag.mx = e.clientX; pl.drag.my = e.clientY;
     needsDraw = true;
-  } else {
-    const i = cellAt(e.clientX, e.clientY);
+  } else if (inPane) {
+    const i = cellAt(localX(e.clientX, pl), e.clientY, pl.view);
     if (i < 0 || zoneOf[i] >= 0) return;
-    if (drag.paint && state[i] === 0) setCell(i, drag.paint);
-    else if (drag.erase && state[i] === drag.erase) setCell(i, 0);
+    if (pl.drag.paint && state[i] === 0) setCell(i, pl.drag.paint);
+    else if (pl.drag.erase && state[i] === pl.drag.erase) setCell(i, 0);
   }
 });
 
-addEventListener('mouseup', () => { drag = null; cvs.classList.remove('panning'); });
+addEventListener('mouseup', () => { mousePlayer().drag = null; cvs.classList.remove('panning'); });
 
 cvs.addEventListener('wheel', e => {
   e.preventDefault();
+  const pl = playerAtX(e.clientX);   // zoom whichever pane the pointer is over
+  const v = pl.view, lx = localX(e.clientX, pl);
   const k = e.deltaY < 0 ? 1.13 : 1 / 1.13;
-  const ns = Math.max(3, Math.min(48, view.s * k));
-  view.x = e.clientX - (e.clientX - view.x) * ns / view.s;
-  view.y = e.clientY - (e.clientY - view.y) * ns / view.s;
-  view.s = ns; viewAnim = null; needsDraw = true;
+  const ns = Math.max(3, Math.min(48, v.s * k));
+  v.x = lx - (lx - v.x) * ns / v.s;
+  v.y = e.clientY - (e.clientY - v.y) * ns / v.s;
+  v.s = ns; pl.viewAnim = null; needsDraw = true;
 }, { passive: false });
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
   if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
+  const pl = mousePlayer();   // the keyboard belongs to player 1 (the mouse player)
   // digits go to the selected sudoku-plot cell
-  if (selZ >= 0 && selP >= 0 && !solving) {
-    const zone = ZONES[selZ];
+  if (pl.selZ >= 0 && pl.selP >= 0 && !solving) {
+    const zone = ZONES[pl.selZ];
     if (!regionDone[zone.region]) {
       const v = parseInt(e.key, 10);
-      if (v >= 1 && v <= zone.n) { setZoneDigit(zone, selP, v); return; }
-      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') { setZoneDigit(zone, selP, 0); return; }
-      if (e.key === 'Escape') { selZ = -1; selP = -1; needsDraw = true; return; }
-      const n = zone.n, c = selP % n, r = (selP / n) | 0;
-      if (e.key === 'ArrowLeft'  && c > 0)     { selP--; needsDraw = true; e.preventDefault(); return; }
-      if (e.key === 'ArrowRight' && c < n - 1) { selP++; needsDraw = true; e.preventDefault(); return; }
-      if (e.key === 'ArrowUp'    && r > 0)     { selP -= n; needsDraw = true; e.preventDefault(); return; }
-      if (e.key === 'ArrowDown'  && r < n - 1) { selP += n; needsDraw = true; e.preventDefault(); return; }
+      if (v >= 1 && v <= zone.n) { setZoneDigit(zone, pl.selP, v); return; }
+      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') { setZoneDigit(zone, pl.selP, 0); return; }
+      if (e.key === 'Escape') { pl.selZ = -1; pl.selP = -1; needsDraw = true; return; }
+      const n = zone.n, c = pl.selP % n, r = (pl.selP / n) | 0;
+      if (e.key === 'ArrowLeft'  && c > 0)     { pl.selP--; needsDraw = true; e.preventDefault(); return; }
+      if (e.key === 'ArrowRight' && c < n - 1) { pl.selP++; needsDraw = true; e.preventDefault(); return; }
+      if (e.key === 'ArrowUp'    && r > 0)     { pl.selP -= n; needsDraw = true; e.preventDefault(); return; }
+      if (e.key === 'ArrowDown'  && r < n - 1) { pl.selP += n; needsDraw = true; e.preventDefault(); return; }
     }
   }
-  if (e.code === 'Space') { spaceHeld = true; e.preventDefault(); }
-  else if (e.key === 'h' || e.key === 'H') giveHint();
-  else if (e.key === 'f' || e.key === 'F') fitView();
-  else if (e.key === '+' || e.key === '=') zoomCenter(1.25);
-  else if (e.key === '-') zoomCenter(1 / 1.25);
-  else if ((e.key === 'z' || e.key === 'Z') && hoverCell >= 0 && !solving && zoneOf[hoverCell] < 0) { if (!regionDone[regionOf[hoverCell]] && !locked[hoverCell] && !gameWon) pushUndo(); setCell(hoverCell, state[hoverCell] === 1 ? 0 : 1); }
-  else if ((e.key === 'x' || e.key === 'X') && hoverCell >= 0 && !solving && zoneOf[hoverCell] < 0) { if (!regionDone[regionOf[hoverCell]] && !locked[hoverCell] && !gameWon) pushUndo(); setCell(hoverCell, state[hoverCell] === 2 ? 0 : 2); }
+  if (e.code === 'Space') { pl.spaceHeld = true; e.preventDefault(); }
+  else if (e.key === 'h' || e.key === 'H') giveHint(pl);
+  else if (e.key === 'f' || e.key === 'F') fitView(pl);
+  else if (e.key === '+' || e.key === '=') zoomCenter(1.25, pl);
+  else if (e.key === '-') zoomCenter(1 / 1.25, pl);
+  else if ((e.key === 'z' || e.key === 'Z') && pl.hoverCell >= 0 && !solving && zoneOf[pl.hoverCell] < 0) { if (!regionDone[regionOf[pl.hoverCell]] && !locked[pl.hoverCell] && !gameWon) pushUndo(); setCell(pl.hoverCell, state[pl.hoverCell] === 1 ? 0 : 1); }
+  else if ((e.key === 'x' || e.key === 'X') && pl.hoverCell >= 0 && !solving && zoneOf[pl.hoverCell] < 0) { if (!regionDone[regionOf[pl.hoverCell]] && !locked[pl.hoverCell] && !gameWon) pushUndo(); setCell(pl.hoverCell, state[pl.hoverCell] === 2 ? 0 : 2); }
 });
-addEventListener('keyup', e => { if (e.code === 'Space') spaceHeld = false; });
+addEventListener('keyup', e => { if (e.code === 'Space') mousePlayer().spaceHeld = false; });
 
-function zoomCenter(k){
-  const cx = innerWidth / 2, cy = innerHeight / 2;
-  const ns = Math.max(3, Math.min(48, view.s * k));
-  view.x = cx - (cx - view.x) * ns / view.s;
-  view.y = cy - (cy - view.y) * ns / view.s;
-  view.s = ns; needsDraw = true;
+function zoomCenter(k, pl = players[0]){
+  const v = pl.view, cx = paneW(pl) / 2, cy = paneH() / 2;
+  const ns = Math.max(3, Math.min(48, v.s * k));
+  v.x = cx - (cx - v.x) * ns / v.s;
+  v.y = cy - (cy - v.y) * ns / v.s;
+  v.s = ns; needsDraw = true;
 }
 
 // ============================================================
@@ -2974,7 +3148,7 @@ setMusicUI();
   };
 }
 document.getElementById('btnUndo').onclick = undo;
-document.getElementById('btnHint').onclick = giveHint;
+document.getElementById('btnHint').onclick = () => giveHint();
 // the auto-solver is PIN-gated; once unlocked it stays open for the session
 let solveUnlocked = false;
 const SOLVE_PIN = '5757';
@@ -3054,7 +3228,23 @@ document.getElementById('btnClosePad').onclick = () => {
 };
 document.getElementById('btnPadRemap').onclick = () => {
   padCaptureIdx = 0;
+  padCapturePlayer = players.find(p => p.padIndex >= 0) || players[0];
   renderPadList();
+};
+document.getElementById('btnCoop').onclick = () => {
+  if (coop) { exitCoop(); return; }
+  if (!generated) return;
+  assigningCoop = true;
+  coopAssignPrev = {};
+  document.getElementById('coopStatus').textContent = 'Waiting for Player 2 — press a button on the controller…';
+  document.getElementById('btnCoopStart').disabled = true;
+  document.getElementById('coopModal').classList.add('show');
+};
+document.getElementById('btnCoopStart').onclick = startCoop;
+document.getElementById('btnCoopCancel').onclick = () => {
+  assigningCoop = false;
+  if (!coop) players.length = 1;   // discard a half-assigned Player 2
+  document.getElementById('coopModal').classList.remove('show');
 };
 document.getElementById('btnPadDefaults').onclick = () => {
   padMap = Object.assign({}, PAD_DEFAULTS);
@@ -3064,7 +3254,7 @@ document.getElementById('btnPadDefaults').onclick = () => {
 };
 document.getElementById('btnZoomIn').onclick = () => zoomCenter(1.25);
 document.getElementById('btnZoomOut').onclick = () => zoomCenter(1 / 1.25);
-document.getElementById('btnFit').onclick = fitView;
+document.getElementById('btnFit').onclick = () => fitView();
 document.getElementById('btnHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
 document.getElementById('btnCloseHelp').onclick = () => document.getElementById('helpModal').classList.remove('show');
 document.getElementById('btnShowAdvanced').onclick = () => {
