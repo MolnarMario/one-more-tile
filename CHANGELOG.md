@@ -5,6 +5,18 @@ shipped to the live site.
 
 ---
 
+## [0.9.3] — 2026-06-17 — Regions wait for their puzzles
+
+### Fixed
+- **A region no longer reveals while a sudoku/picross inside it is still unsolved.** Placing all of
+  a region's fill-a-pix numbers used to complete and reveal it on its own, even with an embedded
+  sudoku left half-filled. Now a region completes only when its numbers *and* every sudoku/picross
+  plot sitting inside it (touching it, partially or fully) are all solved — finishing that last plot
+  is what flips the surrounding region to "done". This matches when the region's character quote
+  already fired; the reveal now lines up with it.
+
+---
+
 ## [0.9.2] — 2026-06-17 — Strict region completion
 
 ### Changed
