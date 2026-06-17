@@ -5,6 +5,33 @@ shipped to the live site.
 
 ---
 
+## [0.11.0] — 2026-06-17 — Online co-op
+
+### Added
+- **Play online with a friend.** A new **🌐 Online** button lets one player *Host a game* (you get a
+  short code) and the other *Join* by pasting it — then you both work the same board live over a
+  peer-to-peer connection (great alongside a Discord call). Because every board is generated
+  deterministically from its map + difficulty, only your *moves* travel the wire, not the whole
+  canvas; the connection bootstraps by sending a one-time snapshot (the same format as Share codes).
+  Your partner's stitches, digits and **cursor** appear in real time, with an edge arrow pointing to
+  them when they're off your screen. Press **⊟ Watch** to split the screen and mirror their viewport
+  live. Disconnects fall back to solo cleanly; undo re-syncs both sides.
+- **The host owns the board.** A joiner plays *on the host's canvas* and all progress — whoever makes
+  the move — is saved on the **host's** side; the host's map and progress are never wiped. The
+  joiner's own solo progress for that map is left untouched and restored automatically when they
+  disconnect.
+- **One mode at a time.** Local split-screen and online can't run together — whichever you start
+  holds until Player 2 disconnects, then either mode is available again (for host and joiner alike).
+- **Transport is pluggable** behind a thin `Net` interface (WebRTC/PeerJS today; a relay could drop
+  in later with no game-code change). A "test in two tabs" checkbox runs the whole thing locally over
+  `BroadcastChannel` with no internet, for development.
+
+### Notes
+- The auto-solver is disabled during online co-op (it's a reveal tool, not collaborative play).
+- Networking needs a real origin — use the live site (or a local server), not a `file://` page.
+
+---
+
 ## [0.10.0] — 2026-06-17 — Local split-screen co-op
 
 ### Added
