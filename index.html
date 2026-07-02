@@ -201,7 +201,7 @@
       <li><b style="color:#b07a1a">Gold plots</b> are sudoku, stitched right into the canvas: click a tile and type a digit (or click to cycle). Every row, column and outlined shape needs each number exactly once.</li>
       <li><b style="color:#1f9c84">Teal patches</b> are picross: hover near one and its run clues appear. Each number is a run of consecutive light tiles, in order, in that row or column. Stitch them with the usual left/right click — the answer is the painting itself.</li>
       <li>A map is done only when <b>every</b> tile is placed — light tiles light (left&nbsp;click) <i>and</i> dark/background tiles dark (right&nbsp;click). Finish a map, plot or patch and the painting beneath is revealed.</li>
-      <li><b>Difficulty</b> (toolbar) scales everything — easier tiers keep more clues and more free 0/9 moves, give sudoku plots extra digits and tamer shapes, and pre-stitch a head start into picross patches. Your stitches and digits always survive the switch.</li>
+      <li><b>Difficulty</b> (toolbar) scales everything — easier tiers keep more clues and more free 0/9 moves, and give sudoku plots extra digits and tamer shapes. Every tile is yours to stitch: nothing is ever pre-filled. Your stitches and digits always survive the switch.</li>
       <li><b>Very Easy–Medium</b> need only neighbor-counting. <b>Hard</b> and <b>Very Hard</b> add <b>Advanced Deductions</b> (comparing overlapping clues) — but <i>guessing is never required</i> on any tier. Stuck? Press <b>H</b> for a hint.</li>
     </ul>
     <div class="btns" style="margin-top:18px">
@@ -472,7 +472,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.13.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.14.0';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -484,23 +484,25 @@ function stateKey(){ return 'proverbs2-' + currentMap + '-v3'; }
 function zonesKey(){ return stateKey() + '-plots'; }
 const DIFF_KEY = 'proverbs2-diff';
 
-// the solution itself is woven so that no 3×3 neighborhood is ever all
-// light or all dark — 0 and 9 clues simply cannot exist, on any tier.
+// the solution is woven for texture, then repaired (repairTexture) so that
+// every region falls to plain 3×3 counting with the full clue set — no cell
+// is ever pre-stitched for the player, on any tier. flat 0/9 windows live
+// mainly in the sheltered pockets, though a repair can mint a stray one.
 // difficulty is then clue density + the deduction technique required
 // redundancy = spare clues kept overall; extremeKeep = how many of the
-// flat-pocket 0/9 clues are shown; zGivens scales sudoku givens; zSwaps
-// scales jigsaw irregularity; pHelp = fraction of picross pre-stitched
+// flat 0/9 clues are shown; zGivens scales sudoku givens; zSwaps
+// scales jigsaw irregularity
 // basicOnly = the gentler tiers (Very Easy–Medium) must stay solvable by
 //   plain 3×3 counting alone (no cross-clue subtraction ever required), so a
 //   player never hits a stall that needs the harder overlap technique — the
-//   pruner simply keeps more clues / reveals a few more starters to honor it.
+//   pruner simply keeps more clues to honor it.
 //   Only Hard and Very Hard demand the "Advanced Deductions" overlap trick.
 const DIFF = {
-  veryeasy: { redundancy: 0.65, passes: 1, extremeKeep: 1.0, zGivens: 1.5,  zSwaps: 0.25, pHelp: 0.20, basicOnly: true, label: '✿ Very Easy' },
-  easy:     { redundancy: 0.40, passes: 1, extremeKeep: 0.6, zGivens: 1.25, zSwaps: 0.5,  pHelp: 0.10, basicOnly: true, label: '☘ Easy' },
-  medium:   { redundancy: 0.20, passes: 1, extremeKeep: 0.3, zGivens: 1.0,  zSwaps: 1.0,  pHelp: 0.05, basicOnly: true, label: '⚖ Medium' },
-  hard:     { redundancy: 0.08, passes: 1, extremeKeep: 0.1, zGivens: 0.85, zSwaps: 1.5,  pHelp: 0,    label: '🔥 Hard' },
-  veryhard: { redundancy: 0,    passes: 2, extremeKeep: 0,   zGivens: 0.7,  zSwaps: 2.0,  pHelp: 0,    label: '💀 Very Hard' },
+  veryeasy: { redundancy: 0.65, passes: 1, extremeKeep: 1.0, zGivens: 1.5,  zSwaps: 0.25, basicOnly: true, label: '✿ Very Easy' },
+  easy:     { redundancy: 0.40, passes: 1, extremeKeep: 0.6, zGivens: 1.25, zSwaps: 0.5,  basicOnly: true, label: '☘ Easy' },
+  medium:   { redundancy: 0.20, passes: 1, extremeKeep: 0.3, zGivens: 1.0,  zSwaps: 1.0,  basicOnly: true, label: '⚖ Medium' },
+  hard:     { redundancy: 0.08, passes: 1, extremeKeep: 0.1, zGivens: 0.85, zSwaps: 1.5,  label: '🔥 Hard' },
+  veryhard: { redundancy: 0,    passes: 2, extremeKeep: 0,   zGivens: 0.7,  zSwaps: 2.0,  label: '💀 Very Hard' },
 };
 const DIFF_ORDER = ['veryeasy', 'easy', 'medium', 'hard', 'veryhard'];
 let difficulty = 'medium';
@@ -892,7 +894,7 @@ const sol    = new Uint8Array(MAXN);          // 1 = light, 0 = dark
 const clue   = new Int8Array(MAXN).fill(-1);  // -1 = no clue, else 0..9
 const state  = new Uint8Array(MAXN);          // 0 unknown, 1 light, 2 dark
 const cellCol = new Array(MAXN);              // art color per cell
-const locked = new Uint8Array(MAXN);          // pre-stitched starter tiles
+const locked = new Uint8Array(MAXN);          // pre-stitched starter tiles — always empty since repairTexture(); kept as the stall fallback's channel
 const edge   = new Uint8Array(MAXN);          // image edge strength (for content-aware borders)
 let regionDone = [];
 let regionDoneAt = [];
@@ -1215,9 +1217,12 @@ function setupPicross(pz){
   pz.maxRowRuns = Math.max(1, ...pz.rowRuns.map(x => x.length));
   pz.maxColRuns = Math.max(1, ...pz.colRuns.map(x => x.length));
 
-  // line-by-line propagation; pre-stitch stuck tiles as givens until the
-  // whole patch falls to line logic
+  // line-by-line propagation. repairTexture() already reshaped the window to
+  // fall to line logic from a blank grid, so the pre-stitch fallback below
+  // should never fire — it stays as a safety net for un-repaired input, and
+  // any given it mints is a repair regression (hence the warn).
   const st = new Uint8Array(n * n);
+  let stalls = 0;
   for (;;) {
     let changed = true;
     while (changed) {
@@ -1244,23 +1249,9 @@ function setupPicross(pz){
     const truth = sol[gi] ? 1 : 2;
     st[stuck] = truth;
     locked[gi] = truth;
+    stalls++;
   }
-
-  // easier tiers pre-stitch a head start into each patch
-  const help = Math.round(n * n * (DIFF[difficulty].pHelp || 0));
-  if (help > 0) {
-    const hrng = mulberry32(SEED + pz.x * 53 + pz.y * 97);
-    const order = Array.from({ length: n * n }, (_, p) => p);
-    for (let a = order.length - 1; a > 0; a--) { const b = (hrng() * (a + 1)) | 0; [order[a], order[b]] = [order[b], order[a]]; }
-    let added = 0;
-    for (const p of order) {
-      if (added >= help) break;
-      const gi = (pz.y + ((p / n) | 0)) * GW + pz.x + (p % n);
-      if (locked[gi]) continue;
-      locked[gi] = sol[gi] ? 1 : 2;
-      added++;
-    }
-  }
+  if (stalls) console.warn('[gen] picross at ' + pz.x + ',' + pz.y + ' needed ' + stalls + ' pre-stitched tiles — texture repair missed it');
 }
 
 function lineSatisfied(pz, idx, isRow){
@@ -1283,8 +1274,13 @@ function lineSatisfied(pz, idx, isRow){
 //  GENERATION — image → solution → solvable clue set per map
 // ============================================================
 const img = new Image();
-img.onload = () => startGeneration();
-img.src = mapDef().src;
+// ?audit=1 skips the normal boot: the zero-given audit (see auditGivens)
+// drives the generation pipeline itself, synchronously and worker-free
+const AUDIT_MODE = /[?&]audit=/.test(location.search);
+if (!AUDIT_MODE) {
+  img.onload = () => startGeneration();
+  img.src = mapDef().src;
+}
 
 function startGeneration(){
   SEED = mapDef().seed;
@@ -1347,7 +1343,8 @@ function sampleImage(image){
 }
 
 // the cross-stitch weave + sheltered flat pockets (needs regions + nbhd, so it
-// runs after buildLayout())
+// runs after buildLayout()), followed by the solvability repair — sol[] is
+// final once this returns. Returns the repair's flip count (for the audit).
 function weaveTexture(){
   // flat pockets: pick scattered sanctuaries inside large flat fields and
   // shield them from the weave — these small calm patches are the only
@@ -1403,6 +1400,169 @@ function weaveTexture(){
     }
     if (!changed) break;
   }
+
+  return repairTexture(sheltered);
+}
+
+// ---------- solvability repair ----------
+// The weave can leave genuinely ambiguous spots: windows where several fill
+// patterns satisfy every clue (classic: a thin 2-cell strip whose clues both
+// read 1). The game used to pre-stitch such stuck tiles as starter givens;
+// instead we now repair the texture itself — flip a few stitch pixels (the
+// art reveal is untouched, exactly like the weave's own specks) until every
+// region falls to plain 3×3 counting with ALL clues shown, and every picross
+// patch falls to line logic from a blank grid. Counting-solvable with the
+// full clue set ⇒ every tier ships zero pre-stitched tiles, because the
+// pruner only removes clues while its own (equal or stronger) solver still
+// succeeds. Runs once per map build; sol[] is frozen afterwards, so
+// difficulty switches, saves, share codes and co-op peers all agree on the
+// repaired texture. Fully deterministic: fixed iteration order, no RNG.
+function repairTexture(sheltered){
+  let flips = 0;
+  for (let r = 0; r < REG_PIX; r++) flips += repairRegion(r, sheltered);
+  for (const pz of PICROSS) flips += repairPicross(pz);
+  return flips;
+}
+
+// make region r solvable by basic counting with every clue visible, flipping
+// as few sol[] pixels as possible. Greedy phase: try single flips on (then
+// next to) the stuck cells, keep the one that leaves the fewest unsolved
+// cells; sheltered-pocket cells are off limits so the 0/9 free moves survive.
+// Flatten fallback (rarely if ever reached): recolour one stuck window toward
+// the region's majority colour — a uniform window is a 0/|nb| clue and always
+// falls to counting, so this provably terminates.
+function repairRegion(r, sheltered){
+  const cells = regionCells[r], len = cells.length;
+  const local = new Map();
+  for (let a = 0; a < len; a++) local.set(cells[a], a);
+  const nbL = new Array(len), val = new Uint8Array(len);
+  for (let a = 0; a < len; a++) {
+    nbL[a] = nbhd[cells[a]].map(g => local.get(g));
+    let c = 0; for (const g of nbhd[cells[a]]) c += sol[g];
+    val[a] = c;
+  }
+  const st = new Uint8Array(len);
+  // fixpoint of the exact counting rule genRegionClues' basicPass uses;
+  // returns the number of cells left undetermined
+  function solve(){
+    st.fill(0);
+    let unknown = len, changed = true;
+    while (changed && unknown > 0) {
+      changed = false;
+      for (let a = 0; a < len; a++) {
+        const nb = nbL[a];
+        let L = 0, U = 0;
+        for (let j = 0; j < nb.length; j++) { const s = st[nb[j]]; if (s === 1) L++; else if (s === 0) U++; }
+        if (U === 0) continue;
+        const need = val[a] - L;
+        if (need === 0)      { for (let j = 0; j < nb.length; j++) if (st[nb[j]] === 0) { st[nb[j]] = 2; unknown--; } changed = true; }
+        else if (need === U) { for (let j = 0; j < nb.length; j++) if (st[nb[j]] === 0) { st[nb[j]] = 1; unknown--; } changed = true; }
+      }
+    }
+    return unknown;
+  }
+  // flipping cell b recolours it and shifts the count of every clue that sees
+  // it — which is exactly nbL[b], since the clipped king-move relation is
+  // symmetric
+  function flip(b){
+    sol[cells[b]] ^= 1;
+    const d = sol[cells[b]] ? 1 : -1;
+    for (const a of nbL[b]) val[a] += d;
+  }
+  let lit = 0; for (let a = 0; a < len; a++) lit += sol[cells[a]];
+  const T = 2 * lit >= len ? 1 : 0;   // majority colour, for the flatten fallback
+  let flips = 0, unknown = solve();
+  while (unknown > 0) {
+    let best = -1, bestU = unknown;
+    if (flips <= 3 * len) {   // greedy phase (skipped only if it ever thrashes)
+      const stuck = [];
+      for (let a = 0; a < len; a++) if (st[a] === 0) stuck.push(a);
+      const seen = new Uint8Array(len);
+      const tryCand = b => {
+        if (seen[b] || sheltered[cells[b]]) return;
+        seen[b] = 1;
+        flip(b);
+        const u = solve();
+        flip(b);
+        if (u < bestU) { bestU = u; best = b; }
+      };
+      for (const a of stuck) tryCand(a);
+      if (best < 0) for (const a of stuck) for (const b of nbL[a]) tryCand(b);
+    }
+    if (best >= 0) { flip(best); flips++; unknown = solve(); continue; }
+    unknown = solve();   // trial flips left st dirty — refresh before scanning
+    let pick = -1;
+    for (let a = 0; a < len; a++) if (st[a] === 0) { pick = a; break; }
+    if (pick < 0) break;
+    // a stuck window always holds a cell ≠ T (a uniform window would be a
+    // 0/|nb| clue and solved), so each flatten strictly shrinks {cells ≠ T}
+    for (const b of nbL[pick]) if (sol[cells[b]] !== T) { flip(b); flips++; }
+    unknown = solve();
+  }
+  return flips;
+}
+
+// same treatment for a picross patch: flip window pixels until the patch is
+// line-solvable from a blank grid, so setupPicross never pre-stitches a tile
+function repairPicross(pz){
+  const n = pz.n;
+  const st = new Uint8Array(n * n);
+  const idx = p => (pz.y + ((p / n) | 0)) * GW + pz.x + (p % n);
+  // line-solve the window's own runs from a blank grid; returns #undetermined
+  function solve(){
+    st.fill(0);
+    const rowRuns = [], colRuns = [];
+    for (let r = 0; r < n; r++) { const v = []; for (let c = 0; c < n; c++) v.push(sol[(pz.y + r) * GW + pz.x + c]); rowRuns.push(runsOfLine(v)); }
+    for (let c = 0; c < n; c++) { const v = []; for (let r = 0; r < n; r++) v.push(sol[(pz.y + r) * GW + pz.x + c]); colRuns.push(runsOfLine(v)); }
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let r = 0; r < n; r++) {
+        const line = [];
+        for (let c = 0; c < n; c++) line.push(st[r * n + c]);
+        const inter = solveLine(line, rowRuns[r]);
+        if (!inter) continue;
+        for (let c = 0; c < n; c++) if (st[r * n + c] === 0 && (inter[c] === 1 || inter[c] === 2)) { st[r * n + c] = inter[c]; changed = true; }
+      }
+      for (let c = 0; c < n; c++) {
+        const line = [];
+        for (let r = 0; r < n; r++) line.push(st[r * n + c]);
+        const inter = solveLine(line, colRuns[c]);
+        if (!inter) continue;
+        for (let r = 0; r < n; r++) if (st[r * n + c] === 0 && (inter[r] === 1 || inter[r] === 2)) { st[r * n + c] = inter[r]; changed = true; }
+      }
+    }
+    let u = 0; for (let p = 0; p < n * n; p++) if (st[p] === 0) u++;
+    return u;
+  }
+  let lit = 0; for (let p = 0; p < n * n; p++) lit += sol[idx(p)];
+  const T = 2 * lit >= n * n ? 1 : 0;
+  let flips = 0, unknown = solve();
+  while (unknown > 0) {
+    const stuck = [];
+    for (let p = 0; p < n * n; p++) if (st[p] === 0) stuck.push(p);
+    let best = -1, bestU = unknown;
+    if (flips <= 2 * n * n) {
+      for (const p of stuck) {
+        sol[idx(p)] ^= 1;
+        const u = solve();
+        sol[idx(p)] ^= 1;
+        if (u < bestU) { bestU = u; best = p; }
+      }
+    }
+    if (best >= 0) { sol[idx(best)] ^= 1; flips++; unknown = solve(); continue; }
+    // flatten fallback: push the first stuck tile's row toward the majority
+    // colour — a uniform line is one run (or none) and always resolves, so
+    // each step strictly shrinks {window cells ≠ T}
+    const p0 = stuck[0], r0 = (p0 / n) | 0;
+    let flipped = false;
+    if (sol[idx(p0)] !== T) { sol[idx(p0)] ^= 1; flipped = true; }
+    else for (let c = 0; c < n; c++) { const gi = (pz.y + r0) * GW + pz.x + c; if (sol[gi] !== T) { sol[gi] ^= 1; flipped = true; break; } }
+    if (!flipped) break;   // unreachable: a stuck cell's row can't be all-T
+    flips++;
+    unknown = solve();
+  }
+  return flips;
 }
 
 // switch to a different painting: rebuild its solution + clues, then run
@@ -1466,8 +1626,8 @@ function regenZones(){
   }
 }
 
-// (re)generate all fill-a-pix clues + starter givens for the current
-// difficulty; the underlying solution never changes, so player stitches
+// (re)generate all fill-a-pix clues for the current difficulty; the
+// underlying (repaired) solution never changes, so player stitches
 // survive a difficulty switch
 // build a one-off Web Worker (from a Blob, so the game stays a single file) that
 // runs the EXACT same genRegionClues off the main thread. It rebuilds the
@@ -1658,14 +1818,20 @@ function genRegionClues(r){
   }
 
   const active = new Uint8Array(len).fill(1);
-  // basic propagation isn't complete: if even the full clue set stalls,
-  // reveal stuck tiles as pre-stitched givens until the map solves
+  // repairTexture() reshapes the weave so the full clue set always falls to
+  // basic counting — in the game this stall fallback never fires (a given
+  // here is a repair regression, hence the warn). It still runs for
+  // un-repaired solutions, e.g. the region editor's raw scan, where it
+  // quantifies ambiguity as pre-stitched givens.
+  let stalls = 0;
   while (!solvesWith(active)) {
     let pick = -1;
     for (let a = 0; a < len; a++) if (st[a] === 0) { pick = a; break; }
     if (pick < 0) break;
     given[pick] = sol[cells[pick]] ? 1 : 2;
+    stalls++;
   }
+  if (stalls) console.warn('[gen] region ' + r + ' needed ' + stalls + ' starter givens (fine in the editor; a repair regression in the game)');
   // greedily strip clues while the map stays solvable at this difficulty's
   // technique level; redundancy keeps spare clues for friendlier tiers
   const order = Array.from({ length: len }, (_, a) => a);
@@ -1726,6 +1892,161 @@ function finishSetup(){
     if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 5000 });
     else initBgm();
   }, 1200);
+}
+
+// ---------- dev: zero-given audit ----------
+// Proves the no-pre-stitched-tiles guarantee end to end. For every map ×
+// difficulty: rebuild the board, then assert (a) not a single locked cell,
+// (b) every organic region falls to that tier's technique using only the
+// SHIPPED clue set (independent re-solve, no generator internals), and
+// (c) every picross patch falls to line logic from a blank grid.
+// Run from the console:  await auditGivens()  — or open index.html?audit=1
+// (renders the report and sets the title to AUDIT PASS/FAIL, headless-
+// friendly). Rebuilds the player's map when done; saves are never touched.
+async function auditGivens(){
+  const keepMap = currentMap, keepDiff = difficulty;
+  const rows = [];
+  const loadImg = id => new Promise((res, rej) => {
+    const c = mapImgCache[id];
+    if (c && c.complete) return res(c);
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = mapDef(id).src;
+    mapImgCache[id] = im;
+  });
+  for (const m of MAPS) {
+    const image = await loadImg(m.id);
+    currentMap = m.id;
+    SEED = mapDef(m.id).seed;
+    dimsForImage(image, mapDef(m.id));
+    sampleImage(image);
+    buildLayout();
+    const flips = weaveTexture();
+    for (const d of DIFF_ORDER) {
+      difficulty = d;
+      locked.fill(0); clue.fill(-1);
+      for (const pz of PICROSS) setupPicross(pz);
+      for (let r = 0; r < REG_PIX; r++) genRegionClues(r);
+      let lockedN = 0;
+      for (let i = 0; i < N; i++) if (locked[i]) lockedN++;
+      let pUnsolved = 0;
+      for (const pz of PICROSS) pUnsolved += auditSolvePicross(pz);
+      const row = { map: m.id, tier: d, repairFlips: flips, locked: lockedN,
+                    unsolved: auditSolveRegions(DIFF[d].basicOnly), picrossUnsolved: pUnsolved };
+      rows.push(row);
+      console.log('[audit] ' + JSON.stringify(row));   // progress ping (headless logs)
+    }
+  }
+  console.table(rows);
+  difficulty = keepDiff;
+  if (generated) {            // interactive run: rebuild the player's map
+    currentMap = '__audit__'; // (forces loadMap past its same-map guard)
+    loadMap(keepMap);
+  }
+  return rows;
+}
+
+// independent re-solve of every organic region from the shipped clues only
+// (mirrors basicPass/advancedPass semantics); returns cells left undetermined
+function auditSolveRegions(basicOnly){
+  let bad = 0;
+  for (let r = 0; r < REG_PIX; r++) {
+    const cells = regionCells[r], len = cells.length;
+    const local = new Map();
+    for (let a = 0; a < len; a++) local.set(cells[a], a);
+    const nbL = cells.map(g => nbhd[g].map(x => local.get(x)));
+    const cv = cells.map(g => clue[g]);   // -1 = pruned away
+    const st = new Uint8Array(len);
+    let unknown = len, changed = true;
+    while (changed && unknown > 0) {
+      changed = false;
+      for (let a = 0; a < len; a++) {
+        if (cv[a] < 0) continue;
+        const nb = nbL[a];
+        let L = 0, U = 0;
+        for (const j of nb) { const s = st[j]; if (s === 1) L++; else if (s === 0) U++; }
+        if (!U) continue;
+        const need = cv[a] - L;
+        if (need === 0)      { for (const j of nb) if (st[j] === 0) { st[j] = 2; unknown--; } changed = true; }
+        else if (need === U) { for (const j of nb) if (st[j] === 0) { st[j] = 1; unknown--; } changed = true; }
+      }
+      if (changed || basicOnly || unknown === 0) continue;
+      outer:
+      for (let a = 0; a < len; a++) {
+        if (cv[a] < 0) continue;
+        const nbA = nbL[a], UA = []; let LA = 0;
+        for (const j of nbA) { const s = st[j]; if (s === 1) LA++; else if (s === 0) UA.push(j); }
+        if (!UA.length) continue;
+        const needA = cv[a] - LA;
+        const ax = cells[a] % GW, ay = (cells[a] / GW) | 0;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+          if (!dx && !dy) continue;
+          const b = local.get((ay + dy) * GW + (ax + dx));
+          if (b === undefined || cv[b] < 0) continue;
+          const nbB = nbL[b], UB = []; let LB = 0;
+          for (const j of nbB) { const s = st[j]; if (s === 1) LB++; else if (s === 0) UB.push(j); }
+          if (!UB.length) continue;
+          const needB = cv[b] - LB;
+          let x = 0;
+          for (const j of UA) if (!nbB.includes(j)) x++;
+          if (needA - needB !== x) continue;
+          let applied = false;
+          for (const j of UA) if (!nbB.includes(j) && st[j] === 0) { st[j] = 1; unknown--; applied = true; }
+          for (const j of UB) if (!nbA.includes(j) && st[j] === 0) { st[j] = 2; unknown--; applied = true; }
+          if (applied) { changed = true; break outer; }
+        }
+      }
+    }
+    bad += unknown;
+  }
+  return bad;
+}
+
+// line-solve a picross patch from a blank grid with its shipped run clues;
+// returns tiles left undetermined
+function auditSolvePicross(pz){
+  const n = pz.n, st = new Uint8Array(n * n);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let r = 0; r < n; r++) {
+      const line = [];
+      for (let c = 0; c < n; c++) line.push(st[r * n + c]);
+      const inter = solveLine(line, pz.rowRuns[r]);
+      if (!inter) continue;
+      for (let c = 0; c < n; c++) if (st[r * n + c] === 0 && (inter[c] === 1 || inter[c] === 2)) { st[r * n + c] = inter[c]; changed = true; }
+    }
+    for (let c = 0; c < n; c++) {
+      const line = [];
+      for (let r = 0; r < n; r++) line.push(st[r * n + c]);
+      const inter = solveLine(line, pz.colRuns[c]);
+      if (!inter) continue;
+      for (let r = 0; r < n; r++) if (st[r * n + c] === 0 && (inter[r] === 1 || inter[r] === 2)) { st[r * n + c] = inter[r]; changed = true; }
+    }
+  }
+  let u = 0; for (let p = 0; p < n * n; p++) if (st[p] === 0) u++;
+  return u;
+}
+
+// index.html?audit=1 → run the audit once the game has booted and paint the
+// verdict over the page (dev/CI hook; the game itself never triggers this)
+if (/[?&]audit=/.test(location.search)) {
+  const auditShow = (verdict, body) => {
+    document.title = verdict;
+    const pre = document.createElement('pre');
+    pre.id = 'auditOut';
+    pre.style.cssText = 'position:fixed;inset:0;z-index:99;background:#10091f;color:#7cfc98;overflow:auto;padding:14px;font-size:11px;margin:0';
+    pre.textContent = verdict + '\n\n' + body;
+    document.body.appendChild(pre);
+    console.log('[audit] verdict: ' + verdict);
+  };
+  setTimeout(() => {
+    auditGivens().then(rows => {
+      const ok = rows.every(x => !x.locked && !x.unsolved && !x.picrossUnsolved);
+      auditShow(ok ? 'AUDIT PASS' : 'AUDIT FAIL', rows.map(x => JSON.stringify(x)).join('\n'));
+    }).catch(e => auditShow('AUDIT ERROR', String(e && e.stack || e)));
+  }, 0);
 }
 
 // ============================================================

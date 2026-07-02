@@ -2,6 +2,9 @@
 // exactly. Run with: node verify-puzzle.js  (regenerates _pixels.txt itself
 // is NOT done here; run the PowerShell dump first if the image changed).
 // Checks: all maps solvable per tier, 0/9 gradient across tiers, givens.
+// NOTE: predates the v0.14 no-givens texture repair (and only ever covered
+// the original castle board) — the live check is now index.html?audit=1
+// (auditGivens in the console), which covers every map × difficulty.
 'use strict';
 const fs = require('fs');
 const GW = 120, GH = 64, N = GW * GH, SEED = 1337;

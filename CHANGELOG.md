@@ -5,6 +5,30 @@ shipped to the live site.
 
 ---
 
+## [0.14.0] — 2026-07-02 — No pre-filled squares, ever
+
+### Changed
+- **Every tile is now yours to stitch — the game never pre-fills a square again.** Boards used to
+  ship with a few pre-stitched starter tiles wherever pure logic stalled (genuinely ambiguous spots,
+  like a thin 2-cell strip whose clues both read 1), plus a random "head start" in picross patches
+  on the gentler difficulties. The generator now *repairs the stitch texture instead*: it flips a
+  few solution pixels (exactly like the weave's own cross-stitch specks — the revealed artwork is
+  untouched) until every region falls to plain 3×3 counting with the full clue set and every picross
+  patch falls to line logic from a blank grid. Same guarantee as before, on every tier: *no guessing
+  ever required* — but now also *nothing solved for you*.
+- **One-time effect on old saves:** the repaired texture differs from the old one in a handful of
+  cells per map, so a few of your previously-correct marks may show up red after updating — use
+  **Clear my errors** and re-stitch those spots. A completed region containing such a cell may
+  re-open. Your progress is otherwise intact.
+- Online co-op needs both players on this version (the usual version handshake).
+
+### Dev
+- `index.html?audit=1` (or `await auditGivens()` in the console) proves the guarantee: for every
+  map × difficulty it rebuilds the board and asserts zero pre-filled cells, every region solvable
+  with that tier's technique from the shipped clues alone, and every picross patch line-solvable.
+
+---
+
 ## [0.13.0] — 2026-07-02 — "Amigos" map
 
 ### Added

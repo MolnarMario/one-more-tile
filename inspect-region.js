@@ -2,6 +2,8 @@
 // verify-puzzle.js) then, per pixel-region, measure how much of the solve
 // needs cross-clue subtraction (advancedPass) vs plain counting (basicPass).
 // Also locate regions in reading order and dump a region's clue grid.
+// NOTE: predates the v0.14 no-givens texture repair (castle board only) —
+// for current behaviour use index.html?audit=1 / auditGivens().
 'use strict';
 const fs = require('fs');
 const GW = 120, GH = 64, N = GW * GH, SEED = 1337;

@@ -369,7 +369,10 @@ function buildNbhd(){
     nbhd[i] = list;
   }
 }
-// run the game's own clue generator per region and report forced starter givens
+// run the game's own clue generator per region and report ambiguous tiles —
+// spots the raw scan can't solve by pure logic. The shipped game repairs
+// these away with texture flips (repairTexture), so each costs a flipped
+// stitch pixel in-game, never a pre-filled square.
 function checkSolvable(){
   if (!ED.haveImage) return;
   buildNbhd();
@@ -383,7 +386,7 @@ function checkSolvable(){
   worst.sort((a, b) => b.g - a.g);
   const tiny = worst.filter(w => w.sz < 70).length;
   const top = worst.slice(0, 3).map(w => `R${w.r}:${w.g}`).join('  ');
-  setStatus(`Solvable ✓ (difficulty: ${difficulty}). ${total} starter givens total across ${REG_PIX} regions${tiny ? `, ${tiny} tiny region(s) <70 cells` : ''}. Heaviest: ${top}.`);
+  setStatus(`Solvable ✓ (difficulty: ${difficulty}). ${total} ambiguous tile(s) across ${REG_PIX} regions (repaired in-game, never pre-filled)${tiny ? `, ${tiny} tiny region(s) <70 cells` : ''}. Heaviest: ${top}.`);
   rebuildPanel();
 }
 
