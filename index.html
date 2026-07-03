@@ -82,6 +82,16 @@
   #loader p{color:var(--muted);font-size:13px;letter-spacing:1px}
   #loadBarWrap{width:280px;height:8px;border-radius:4px;background:rgba(96,66,158,.14);overflow:hidden}
   #loadBar{height:100%;width:0%;background:linear-gradient(90deg,#c75fb0,#8a5cf5)}
+  /* generation-animation mode: let the board show through and watch it being woven */
+  #loader.gen{background:transparent;justify-content:flex-start;padding-top:20px;gap:8px}
+  #loader.gen p{display:none}
+  #loader.gen #loadBarWrap{display:none}
+  #loader .skiphint{display:none}
+  #loader.gen .skiphint{display:block;font-size:11px;color:var(--muted);letter-spacing:1px;opacity:.75}
+  /* hide the game chrome while the loading animation plays (the loader bg is transparent then) */
+  #hud, #controls{transition:opacity .3s}
+  body.generating #hud, body.generating #controls{opacity:0;pointer-events:none}
+  body.generating #toast{opacity:0 !important}
 
   /* ---------- modal / overlay ---------- */
   .overlay{position:fixed;inset:0;background:rgba(86,64,140,.42);z-index:40;display:flex;
@@ -177,6 +187,7 @@
   <h1>NUMBER PUZZLES × STEROIDS</h1>
   <p>Stitching the canvas…</p>
   <div id="loadBarWrap"><div id="loadBar"></div></div>
+  <div class="skiphint">click or press any key to skip</div>
 </div>
 
 <div class="overlay" id="mistakeModal">
@@ -472,7 +483,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.14.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.15.0';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -1288,7 +1299,8 @@ function startGeneration(){
   sampleImage(img);     // paint + edge map (region borders flood along the edges)
   buildLayout();
   weaveTexture();
-  regenClues(finishSetup);
+  beginGen('load', finishSetup);   // animate the weave while the worker thins clues
+  regenClues(genClueReady);
 }
 
 // (re)derive the painting (sol + art colours), its sheltered pockets and the
@@ -1580,7 +1592,8 @@ function rebuildForMap(id, done){
     sampleImage(image);                // paint + edge map
     buildLayout();                     // regions flood along the edges; sudoku layout from seed
     weaveTexture();
-    regenClues(() => { if (loader) loader.classList.add('done'); done(); needsDraw = true; });
+    beginGen('map', () => { done(); needsDraw = true; });   // genComplete already marks the loader done
+    regenClues(genClueReady);
   };
   const cached = mapImgCache[id];
   if (cached && cached.complete) { setTimeout(() => apply(cached), 30); return; }
@@ -1667,7 +1680,8 @@ function regenClues(done){
   if (bar) bar.style.width = '0%';
   if (clueWorker) { clueWorker.terminate(); clueWorker = null; }   // cancel a superseded run (fast difficulty/map switches)
   let worker = null;
-  try { worker = makeClueWorker(); } catch (e) { worker = null; }
+  const forceSync = /[?&]nowork=/.test(location.search);   // debug/headless: run generation on the main thread
+  try { worker = forceSync ? null : makeClueWorker(); } catch (e) { worker = null; }
   if (!worker) { syncRegen(done, bar); return; }   // Workers/Blob unavailable → synchronous
   clueWorker = worker;
   worker.onerror = () => { worker.terminate(); if (clueWorker === worker) clueWorker = null; syncRegen(done, bar); };
@@ -1688,20 +1702,15 @@ function setDifficulty(d){
   difficulty = d;
   try { localStorage.setItem(DIFF_KEY, d); } catch (e) {}
   updateDiffSel();
-  const loader = document.getElementById('loader');
-  loader.querySelector('p').textContent = 'Reweaving the clues…';
-  loader.classList.remove('done');
-  setTimeout(() => {
-    regenClues(() => {
-      applyGivens();
-      clearUndo();                     // starters/clues changed; old snapshots no longer valid
-      updateHUD();
-      loader.classList.add('done');
-      needsDraw = true;
-      toast('Difficulty: ' + DIFF[d].label.replace(/^\S+ /, '') + ' — the clues have been rewoven. Your stitches are safe.', true);
-      setTimeout(maybeShowAdvanced, 520);
-    });
-  }, 80);
+  beginGen('diff', () => {
+    applyGivens();
+    clearUndo();                     // clues changed; old snapshots no longer valid
+    updateHUD();
+    needsDraw = true;
+    toast('Difficulty: ' + DIFF[d].label.replace(/^\S+ /, '') + ' — the clues have been rewoven. Your stitches are safe.', true);
+    setTimeout(maybeShowAdvanced, 520);
+  });
+  setTimeout(() => regenClues(genClueReady), 80);
   return true;
 }
 
@@ -1882,7 +1891,7 @@ function finishSetup(){
   updateHUD();
   fitView();
   document.getElementById('loader').classList.add('done');
-  requestAnimationFrame(loop);
+  startLoop();
   updateUndoBtn();
   setTimeout(maybeShowAdvanced, 600);   // returning players already on Hard+
   // dead last: kick off the (large) background-music download, well after the
@@ -1892,6 +1901,136 @@ function finishSetup(){
     if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 5000 });
     else initBgm();
   }, 1200);
+}
+
+// ============================================================
+//  GENERATION ANIMATION — the loading screen. Three staged beats,
+//  drawn on the game canvas while the clue worker crunches on another
+//  thread: (1) territories bloom in, (2) every square runs a
+//  "compute shimmer" of scrambling digits (NOT the true counts — so
+//  nothing is spoiled), (3) a sweep thins to the real clue set, kept
+//  clues crystallising from clue[]. Choreographed with a minimum
+//  duration and gated so it never finishes before generation is truly
+//  done; click / any key skips. Reuses the board camera + palette.
+// ============================================================
+let loopStarted = false;
+function startLoop(){ if (loopStarted) return; loopStarted = true; requestAnimationFrame(loop); }
+
+const GEN = { active:false, t0:0, clueReadyAt:-1, skip:false, done:null, kind:'load', _skip:null };
+let genRankX = null, genRankY = null;
+const GTL = { bloomWin:850, regDur:340, shimDelay:110, shimIn:300, shimHold:220, thinWin:950, settle:340, hold:300 };
+const genClamp = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const genEase  = v => { v = genClamp(v); return v * v * (3 - 2 * v); };
+// a stable per-cell pseudo-random digit that reshuffles ~every 85ms
+function genScramble(i, t){ let k = (((i + 1) * 2654435761) ^ ((((t / 85) | 0) + 1) * 40503)) >>> 0; return k % 10; }
+
+// order regions for the sweeps: bloom top→bottom, thin left→right (by centroid)
+function genPrep(){
+  const sx = new Float64Array(REG_COUNT), sy = new Float64Array(REG_COUNT), cn = new Float64Array(REG_COUNT);
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++){ const r = regionOf[y * GW + x]; if (r < 0 || r >= REG_COUNT) continue; sx[r] += x; sy[r] += y; cn[r]++; }
+  const cxf = r => cn[r] ? sx[r] / cn[r] : 0, cyf = r => cn[r] ? sy[r] / cn[r] : 0;
+  const ids = []; for (let r = 0; r < REG_COUNT; r++) ids.push(r);
+  genRankY = new Int32Array(REG_COUNT); genRankX = new Int32Array(REG_COUNT);
+  ids.slice().sort((a, b) => cyf(a) - cyf(b) || cxf(a) - cxf(b)).forEach((r, i) => genRankY[r] = i);
+  ids.slice().sort((a, b) => cxf(a) - cxf(b) || cyf(a) - cyf(b)).forEach((r, i) => genRankX[r] = i);
+}
+
+function beginGen(kind, done){
+  GEN.active = true; GEN.clueReadyAt = -1; GEN.skip = false; GEN.done = done; GEN.kind = kind;
+  genPrep();
+  if (kind !== 'diff') fitView();   // a difficulty switch keeps the player's camera (same board)
+  const now = performance.now();
+  const skipBloom = kind === 'diff';   // territories don't change on a difficulty switch — jump to the counting step
+  GEN.t0 = now - (skipBloom ? (GTL.bloomWin + GTL.regDur + GTL.shimDelay) : 0);
+  const loader = document.getElementById('loader');
+  if (loader){ loader.classList.remove('done'); loader.classList.add('gen'); const p = loader.querySelector('p'); if (p) p.textContent = kind === 'diff' ? 'Reweaving the clues…' : 'Weaving the canvas…'; }
+  if (GEN._skip){ removeEventListener('keydown', GEN._skip); removeEventListener('pointerdown', GEN._skip); }   // a re-entrant beginGen must not orphan the previous run's listeners
+  GEN._skip = () => { GEN.skip = true; needsDraw = true; };
+  addEventListener('keydown', GEN._skip); addEventListener('pointerdown', GEN._skip);
+  document.body.classList.add('generating');
+  startLoop();
+}
+// the clue worker has finished and clue[] is now the real thinned set
+function genClueReady(){ GEN.clueReadyAt = performance.now(); needsDraw = true; }
+// earliest the thinning sweep may start: after the fixed shimmer window, but
+// never before the real clues exist (Infinity while the worker is still busy)
+function genThinBeginRel(){ return GEN.clueReadyAt < 0 ? Infinity : Math.max(GTL.bloomWin + GTL.regDur + GTL.shimDelay + GTL.shimIn + GTL.shimHold, GEN.clueReadyAt - GEN.t0); }
+function genDoneNow(now){
+  if (GEN.clueReadyAt < 0) return false;                 // never hand off before generation is real
+  const doneRel = genThinBeginRel() + GTL.thinWin + GTL.settle + GTL.hold;
+  let rel = now - GEN.t0; if (GEN.skip) rel = 1e9;
+  return rel >= doneRel;
+}
+function genComplete(){
+  if (!GEN.active) return;
+  GEN.active = false;
+  removeEventListener('keydown', GEN._skip); removeEventListener('pointerdown', GEN._skip); GEN._skip = null;
+  document.body.classList.remove('generating');
+  const loader = document.getElementById('loader'); if (loader) loader.classList.add('done');   // keep .gen so the bg stays transparent while the title fades over the finished board
+  const cb = GEN.done; GEN.done = null;
+  if (cb) cb();
+  needsDraw = true;
+}
+
+function drawGen(now){
+  const v = players[0].view, s = v.s;
+  let rel = now - GEN.t0; if (GEN.skip && GEN.clueReadyAt >= 0) rel = 1e9;   // skip snaps to the finished board once the clues exist
+  const maxR = Math.max(1, REG_COUNT - 1), thinBegin = genThinBeginRel();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, innerWidth, innerHeight);
+  const pw = innerWidth, ph = innerHeight;
+  const gx0 = Math.max(0, Math.floor(-v.x / s)), gy0 = Math.max(0, Math.floor(-v.y / s));
+  const gx1 = Math.min(GW - 1, Math.ceil((pw - v.x) / s)), gy1 = Math.min(GH - 1, Math.ceil((ph - v.y) / s));
+  ctx.fillStyle = C.boardEdge; ctx.fillRect(v.x - 3, v.y - 3, GW * s + 6, GH * s + 6);
+  // ---- cells: territories bloom in ----
+  for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++){
+    const i = gy * GW + gx, px = v.x + gx * s, py = v.y + gy * s, r = regionOf[i];
+    ctx.fillStyle = '#150f28'; ctx.fillRect(px, py, s + 0.5, s + 0.5);
+    if (r >= 0 && regionDone[r]){ ctx.fillStyle = cellCol[i]; ctx.fillRect(px, py, s + 0.5, s + 0.5); continue; }   // a difficulty switch keeps solved regions — show their revealed art, not flat tint
+    const bA = r < 0 ? 0 : genEase((rel - (genRankY[r] / maxR) * GTL.bloomWin) / GTL.regDur);
+    if (bA > 0){ ctx.globalAlpha = bA; ctx.fillStyle = zoneOf[i] >= 0 ? C.zoneBg : regionTint[r]; ctx.fillRect(px, py, s + 0.5, s + 0.5); ctx.globalAlpha = 1; }
+  }
+  // ---- grid ----
+  if (s >= 5){ ctx.strokeStyle = C.grid; ctx.lineWidth = 1; ctx.beginPath();
+    for (let gx = gx0; gx <= gx1 + 1; gx++){ ctx.moveTo(v.x + gx * s, v.y + gy0 * s); ctx.lineTo(v.x + gx * s, v.y + (gy1 + 1) * s); }
+    for (let gy = gy0; gy <= gy1 + 1; gy++){ ctx.moveTo(v.x + gx0 * s, v.y + gy * s); ctx.lineTo(v.x + (gx1 + 1) * s, v.y + gy * s); } ctx.stroke(); }
+  // ---- numbers: compute-shimmer, then thin to the real clues ----
+  if (s >= 9){
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `600 ${Math.floor(s * 0.58)}px "Segoe UI",system-ui,sans-serif`;
+    for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++){
+      const i = gy * GW + gx, r = regionOf[i];
+      if (r < 0 || r >= REG_PIX || regionDone[r] || zoneOf[i] >= 0 || picrossOf[i] >= 0) continue;   // organic, not-yet-solved cells only
+      const ss = (genRankY[r] / maxR) * GTL.bloomWin + GTL.regDur + GTL.shimDelay;
+      if (rel < ss) continue;
+      let alpha, val, crisp = false;
+      if (rel < thinBegin){ alpha = 0.8 * genEase((rel - ss) / GTL.shimIn); val = genScramble(i, rel); }
+      else {
+        const p = genEase((rel - (thinBegin + (genRankX[r] / maxR) * GTL.thinWin)) / GTL.settle);
+        if (clue[i] >= 0){ crisp = p >= 0.5; alpha = 0.8 + 0.2 * p; val = crisp ? clue[i] : genScramble(i, rel); }
+        else { alpha = 0.8 * (1 - p); val = genScramble(i, rel); }
+      }
+      if (alpha <= 0.02) continue;
+      ctx.globalAlpha = alpha; ctx.fillStyle = crisp ? C.clue : 'rgba(71,58,110,.72)';
+      ctx.fillText(val, v.x + (gx + 0.5) * s, v.y + (gy + 0.55) * s);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // ---- region borders (fade in with the bloom) ----
+  const borderA = genClamp(rel / (GTL.bloomWin + GTL.regDur));
+  if (borderA > 0){
+    ctx.strokeStyle = C.regionBorder; ctx.globalAlpha = borderA; ctx.lineWidth = Math.max(2, s * 0.13); ctx.beginPath();
+    for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++){
+      const i = gy * GW + gx, px = v.x + gx * s, py = v.y + gy * s;
+      if (gx < GW - 1 && regionOf[i] !== regionOf[i + 1])  { ctx.moveTo(px + s, py); ctx.lineTo(px + s, py + s); }
+      if (gy < GH - 1 && regionOf[i] !== regionOf[i + GW]) { ctx.moveTo(px, py + s); ctx.lineTo(px + s, py + s); }
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  // ---- phase caption ----
+  const phase = (GEN.kind !== 'diff' && rel < GTL.bloomWin + GTL.regDur) ? 'growing the territories'
+    : (rel < thinBegin ? 'counting every square' : 'thinning to the real clues');
+  ctx.font = '600 12px "Segoe UI",system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(183,169,214,.9)'; ctx.fillText(phase.toUpperCase() + '…', innerWidth / 2, innerHeight - 24);
 }
 
 // ---------- dev: zero-given audit ----------
@@ -2324,6 +2463,7 @@ function scheduleSave(){
   // the joiner's). The joiner never writes localStorage, so its solo progress for
   // this map is left untouched and restored on disconnect.
   if (net && onlineRole === 'join') return;
+  if (GEN.active) return;   // never persist mid-switch: state[] can still be the old map's paint
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
@@ -3287,6 +3427,7 @@ function PeerNet(){
 // ============================================================
 function loop(now){
   requestAnimationFrame(loop);
+  if (GEN.active){ drawGen(now); if (genDoneNow(now)) genComplete(); return; }   // loading animation owns the frame
   pollGamepad(now);
   maybeSendPresence(now);     // online: share this player's cursor + viewport with the peer
   updateTimer();              // live session clock; ticks every frame, re-renders only on change
@@ -3687,7 +3828,7 @@ function setZoneDigit(zone, p, v){
 cvs.addEventListener('contextmenu', e => e.preventDefault());
 
 cvs.addEventListener('mousedown', e => {
-  if (!generated) return;
+  if (!generated || GEN.active) return;
   const pl = mousePlayer();
   pl.viewAnim = null;
   // the mouse acts only within its own pane (player 0's)
@@ -3738,6 +3879,7 @@ cvs.addEventListener('mousedown', e => {
 });
 
 addEventListener('mousemove', e => {
+  if (GEN.active) return;   // ignore hover/drag while the loading animation is playing
   const pl = mousePlayer(), r = localPaneRect(pl);
   const inPane = e.clientX >= r.x && e.clientX < r.x + r.w && e.clientY >= r.y && e.clientY < r.y + r.h;
   const h = inPane ? cellAt(localX(e.clientX, pl), localY(e.clientY, pl), pl.view) : -1;
@@ -3760,6 +3902,7 @@ addEventListener('mouseup', () => { mousePlayer().drag = null; cvs.classList.rem
 
 cvs.addEventListener('wheel', e => {
   e.preventDefault();
+  if (GEN.active) return;   // don't zoom the camera the loading animation is drawing through
   const pl = playerAt(e.clientX, e.clientY);   // zoom whichever pane the pointer is over
   if (pl._remote) return;                      // can't zoom a partner's mirrored view
   const v = pl.view, lx = localX(e.clientX, pl), ly = localY(e.clientY, pl);
@@ -3772,6 +3915,7 @@ cvs.addEventListener('wheel', e => {
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
+  if (GEN.active) return;   // the loading animation owns the frame — no gameplay keys reach a board mid-generation (skip is a separate listener)
   if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
   const pl = mousePlayer();   // the keyboard belongs to player 1 (the mouse player)
   // digits go to the selected sudoku-plot cell

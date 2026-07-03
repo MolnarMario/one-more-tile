@@ -5,6 +5,23 @@ shipped to the live site.
 
 ---
 
+## [0.15.0] — 2026-07-03 — Watch the canvas being woven
+
+### Added
+- **The loading screen now shows the puzzle being generated instead of a plain bar.** Three staged
+  beats play on the board while the clues are computed: the **territories bloom in** (regions and
+  their borders, sudoku/picross plots dropping into place), then **every square runs a "compute
+  shimmer"** of flickering digits, then a sweep **thins down to the real clues**, the surviving
+  numbers crystallising into place. It runs on the otherwise-idle main thread while the heavy work
+  happens in a background worker, so it costs nothing extra, and it's **spoiler-safe** — the shimmer
+  is random digits, never the true counts; only the clues you'd actually get resolve to real numbers.
+- **Click or press any key to skip** straight to the board (it still waits for generation to finish).
+- The animation is choreographed with a short minimum duration so quick maps still get a satisfying
+  show, and it never ends before the board is truly ready. Difficulty changes jump straight to the
+  re-thinning step (the territories don't change).
+
+---
+
 ## [0.14.0] — 2026-07-02 — No pre-filled squares, ever
 
 ### Changed
