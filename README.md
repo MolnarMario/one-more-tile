@@ -8,6 +8,9 @@ No build, no server, no dependencies — open `index.html` in a browser and play
 
 **▶ Play it now: https://molnarmario.github.io/number-puzzles-x-steroids/**
 
+> New here and want the full engineering rundown (architecture, data flow, key globals, where the
+> seams are)? See **[CLAUDE.md](CLAUDE.md)** — a map of the codebase written for a new person or AI.
+
 ---
 
 ## What's inside
@@ -39,16 +42,26 @@ sudoku/picross attached to it, and that character greets you with a line in a di
 **Click a finished region again** to replay its quote. Quotes are an easy-to-edit table in the
 source (`MAP_QUOTES`), keyed by region id — add maps and lines freely.
 
-### Difficulty — guessing is never required
-**5 tiers** (Very Easy → Very Hard) scale clue density, free 0/9 moves, sudoku givens, jigsaw
-irregularity and picross head starts all at once. Switching tiers re-weaves the clues *without
-losing your progress*.
+### Difficulty — nothing pre-filled, guessing never required
+**5 tiers** (Very Easy → Very Hard) scale clue density, free 0/9 moves, sudoku givens, and jigsaw
+irregularity all at once. Switching tiers re-weaves the clues *without losing your progress*.
 
 - **Very Easy / Easy / Medium** are solvable by plain neighbour-counting alone.
 - **Hard / Very Hard** add *Advanced Deductions* (comparing overlapping clues) — explained by an
   in-game tutorial the first time you reach them.
-- At **every** tier the board is provably solvable with no guessing — the generator reveals a few
-  pre-stitched starter tiles wherever pure logic would stall.
+- **Every tile is yours to stitch — the board is never pre-filled.** At every tier the puzzle is
+  provably solvable by pure logic, achieved by *repairing the texture* rather than revealing
+  answers: before any clue is shown, the generator flips a handful of stitch pixels so the board
+  falls to logic on its own (details below). No starter tiles, no head-starts, no guessing.
+
+### The loading screen shows the puzzle being built
+Instead of a plain progress bar, the load animates the real generation on the board: the
+**territories bloom in** with their borders and plots, every square runs a **"compute shimmer"** of
+flickering digits, then a sweep **thins down to the real clues**. It's spoiler-safe (the shimmer is
+random digits, not the true counts) and it runs on the idle main thread while the clues are computed
+in a background worker, so it's essentially free. A slim **progress bar** in the top card shows the
+real clue-thinning progress, and you can **scroll to zoom** the board while it loads. Bigger maps
+(more to compute) get a slower, more deliberate reveal.
 
 ### Quality of life
 - **Play timer** in the header, from your first stitch.
@@ -59,6 +72,8 @@ losing your progress*.
 - **3×3 highlight** around the tile under your mouse/controller cursor.
 - **Share** — export your whole canvas as a copy-pasteable code or a `.npxs` file, and import a
   friend's; the recipient's game replays the progress, completed regions and all.
+- **Multiplayer** — local split-screen co-op (up to 4) and online co-op/watch (both peers must be
+  on the same version). In an online session you can keep the shared board as your own solo save.
 - **Mistake forgiveness** (no game over), autosave per map, pan/zoom, and full **gamepad support**
   with remappable buttons.
 
@@ -71,10 +86,10 @@ losing your progress*.
 | Left click / `A` | stitch light (toggle) · cycle sudoku digit up · replay a finished region's quote |
 | Right click / `B` | mark dark (toggle) · cycle sudoku digit down |
 | Drag | paint multiple tiles |
-| Wheel / `RB`·`LB` | zoom |
+| Wheel / `RB`·`LB` | zoom (works during the loading animation too) |
 | Middle-drag, space-drag / right stick | pan |
 | `Ctrl+Z` | undo |
-| `H` | hint · `F` fit view · `Z` / `X` mark hovered tile light / dark |
+| `H` | hint · `F` fit view · `+`/`−` zoom · `Z` / `X` mark hovered tile light / dark |
 | 🎮 button | controller status + button remapping |
 
 ---
@@ -84,23 +99,36 @@ losing your progress*.
 Everything is generated deterministically (per-map seed) at load time:
 
 1. **Image → answer.** Downscale to the board, adaptive-threshold (Otsu + local mean) into a
-   two-tone light/dark painting; keep the art colours for the reveal.
+   two-tone light/dark painting (`sol`); keep the art colours (`cellCol`) for the reveal.
 2. **Edges → borders.** Build an edge-strength map and flood region seeds as a marker-controlled
-   watershed, so borders settle along the picture's outlines.
+   watershed, so borders settle along the picture's outlines. (Hand-authored maps supply their
+   partition directly instead.)
 3. **Texture.** Shelter a few flat pockets, then "weave" cross-stitch specks so no 3×3 is uniform
    except in those pockets (the only places 0/9 clues can live).
-4. **Clues.** Every fill-a-pix number is the light-count of its region-clipped 3×3; every picross
-   run is read off the painting; sudoku grids come from the seed.
-5. **Solvability guarantee.** The clue pruner only keeps a set its own logic-solver can finish, and
-   reveals starter givens wherever logic would stall — for *any* image, shape or region layout.
+4. **Repair to solvable.** `repairTexture()` runs the counting solver over each region (and a line
+   solver over each picross patch) and, wherever they'd stall on a genuinely ambiguous spot, flips
+   a few `sol` pixels to break the ambiguity — until every region falls to basic counting and every
+   picross to line logic **with no pre-filled cells**. This is why the board is never seeded with
+   answers, on any tier. `sol` is frozen after this step.
+5. **Clues.** Every fill-a-pix number is the light-count of its region-clipped 3×3; every picross
+   run is read off the painting; sudoku grids come from the seed. The clue pruner then removes as
+   many clues as its own logic-solver can still finish without (fewer = harder tier).
 
-`verify-puzzle.js` (run `node verify-puzzle.js`; needs the `_pixels.txt` dump) independently proves
-the base Castle map solvable at every tier, with unique sudoku and line-solvable picross. Other
-maps rely on the same in-engine guarantee, which holds structurally for any partition.
+### Verifying solvability
+Open **`index.html?audit=1`** (or run `await auditGivens()` in the console). It rebuilds every map ×
+every difficulty and asserts: **zero pre-filled cells**, every region solvable from the shipped
+clues at that tier's technique level, and every picross line-solvable. The page title flips to
+`AUDIT PASS`/`AUDIT FAIL` (headless-friendly). *(The older Node harnesses `verify-puzzle.js` and
+`inspect-region.js` predate the no-givens rework and cover only the base Castle map — the in-browser
+audit supersedes them.)*
+
+---
 
 ## Adding a map
 
-Embed an image as a data URI and add an entry to the `MAPS` array in `index.html`:
+Two ways:
+
+**By hand** — embed an image as a data URI and add an entry to the `MAPS` array in `index.html`:
 
 ```js
 { id: 'mymap', name: '🎨 My Map', src: IMG_SRC_3, seed: 12345 }
@@ -109,10 +137,44 @@ Embed an image as a data URI and add an entry to the `MAPS` array in `index.html
 Omit `gw`/`gh` and the board auto-sizes to the image's aspect; plots auto-place; regions grow to
 fit. Optionally add a `MAP_QUOTES['mymap']` table of region-id → quote.
 
+**With the editor** — open `region-editor.html`, load an image, draw region borders (the tool
+auto-detects each region, auto-places the sudoku/picross plots, and lets you attach a quote per
+region), and **Export** a `.npxsmap.json`. Then bake it into the game:
+
+```sh
+node _bake_map.js mymap.npxsmap.json --name "🎨 My Map"
+```
+
+This inserts the image, a `HAND_LAYOUTS` partition, a `MAPS` entry and any quotes into `index.html`.
+
+---
+
+## Debug flags
+
+- **`?audit=1`** — run the solvability audit across all maps × tiers (see above); skips normal boot.
+- **`?nowork=1`** — force clue generation to run synchronously on the main thread instead of in the
+  Web Worker (handy for headless testing / debugging).
+
 ## Dev tools (not shipped)
 
-- `region-map.html` — a region inspector: renders each map's art with region borders and ids
+Built from `index.html` so they reuse the game's *exact* generation code — rerun the builder after
+changing the relevant part of `index.html`:
+
+- **`region-editor.html`** — the map authoring editor described above.
+  Built by `node _build_editor.js` (from `index.html` + `_editor.src.js`).
+- **`region-map.html`** — a region inspector: renders each map's art with region borders and ids
   (`R`n region, `S`n sudoku, `P`n picross) plus each plot's home region, for assigning quotes.
-  Built from `index.html` via `node _build_inspector.js`.
-- `inspect-region.js` — per-region analysis (clue counts, the forced cross-clue subtractions a
-  tier needs, a full step-by-step solve path).
+  Built by `node _build_inspector.js`.
+- **`_bake_map.js`** — bakes an exported `.npxsmap.json` into `index.html` as a built-in map.
+- **`verify-puzzle.js` / `inspect-region.js`** — legacy Castle-only Node analysis harnesses,
+  superseded by `?audit=1` (kept for reference).
+
+## Deploying
+
+The live site is GitHub Pages (deploy-from-branch, `master` root, with a `.nojekyll` marker). A push
+to `master` triggers the GitHub-managed "pages build and deployment" workflow. **Pages deploys one
+at a time**, so avoid triggering concurrent deployments (empty re-trigger commits or explicit build
+requests) — they make the deploy job fail with *"Deployment failed, try again later."* One clean
+push per change; if a deploy flakes transiently, re-run *that* workflow run rather than pushing more.
+`APP_VERSION` (top of the `index.html` script, echoed bottom-right) tracks the shipped version and
+must match between online-multiplayer peers; keep it in sync with `CHANGELOG.md`.
