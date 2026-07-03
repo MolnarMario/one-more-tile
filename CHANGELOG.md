@@ -5,6 +5,17 @@ shipped to the live site.
 
 ---
 
+## [0.15.2] — 2026-07-03 — Loading progress + zoom while it loads
+
+### Added
+- **A slim progress bar during loading** shows real clue-thinning progress (with a live %), so on a
+  big map you can see how much is actually done while the squares are twitching — not just a spinner.
+- **Zoom while the map is loading.** Scroll (or press +/−, and F to fit) to zoom the board during the
+  loading animation — handy for watching the numbers resolve up close, and it makes the shimmer
+  legible on very large maps. Clicking or pressing Esc still skips to the board.
+
+---
+
 ## [0.15.1] — 2026-07-03 — Loading animation paced to the map
 
 ### Changed

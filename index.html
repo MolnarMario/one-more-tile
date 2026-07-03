@@ -83,7 +83,7 @@
   #loadBarWrap{width:280px;height:8px;border-radius:4px;background:rgba(96,66,158,.14);overflow:hidden}
   #loadBar{height:100%;width:0%;background:linear-gradient(90deg,#c75fb0,#8a5cf5)}
   /* generation-animation mode: let the board show through and watch it being woven */
-  #loader.gen{background:transparent;justify-content:flex-start;padding-top:20px;gap:8px}
+  #loader.gen{background:transparent;justify-content:flex-start;padding-top:20px;gap:8px;pointer-events:none}   /* let scroll/zoom reach the canvas beneath while loading */
   #loader.gen p{display:none}
   #loader.gen #loadBarWrap{display:none}
   #loader .skiphint{display:none}
@@ -187,7 +187,7 @@
   <h1>NUMBER PUZZLES × STEROIDS</h1>
   <p>Stitching the canvas…</p>
   <div id="loadBarWrap"><div id="loadBar"></div></div>
-  <div class="skiphint">click or press any key to skip</div>
+  <div class="skiphint">scroll to zoom · click or Esc to skip</div>
 </div>
 
 <div class="overlay" id="mistakeModal">
@@ -483,7 +483,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.15.1';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.15.2';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -1666,7 +1666,7 @@ function makeClueWorker(){
 function syncRegen(done, bar){
   let idx = 0;
   (function step(){
-    if (idx < REG_PIX) { genRegionClues(idx); idx++; if (bar) bar.style.width = (idx / REG_PIX * 100) + '%'; setTimeout(step, 0); }
+    if (idx < REG_PIX) { genRegionClues(idx); idx++; GEN.progress = idx / REG_PIX; if (bar) bar.style.width = (idx / REG_PIX * 100) + '%'; setTimeout(step, 0); }
     else done();
   })();
 }
@@ -1687,7 +1687,7 @@ function regenClues(done){
   worker.onerror = () => { worker.terminate(); if (clueWorker === worker) clueWorker = null; syncRegen(done, bar); };
   worker.onmessage = ev => {
     const d = ev.data;
-    if (d.progress !== undefined) { if (bar) bar.style.width = (d.progress * 100) + '%'; return; }
+    if (d.progress !== undefined) { GEN.progress = d.progress; if (bar) bar.style.width = (d.progress * 100) + '%'; return; }
     const wc = d.clue, wl = d.locked;                // merge only the organic-region cells (picross/sudoku already set)
     for (let i = 0; i < N; i++) if (regionOf[i] >= 0 && regionOf[i] < REG_PIX) { clue[i] = wc[i]; locked[i] = wl[i]; }
     worker.terminate(); if (clueWorker === worker) clueWorker = null;
@@ -1916,7 +1916,7 @@ function finishSetup(){
 let loopStarted = false;
 function startLoop(){ if (loopStarted) return; loopStarted = true; requestAnimationFrame(loop); }
 
-const GEN = { active:false, t0:0, clueReadyAt:-1, skip:false, done:null, kind:'load', _skip:null, tl:null };
+const GEN = { active:false, t0:0, clueReadyAt:-1, skip:false, done:null, kind:'load', _skip:null, tl:null, progress:0 };
 let genRankX = null, genRankY = null;
 // base timeline (ms). The INITIAL phases (bloom + shimmer ramp) are scaled up
 // per-run by board size — see beginGen — so heavier maps (which have more
@@ -1939,7 +1939,7 @@ function genPrep(){
 }
 
 function beginGen(kind, done){
-  GEN.active = true; GEN.clueReadyAt = -1; GEN.skip = false; GEN.done = done; GEN.kind = kind;
+  GEN.active = true; GEN.clueReadyAt = -1; GEN.skip = false; GEN.done = done; GEN.kind = kind; GEN.progress = 0;
   genPrep();
   if (kind !== 'diff') fitView();   // a difficulty switch keeps the player's camera (same board)
   const now = performance.now();
@@ -1956,13 +1956,16 @@ function beginGen(kind, done){
   const loader = document.getElementById('loader');
   if (loader){ loader.classList.remove('done'); loader.classList.add('gen'); const p = loader.querySelector('p'); if (p) p.textContent = kind === 'diff' ? 'Reweaving the clues…' : 'Weaving the canvas…'; }
   if (GEN._skip){ removeEventListener('keydown', GEN._skip); removeEventListener('pointerdown', GEN._skip); }   // a re-entrant beginGen must not orphan the previous run's listeners
-  GEN._skip = () => { GEN.skip = true; needsDraw = true; };
+  GEN._skip = (e) => {   // a click skips; among keys only Esc/Enter skip — the zoom keys (+ − = f) stay live for the camera
+    if (e && e.type === 'keydown' && e.key !== 'Escape' && e.key !== 'Enter') return;
+    GEN.skip = true; needsDraw = true;
+  };
   addEventListener('keydown', GEN._skip); addEventListener('pointerdown', GEN._skip);
   document.body.classList.add('generating');
   startLoop();
 }
 // the clue worker has finished and clue[] is now the real thinned set
-function genClueReady(){ GEN.clueReadyAt = performance.now(); needsDraw = true; }
+function genClueReady(){ GEN.clueReadyAt = performance.now(); GEN.progress = 1; needsDraw = true; }
 // earliest the thinning sweep may start: after the fixed shimmer window, but
 // never before the real clues exist (Infinity while the worker is still busy)
 function genThinBeginRel(){ return GEN.clueReadyAt < 0 ? Infinity : Math.max(GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay + GEN.tl.shimIn + GEN.tl.shimHold, GEN.clueReadyAt - GEN.t0); }
@@ -2042,6 +2045,18 @@ function drawGen(now){
     : (rel < thinBegin ? 'counting every square' : 'thinning to the real clues');
   ctx.font = '600 12px "Segoe UI",system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
   ctx.fillStyle = 'rgba(183,169,214,.9)'; ctx.fillText(phase.toUpperCase() + '…', innerWidth / 2, innerHeight - 24);
+  // ---- real clue-thinning progress bar (fades in once the squares start twitching) ----
+  const barA = genEase((rel - (GEN.tl.regDur + GEN.tl.shimDelay)) / 300);
+  if (barA > 0) {
+    const bw = Math.min(240, innerWidth * 0.34), bx = (innerWidth - bw) / 2, by = innerHeight - 46, bh = 4;
+    ctx.globalAlpha = barA;
+    ctx.fillStyle = 'rgba(96,66,158,.30)'; ctx.fillRect(bx, by, bw, bh);
+    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0); g.addColorStop(0, '#c75fb0'); g.addColorStop(1, '#8a5cf5');
+    ctx.fillStyle = g; ctx.fillRect(bx, by, bw * genClamp(GEN.progress), bh);
+    ctx.font = '600 10px "Segoe UI",system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(183,169,214,.9)'; ctx.fillText(Math.round(GEN.progress * 100) + '%', bx + bw + 8, by + bh / 2);
+    ctx.globalAlpha = 1;
+  }
 }
 
 // ---------- dev: zero-given audit ----------
@@ -3913,8 +3928,7 @@ addEventListener('mouseup', () => { mousePlayer().drag = null; cvs.classList.rem
 
 cvs.addEventListener('wheel', e => {
   e.preventDefault();
-  if (GEN.active) return;   // don't zoom the camera the loading animation is drawing through
-  const pl = playerAt(e.clientX, e.clientY);   // zoom whichever pane the pointer is over
+  const pl = playerAt(e.clientX, e.clientY);   // zoom whichever pane the pointer is over — allowed during the loading animation too
   if (pl._remote) return;                      // can't zoom a partner's mirrored view
   const v = pl.view, lx = localX(e.clientX, pl), ly = localY(e.clientY, pl);
   const k = e.deltaY < 0 ? 1.13 : 1 / 1.13;
@@ -3926,9 +3940,13 @@ cvs.addEventListener('wheel', e => {
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
-  if (GEN.active) return;   // the loading animation owns the frame — no gameplay keys reach a board mid-generation (skip is a separate listener)
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
   const pl = mousePlayer();   // the keyboard belongs to player 1 (the mouse player)
+  // camera controls stay live even during the loading animation (they zoom, they don't skip — see GEN._skip)
+  if (e.key === 'f' || e.key === 'F') { fitView(pl); return; }
+  if (e.key === '+' || e.key === '=') { zoomCenter(1.25, pl); return; }
+  if (e.key === '-') { zoomCenter(1 / 1.25, pl); return; }
+  if (GEN.active) return;   // the loading animation owns the frame — no gameplay keys reach a board mid-generation
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
   // digits go to the selected sudoku-plot cell
   if (pl.selZ >= 0 && pl.selP >= 0 && !solving) {
     const zone = ZONES[pl.selZ];
@@ -3946,9 +3964,6 @@ addEventListener('keydown', e => {
   }
   if (e.code === 'Space') { pl.spaceHeld = true; e.preventDefault(); }
   else if (e.key === 'h' || e.key === 'H') giveHint(pl);
-  else if (e.key === 'f' || e.key === 'F') fitView(pl);
-  else if (e.key === '+' || e.key === '=') zoomCenter(1.25, pl);
-  else if (e.key === '-') zoomCenter(1 / 1.25, pl);
   else if ((e.key === 'z' || e.key === 'Z') && pl.hoverCell >= 0 && !solving && zoneOf[pl.hoverCell] < 0) { if (!regionDone[regionOf[pl.hoverCell]] && !locked[pl.hoverCell] && !gameWon) pushUndo(); setCell(pl.hoverCell, state[pl.hoverCell] === 1 ? 0 : 1); }
   else if ((e.key === 'x' || e.key === 'X') && pl.hoverCell >= 0 && !solving && zoneOf[pl.hoverCell] < 0) { if (!regionDone[regionOf[pl.hoverCell]] && !locked[pl.hoverCell] && !gameWon) pushUndo(); setCell(pl.hoverCell, state[pl.hoverCell] === 2 ? 0 : 2); }
 });
