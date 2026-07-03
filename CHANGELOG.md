@@ -5,9 +5,12 @@ shipped to the live site.
 
 ---
 
-## [0.15.2] — 2026-07-03 — Loading progress + zoom while it loads
+## [0.15.2] — 2026-07-03 — Loading progress, zoom, and a readable title card
 
 ### Added
+- **A readable title card at the top.** The title, a live status line, and the progress bar now sit
+  in an opaque card pinned to the top of the screen, so they stay legible over the moving board —
+  previously the purple-on-purple could wash them out, especially once you zoomed in.
 - **A slim progress bar during loading** shows real clue-thinning progress (with a live %), so on a
   big map you can see how much is actually done while the squares are twitching — not just a spinner.
 - **Zoom while the map is loading.** Scroll (or press +/−, and F to fit) to zoom the board during the

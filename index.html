@@ -76,16 +76,19 @@
 
   /* ---------- loading ---------- */
   #loader{position:fixed;inset:0;background:var(--bg);z-index:50;display:flex;
-    flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .5s}
+    flex-direction:column;align-items:center;justify-content:center;transition:opacity .5s}
   #loader.done{opacity:0;pointer-events:none}
+  #genPanel{display:flex;flex-direction:column;align-items:center;gap:16px}
   #loader h1{font-size:26px;letter-spacing:8px;color:var(--accent);font-weight:600}
-  #loader p{color:var(--muted);font-size:13px;letter-spacing:1px}
-  #loadBarWrap{width:280px;height:8px;border-radius:4px;background:rgba(96,66,158,.14);overflow:hidden}
-  #loadBar{height:100%;width:0%;background:linear-gradient(90deg,#c75fb0,#8a5cf5)}
-  /* generation-animation mode: let the board show through and watch it being woven */
-  #loader.gen{background:transparent;justify-content:flex-start;padding-top:20px;gap:8px;pointer-events:none}   /* let scroll/zoom reach the canvas beneath while loading */
-  #loader.gen p{display:none}
-  #loader.gen #loadBarWrap{display:none}
+  #loader p{color:var(--muted);font-size:13px;letter-spacing:1px;text-align:center}
+  #loadBarWrap{width:280px;height:8px;border-radius:4px;background:rgba(96,66,158,.18);overflow:hidden}
+  #loadBar{height:100%;width:0%;background:linear-gradient(90deg,#c75fb0,#8a5cf5);transition:width .18s ease-out}
+  /* generation-animation mode: the board shows through; the title/subtitle/bar sit
+     in an opaque card pinned to the top so they stay readable over the moving board */
+  #loader.gen{background:transparent;justify-content:flex-start;padding-top:20px;pointer-events:none}   /* pointer-events:none lets scroll/zoom reach the canvas beneath */
+  #loader.gen #genPanel{background:rgba(28,20,52,.94);border:1px solid var(--line);border-radius:14px;
+    padding:14px 26px 16px;gap:9px;box-shadow:0 12px 36px rgba(0,0,0,.45);max-width:min(680px,calc(100vw - 28px))}
+  #loader.gen h1{font-size:19px;letter-spacing:5px}
   #loader .skiphint{display:none}
   #loader.gen .skiphint{display:block;font-size:11px;color:var(--muted);letter-spacing:1px;opacity:.75}
   /* hide the game chrome while the loading animation plays (the loader bg is transparent then) */
@@ -184,10 +187,12 @@
 </div>
 
 <div id="loader">
-  <h1>NUMBER PUZZLES × STEROIDS</h1>
-  <p>Stitching the canvas…</p>
-  <div id="loadBarWrap"><div id="loadBar"></div></div>
-  <div class="skiphint">scroll to zoom · click or Esc to skip</div>
+  <div id="genPanel">
+    <h1>NUMBER PUZZLES × STEROIDS</h1>
+    <p>Stitching the canvas…</p>
+    <div id="loadBarWrap"><div id="loadBar"></div></div>
+    <div class="skiphint">scroll to zoom · click or Esc to skip</div>
+  </div>
 </div>
 
 <div class="overlay" id="mistakeModal">
@@ -1916,7 +1921,7 @@ function finishSetup(){
 let loopStarted = false;
 function startLoop(){ if (loopStarted) return; loopStarted = true; requestAnimationFrame(loop); }
 
-const GEN = { active:false, t0:0, clueReadyAt:-1, skip:false, done:null, kind:'load', _skip:null, tl:null, progress:0 };
+const GEN = { active:false, t0:0, clueReadyAt:-1, skip:false, done:null, kind:'load', _skip:null, tl:null, progress:0, _pct:-1, _hdr:'' };
 let genRankX = null, genRankY = null;
 // base timeline (ms). The INITIAL phases (bloom + shimmer ramp) are scaled up
 // per-run by board size — see beginGen — so heavier maps (which have more
@@ -1940,6 +1945,7 @@ function genPrep(){
 
 function beginGen(kind, done){
   GEN.active = true; GEN.clueReadyAt = -1; GEN.skip = false; GEN.done = done; GEN.kind = kind; GEN.progress = 0;
+  GEN._pct = -1; GEN._hdr = '';   // force the header to repaint on the first frame
   genPrep();
   if (kind !== 'diff') fitView();   // a difficulty switch keeps the player's camera (same board)
   const now = performance.now();
@@ -2041,22 +2047,16 @@ function drawGen(now){
     ctx.stroke(); ctx.globalAlpha = 1;
   }
   // ---- phase caption ----
-  const phase = (GEN.kind !== 'diff' && rel < GEN.tl.bloomWin + GEN.tl.regDur) ? 'growing the territories'
-    : (rel < thinBegin ? 'counting every square' : 'thinning to the real clues');
-  ctx.font = '600 12px "Segoe UI",system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-  ctx.fillStyle = 'rgba(183,169,214,.9)'; ctx.fillText(phase.toUpperCase() + '…', innerWidth / 2, innerHeight - 24);
-  // ---- real clue-thinning progress bar (fades in once the squares start twitching) ----
-  const barA = genEase((rel - (GEN.tl.regDur + GEN.tl.shimDelay)) / 300);
-  if (barA > 0) {
-    const bw = Math.min(240, innerWidth * 0.34), bx = (innerWidth - bw) / 2, by = innerHeight - 46, bh = 4;
-    ctx.globalAlpha = barA;
-    ctx.fillStyle = 'rgba(96,66,158,.30)'; ctx.fillRect(bx, by, bw, bh);
-    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0); g.addColorStop(0, '#c75fb0'); g.addColorStop(1, '#8a5cf5');
-    ctx.fillStyle = g; ctx.fillRect(bx, by, bw * genClamp(GEN.progress), bh);
-    ctx.font = '600 10px "Segoe UI",system-ui,sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(183,169,214,.9)'; ctx.fillText(Math.round(GEN.progress * 100) + '%', bx + bw + 8, by + bh / 2);
-    ctx.globalAlpha = 1;
-  }
+  // ---- header (DOM): phase + live % + bar, in the readable top card ----
+  const phase = (GEN.kind !== 'diff' && rel < GEN.tl.bloomWin + GEN.tl.regDur) ? 'Growing the territories'
+    : (rel < thinBegin ? 'Counting every square' : 'Thinning to the real clues');
+  genUpdateHeader(phase, Math.round(genClamp(GEN.progress) * 100));
+}
+// update the loading card's subtitle + bar only when the text/fill actually change
+function genUpdateHeader(phase, pct){
+  if (pct !== GEN._pct){ GEN._pct = pct; const b = document.getElementById('loadBar'); if (b) b.style.width = pct + '%'; }
+  const txt = phase + ' · ' + pct + '%';
+  if (txt !== GEN._hdr){ GEN._hdr = txt; const p = document.querySelector('#loader p'); if (p) p.textContent = txt; }
 }
 
 // ---------- dev: zero-given audit ----------
