@@ -191,7 +191,7 @@
     <h1>NUMBER PUZZLES × STEROIDS</h1>
     <p>Stitching the canvas…</p>
     <div id="loadBarWrap"><div id="loadBar"></div></div>
-    <div class="skiphint">scroll to zoom · click or Esc to skip</div>
+    <div class="skiphint">scroll to zoom</div>
   </div>
 </div>
 
@@ -488,7 +488,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.15.2';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.15.3';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -1921,7 +1921,7 @@ function finishSetup(){
 let loopStarted = false;
 function startLoop(){ if (loopStarted) return; loopStarted = true; requestAnimationFrame(loop); }
 
-const GEN = { active:false, t0:0, clueReadyAt:-1, skip:false, done:null, kind:'load', _skip:null, tl:null, progress:0, _pct:-1, _hdr:'' };
+const GEN = { active:false, t0:0, clueReadyAt:-1, done:null, kind:'load', tl:null, progress:0, _pct:-1, _hdr:'' };
 let genRankX = null, genRankY = null;
 // base timeline (ms). The INITIAL phases (bloom + shimmer ramp) are scaled up
 // per-run by board size — see beginGen — so heavier maps (which have more
@@ -1944,7 +1944,7 @@ function genPrep(){
 }
 
 function beginGen(kind, done){
-  GEN.active = true; GEN.clueReadyAt = -1; GEN.skip = false; GEN.done = done; GEN.kind = kind; GEN.progress = 0;
+  GEN.active = true; GEN.clueReadyAt = -1; GEN.done = done; GEN.kind = kind; GEN.progress = 0;
   GEN._pct = -1; GEN._hdr = '';   // force the header to repaint on the first frame
   genPrep();
   if (kind !== 'diff') fitView();   // a difficulty switch keeps the player's camera (same board)
@@ -1961,12 +1961,6 @@ function beginGen(kind, done){
   GEN.t0 = now - (skipBloom ? (GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay) : 0);
   const loader = document.getElementById('loader');
   if (loader){ loader.classList.remove('done'); loader.classList.add('gen'); const p = loader.querySelector('p'); if (p) p.textContent = kind === 'diff' ? 'Reweaving the clues…' : 'Weaving the canvas…'; }
-  if (GEN._skip){ removeEventListener('keydown', GEN._skip); removeEventListener('pointerdown', GEN._skip); }   // a re-entrant beginGen must not orphan the previous run's listeners
-  GEN._skip = (e) => {   // a click skips; among keys only Esc/Enter skip — the zoom keys (+ − = f) stay live for the camera
-    if (e && e.type === 'keydown' && e.key !== 'Escape' && e.key !== 'Enter') return;
-    GEN.skip = true; needsDraw = true;
-  };
-  addEventListener('keydown', GEN._skip); addEventListener('pointerdown', GEN._skip);
   document.body.classList.add('generating');
   startLoop();
 }
@@ -1978,13 +1972,11 @@ function genThinBeginRel(){ return GEN.clueReadyAt < 0 ? Infinity : Math.max(GEN
 function genDoneNow(now){
   if (GEN.clueReadyAt < 0) return false;                 // never hand off before generation is real
   const doneRel = genThinBeginRel() + GEN.tl.thinWin + GEN.tl.settle + GEN.tl.hold;
-  let rel = now - GEN.t0; if (GEN.skip) rel = 1e9;
-  return rel >= doneRel;
+  return (now - GEN.t0) >= doneRel;
 }
 function genComplete(){
   if (!GEN.active) return;
   GEN.active = false;
-  removeEventListener('keydown', GEN._skip); removeEventListener('pointerdown', GEN._skip); GEN._skip = null;
   document.body.classList.remove('generating');
   const loader = document.getElementById('loader'); if (loader) loader.classList.add('done');   // keep .gen so the bg stays transparent while the title fades over the finished board
   const cb = GEN.done; GEN.done = null;
@@ -1994,7 +1986,7 @@ function genComplete(){
 
 function drawGen(now){
   const v = players[0].view, s = v.s;
-  let rel = now - GEN.t0; if (GEN.skip && GEN.clueReadyAt >= 0) rel = 1e9;   // skip snaps to the finished board once the clues exist
+  const rel = now - GEN.t0;
   const maxR = Math.max(1, REG_COUNT - 1), thinBegin = genThinBeginRel();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, innerWidth, innerHeight);
@@ -3941,7 +3933,7 @@ cvs.addEventListener('wheel', e => {
 addEventListener('keydown', e => {
   if (e.repeat) return;
   const pl = mousePlayer();   // the keyboard belongs to player 1 (the mouse player)
-  // camera controls stay live even during the loading animation (they zoom, they don't skip — see GEN._skip)
+  // camera controls (zoom / fit) stay live even during the loading animation
   if (e.key === 'f' || e.key === 'F') { fitView(pl); return; }
   if (e.key === '+' || e.key === '=') { zoomCenter(1.25, pl); return; }
   if (e.key === '-') { zoomCenter(1 / 1.25, pl); return; }

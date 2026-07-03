@@ -5,6 +5,15 @@ shipped to the live site.
 
 ---
 
+## [0.15.3] — 2026-07-03 — Drop the skip prompt
+
+### Removed
+- **The "click or Esc to skip" prompt is gone.** Skipping could only ever take effect *after* the
+  puzzle finished generating (there's no board to skip to before then), so an early click did
+  nothing — confusing for no real benefit. The loading card now just shows the "scroll to zoom" hint.
+
+---
+
 ## [0.15.2] — 2026-07-03 — Loading progress, zoom, and a readable title card
 
 ### Added
