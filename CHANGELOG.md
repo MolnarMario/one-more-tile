@@ -5,6 +5,16 @@ shipped to the live site.
 
 ---
 
+## [0.15.1] — 2026-07-03 — Loading animation paced to the map
+
+### Changed
+- **The loading animation now runs slower on bigger maps** — the ones with more clue-thinning to do.
+  The opening bloom + number-shimmer are scaled to the board's size (up to ~2.5× on the largest
+  maps), so a heavy map gets a slower, more deliberate reveal instead of racing through the opening
+  and then waiting; small maps stay just as snappy as before.
+
+---
+
 ## [0.15.0] — 2026-07-03 — Watch the canvas being woven
 
 ### Added

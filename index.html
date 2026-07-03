@@ -483,7 +483,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.15.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.15.1';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -1916,9 +1916,12 @@ function finishSetup(){
 let loopStarted = false;
 function startLoop(){ if (loopStarted) return; loopStarted = true; requestAnimationFrame(loop); }
 
-const GEN = { active:false, t0:0, clueReadyAt:-1, skip:false, done:null, kind:'load', _skip:null };
+const GEN = { active:false, t0:0, clueReadyAt:-1, skip:false, done:null, kind:'load', _skip:null, tl:null };
 let genRankX = null, genRankY = null;
-const GTL = { bloomWin:850, regDur:340, shimDelay:110, shimIn:300, shimHold:220, thinWin:950, settle:340, hold:300 };
+// base timeline (ms). The INITIAL phases (bloom + shimmer ramp) are scaled up
+// per-run by board size — see beginGen — so heavier maps (which have more
+// clue-thinning to do) get a slower reveal; the data-driven phases stay fixed.
+const GTL_BASE = { bloomWin:850, regDur:340, shimDelay:110, shimIn:300, shimHold:220, thinWin:950, settle:340, hold:300 };
 const genClamp = v => v < 0 ? 0 : v > 1 ? 1 : v;
 const genEase  = v => { v = genClamp(v); return v * v * (3 - 2 * v); };
 // a stable per-cell pseudo-random digit that reshuffles ~every 85ms
@@ -1941,7 +1944,15 @@ function beginGen(kind, done){
   if (kind !== 'diff') fitView();   // a difficulty switch keeps the player's camera (same board)
   const now = performance.now();
   const skipBloom = kind === 'diff';   // territories don't change on a difficulty switch — jump to the counting step
-  GEN.t0 = now - (skipBloom ? (GTL.bloomWin + GTL.regDur + GTL.shimDelay) : 0);
+  // scale the initial bloom + shimmer ramp to the board's workload: a bigger
+  // board means more clues to thin afterward, so its reveal runs slower (up to
+  // ~2.5×). The thinning/settle phases stay at base — they're gated on the
+  // real clue data, which arrives when it arrives.
+  const sc = Math.min(2.5, Math.max(1, (GW * GH) / 7680));   // castle (7,680 cells) = 1× baseline
+  GEN.tl = { bloomWin: GTL_BASE.bloomWin * sc, regDur: GTL_BASE.regDur * sc, shimDelay: GTL_BASE.shimDelay,
+             shimIn: GTL_BASE.shimIn * sc, shimHold: GTL_BASE.shimHold, thinWin: GTL_BASE.thinWin,
+             settle: GTL_BASE.settle, hold: GTL_BASE.hold };
+  GEN.t0 = now - (skipBloom ? (GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay) : 0);
   const loader = document.getElementById('loader');
   if (loader){ loader.classList.remove('done'); loader.classList.add('gen'); const p = loader.querySelector('p'); if (p) p.textContent = kind === 'diff' ? 'Reweaving the clues…' : 'Weaving the canvas…'; }
   if (GEN._skip){ removeEventListener('keydown', GEN._skip); removeEventListener('pointerdown', GEN._skip); }   // a re-entrant beginGen must not orphan the previous run's listeners
@@ -1954,10 +1965,10 @@ function beginGen(kind, done){
 function genClueReady(){ GEN.clueReadyAt = performance.now(); needsDraw = true; }
 // earliest the thinning sweep may start: after the fixed shimmer window, but
 // never before the real clues exist (Infinity while the worker is still busy)
-function genThinBeginRel(){ return GEN.clueReadyAt < 0 ? Infinity : Math.max(GTL.bloomWin + GTL.regDur + GTL.shimDelay + GTL.shimIn + GTL.shimHold, GEN.clueReadyAt - GEN.t0); }
+function genThinBeginRel(){ return GEN.clueReadyAt < 0 ? Infinity : Math.max(GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay + GEN.tl.shimIn + GEN.tl.shimHold, GEN.clueReadyAt - GEN.t0); }
 function genDoneNow(now){
   if (GEN.clueReadyAt < 0) return false;                 // never hand off before generation is real
-  const doneRel = genThinBeginRel() + GTL.thinWin + GTL.settle + GTL.hold;
+  const doneRel = genThinBeginRel() + GEN.tl.thinWin + GEN.tl.settle + GEN.tl.hold;
   let rel = now - GEN.t0; if (GEN.skip) rel = 1e9;
   return rel >= doneRel;
 }
@@ -1987,7 +1998,7 @@ function drawGen(now){
     const i = gy * GW + gx, px = v.x + gx * s, py = v.y + gy * s, r = regionOf[i];
     ctx.fillStyle = '#150f28'; ctx.fillRect(px, py, s + 0.5, s + 0.5);
     if (r >= 0 && regionDone[r]){ ctx.fillStyle = cellCol[i]; ctx.fillRect(px, py, s + 0.5, s + 0.5); continue; }   // a difficulty switch keeps solved regions — show their revealed art, not flat tint
-    const bA = r < 0 ? 0 : genEase((rel - (genRankY[r] / maxR) * GTL.bloomWin) / GTL.regDur);
+    const bA = r < 0 ? 0 : genEase((rel - (genRankY[r] / maxR) * GEN.tl.bloomWin) / GEN.tl.regDur);
     if (bA > 0){ ctx.globalAlpha = bA; ctx.fillStyle = zoneOf[i] >= 0 ? C.zoneBg : regionTint[r]; ctx.fillRect(px, py, s + 0.5, s + 0.5); ctx.globalAlpha = 1; }
   }
   // ---- grid ----
@@ -2000,12 +2011,12 @@ function drawGen(now){
     for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++){
       const i = gy * GW + gx, r = regionOf[i];
       if (r < 0 || r >= REG_PIX || regionDone[r] || zoneOf[i] >= 0 || picrossOf[i] >= 0) continue;   // organic, not-yet-solved cells only
-      const ss = (genRankY[r] / maxR) * GTL.bloomWin + GTL.regDur + GTL.shimDelay;
+      const ss = (genRankY[r] / maxR) * GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay;
       if (rel < ss) continue;
       let alpha, val, crisp = false;
-      if (rel < thinBegin){ alpha = 0.8 * genEase((rel - ss) / GTL.shimIn); val = genScramble(i, rel); }
+      if (rel < thinBegin){ alpha = 0.8 * genEase((rel - ss) / GEN.tl.shimIn); val = genScramble(i, rel); }
       else {
-        const p = genEase((rel - (thinBegin + (genRankX[r] / maxR) * GTL.thinWin)) / GTL.settle);
+        const p = genEase((rel - (thinBegin + (genRankX[r] / maxR) * GEN.tl.thinWin)) / GEN.tl.settle);
         if (clue[i] >= 0){ crisp = p >= 0.5; alpha = 0.8 + 0.2 * p; val = crisp ? clue[i] : genScramble(i, rel); }
         else { alpha = 0.8 * (1 - p); val = genScramble(i, rel); }
       }
@@ -2016,7 +2027,7 @@ function drawGen(now){
     ctx.globalAlpha = 1;
   }
   // ---- region borders (fade in with the bloom) ----
-  const borderA = genClamp(rel / (GTL.bloomWin + GTL.regDur));
+  const borderA = genClamp(rel / (GEN.tl.bloomWin + GEN.tl.regDur));
   if (borderA > 0){
     ctx.strokeStyle = C.regionBorder; ctx.globalAlpha = borderA; ctx.lineWidth = Math.max(2, s * 0.13); ctx.beginPath();
     for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++){
@@ -2027,7 +2038,7 @@ function drawGen(now){
     ctx.stroke(); ctx.globalAlpha = 1;
   }
   // ---- phase caption ----
-  const phase = (GEN.kind !== 'diff' && rel < GTL.bloomWin + GTL.regDur) ? 'growing the territories'
+  const phase = (GEN.kind !== 'diff' && rel < GEN.tl.bloomWin + GEN.tl.regDur) ? 'growing the territories'
     : (rel < thinBegin ? 'counting every square' : 'thinning to the real clues');
   ctx.font = '600 12px "Segoe UI",system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
   ctx.fillStyle = 'rgba(183,169,214,.9)'; ctx.fillText(phase.toUpperCase() + '…', innerWidth / 2, innerHeight - 24);
