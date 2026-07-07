@@ -68,7 +68,9 @@ const out = `<!doctype html><html><head><meta charset="utf-8"><title>Region edit
   </div>
   <div class="grp">
     <span style="font-size:12px;color:var(--muted)">Resolution</span>
-    <input type="range" id="res" min="2500" max="57600" value="7680" step="250" style="width:140px;vertical-align:middle" title="Pixel-art resolution (aspect locked). Higher = longer game + more detail.">
+    <button id="btnResDown" title="−1% cells (aspect locked)">−</button>
+    <input type="range" id="res" min="2500" max="57600" value="7680" step="1" style="width:140px;vertical-align:middle" title="Pixel-art resolution (aspect locked). Higher = longer game + more detail.">
+    <button id="btnResUp" title="+1% cells (aspect locked)">+</button>
     <span id="resLabel" style="font-size:12px;color:var(--ink);min-width:118px;display:inline-block">— × — · —</span>
   </div>
   <div class="grp">

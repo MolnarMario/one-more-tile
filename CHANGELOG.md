@@ -5,6 +5,14 @@ shipped to the live site.
 
 ---
 
+## [0.16.0] — 2026-07-07 — New map: Angels
+
+### Added
+- **👼 Angels** — a new built-in map (204×136, 20 regions, with sudoku and picross plots and a full set
+  of per-region quotes). Pick it from the map menu.
+
+---
+
 ## [0.15.3] — 2026-07-03 — Drop the skip prompt
 
 ### Removed

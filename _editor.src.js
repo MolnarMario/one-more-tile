@@ -270,10 +270,23 @@ function setWall(type, x, y, val){
 // a unit step between adjacent lattice vertices = one wall segment
 function stepH(x, y, val){ if (y > 0 && y < GH && x >= 0 && x < GW) setWall('h', x, y - 1, val); } // vertex (x,y)->(x+1,y)
 function stepV(x, y, val){ if (x > 0 && x < GW && y >= 0 && y < GH) setWall('v', x - 1, y, val); } // vertex (x,y)->(x,y+1)
+// walk the lattice between two vertices, INTERLEAVING x/y steps so the path
+// hugs the straight line (a staircase), rather than an L (all-x-then-all-y).
+// A fast/diagonal drag jumps several cells per mousemove; the old L left a long
+// perpendicular spur ("hanging" wall). Same segment count, no dead-end stub.
 function connectVerts(v0, v1, val){
   let x = v0[0], y = v0[1]; const tx = v1[0], ty = v1[1];
-  while (x !== tx) { const s = tx > x ? 1 : -1; stepH(Math.min(x, x + s), y, val); x += s; }
-  while (y !== ty) { const s = ty > y ? 1 : -1; stepV(x, Math.min(y, y + s), val); y += s; }
+  const sx = tx > x ? 1 : -1, sy = ty > y ? 1 : -1;
+  const dx = Math.abs(tx - x), dy = Math.abs(ty - y);
+  let ex = 0, ey = 0;                                  // steps taken on each axis
+  while (x !== tx || y !== ty) {
+    // step whichever axis is furthest "behind" the ideal diagonal
+    if (x !== tx && (y === ty || (ex + 1) * dy <= (ey + 1) * dx)) {
+      stepH(Math.min(x, x + sx), y, val); x += sx; ex++;
+    } else {
+      stepV(x, Math.min(y, y + sy), val); y += sy; ey++;
+    }
+  }
 }
 
 // ---------- mouse ----------
@@ -284,7 +297,11 @@ cv.addEventListener('mousedown', e => {
   const val = (e.button === 2 || ED.tool === 'erase') ? 0 : 1;
   ED.drag = { mode: 'wall', val };
   ED.curStroke = [];
-  ED.lastVertex = vertexAt(e.clientX, e.clientY);
+  // canvas-local coords (must match mousemove) — using raw client coords here
+  // offset the stroke's START vertex by the canvas's on-screen position, which
+  // drew a stray dead-end wall from the wrong start point to the real cursor.
+  const r = cv.getBoundingClientRect();
+  ED.lastVertex = vertexAt(e.clientX - r.left, e.clientY - r.top);
 });
 addEventListener('mousemove', e => {
   if (!ED.haveImage) return;
@@ -470,6 +487,19 @@ $('btnRescan').onclick = () => { if (!ED.img) return; const fw = parseInt($('dim
 // resolution slider (aspect-locked): live readout while dragging; apply (resets walls) on release
 $('res').addEventListener('input', () => { if (ED.haveImage) resReadout(); });
 $('res').addEventListener('change', () => { if (!ED.haveImage) return; const { gw, gh } = resReadout(); rescan({ gw, gh }); setStatus(`Resolution: ${GW}×${GH} · ${(GW * GH).toLocaleString()} cells. Borders reset — draw away.`); });
+// ± buttons: nudge the cell budget by 1% of the CURRENT board (compounds), then
+// rescan from the exact computed budget (not the slider's snapped value)
+function nudgeRes(factor){
+  if (!ED.haveImage) return;
+  const B = Math.max(RES_MIN, Math.min(MAXN, Math.round(GW * GH * factor)));
+  const { gw, gh } = dimsFromBudget(B);
+  if (gw === GW && gh === GH) { setStatus(`Already at ${GW}×${GH} — 1% is below one row/column here; press again or drag the slider.`); return; }
+  $('res').value = B; resReadout();
+  rescan({ gw, gh });
+  setStatus(`Resolution: ${GW}×${GH} · ${(GW * GH).toLocaleString()} cells (${factor > 1 ? '+' : '−'}1%). Borders reset — draw away.`);
+}
+$('btnResUp').onclick = () => nudgeRes(1.01);
+$('btnResDown').onclick = () => nudgeRes(0.99);
 $('btnCopy').onclick = () => { $('exportArea').select(); try { document.execCommand('copy'); setStatus('Copied JSON to clipboard.'); } catch (e) { setStatus('Select the text and copy manually.'); } };
 function captureAll(){ const st = []; for (let k = 0; k < ED.vWall.length; k++) if (ED.vWall[k]) st.push({ type: 'v', idx: k, old: 1 }); for (let k = 0; k < ED.hWall.length; k++) if (ED.hWall[k]) st.push({ type: 'h', idx: k, old: 1 }); return st; }
 
