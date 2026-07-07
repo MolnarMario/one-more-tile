@@ -156,7 +156,9 @@ progress, _pct, _hdr}`.
   scroll reaches the canvas to zoom), `body.generating` hides `#hud`/`#controls`/`#toast`.
 - **Input during load**: gameplay input is gated on `GEN.active` (`keydown`/`mousedown`/`mousemove`/
   `wheel`), and `scheduleSave` bails — so a half-generated board is never mutated or persisted. The
-  **camera keys stay live**: wheel, `+`/`−`, `F` zoom/fit the board while it loads.
+  **camera stays live**: wheel, `+`/`−`, `F` zoom/fit, and **middle-button (or space) drag pans**
+  the board while it loads (the pan branches sit *above* the `GEN.active` gate in `mousedown`/
+  `mousemove`).
 
 ---
 

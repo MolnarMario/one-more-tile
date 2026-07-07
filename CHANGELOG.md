@@ -5,6 +5,16 @@ shipped to the live site.
 
 ---
 
+## [0.16.1] — 2026-07-08 — Pan while loading
+
+### Added
+- **Pan the board during the loading animation.** Hold the middle mouse button (the scroll wheel)
+  and drag to move around the map while it's still generating — the same free-look panning you have
+  once it's loaded, alongside the existing scroll-to-zoom. (Gameplay is still off until generation
+  finishes; only the camera moves.)
+
+---
+
 ## [0.16.0] — 2026-07-07 — New map: Angels
 
 ### Added
