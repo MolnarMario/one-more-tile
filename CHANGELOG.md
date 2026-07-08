@@ -5,6 +5,18 @@ shipped to the live site.
 
 ---
 
+## [0.16.2] — 2026-07-08 — Consistent click-and-drag painting
+
+### Changed
+- **Dragging now paints every square it crosses, exactly like clicking each one.** Before, a drag
+  only filled *blank* squares — if you dragged over a square of the opposite colour it was left
+  unchanged, so fixing a mistake (e.g. repainting a dark run light) only flipped the first square.
+  Now a left-drag turns every square it touches light and a right-drag turns them dark, regardless
+  of what was there; dragging back over a square that's already your colour clears it to blank. Each
+  square flips once per stroke, so holding still doesn't make it flicker.
+
+---
+
 ## [0.16.1] — 2026-07-08 — Pan while loading
 
 ### Added

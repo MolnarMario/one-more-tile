@@ -490,7 +490,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.16.1';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.16.2';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -3904,12 +3904,12 @@ cvs.addEventListener('mousedown', e => {
 
   // one undo entry per stroke: snapshot before the first painted tile
   if (!regionDone[regionOf[i]] && !locked[i] && !gameWon) pushUndo();
-  if (e.button === 0) {
-    if (state[i] === 1) { setCell(i, 0); pl.drag = { mode: 'paint', erase: 1 }; }
-    else { setCell(i, 1); pl.drag = { mode: 'paint', paint: 1 }; }
-  } else if (e.button === 2) {
-    if (state[i] === 2) { setCell(i, 0); pl.drag = { mode: 'paint', erase: 2 }; }
-    else { setCell(i, 2); pl.drag = { mode: 'paint', paint: 2 }; }
+  if (e.button === 0 || e.button === 2) {
+    const c = e.button === 0 ? 1 : 2;          // left → light, right → dark
+    setCell(i, state[i] === c ? 0 : c);        // per-cell toggle: same colour clears, else set colour
+    // a drag continues that same toggle over every NEW cell it enters (see mousemove);
+    // `touched` keeps each cell to one flip per stroke so sub-cell jitter doesn't re-toggle
+    pl.drag = { mode: 'paint', color: c, touched: new Set([i]) };
   }
 });
 
@@ -3937,8 +3937,11 @@ addEventListener('mousemove', e => {
     const i = cellAt(localX(e.clientX, pl), localY(e.clientY, pl), pl.view);
     if (i < 0 || zoneOf[i] >= 0) return;
     pl.cursor = i;   // a paint stroke also moves the controller cursor with it
-    if (pl.drag.paint && state[i] === 0) setCell(i, pl.drag.paint);
-    else if (pl.drag.erase && state[i] === pl.drag.erase) setCell(i, 0);
+    const c = pl.drag.color;
+    if (c && !pl.drag.touched.has(i)) {   // each cell flips once per stroke — dragging == clicking each cell
+      pl.drag.touched.add(i);
+      setCell(i, state[i] === c ? 0 : c); // identical toggle rule to the initial click
+    }
   }
 });
 
