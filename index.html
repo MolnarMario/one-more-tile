@@ -159,6 +159,7 @@
       <button id="btnUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
       <button id="btnHint" title="Hint (H)">💡 Hint</button>
       <button id="btnSolve">✓ Solve</button>
+      <button id="btnClearMistakes" title="Sweep away every incorrect tile" disabled>🧹 Clear errors</button>
     </div>
     <div class="hud-group">
       <button id="btnZoomOut" title="Zoom out (−)">−</button>
@@ -490,7 +491,7 @@ const MAPS = [
   { id: 'crew',   name: '🛡 The Crew', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: '🐉 The Fighters', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.16.2';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.16.3';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -2460,6 +2461,8 @@ function updateHUD(){
   document.getElementById('progressBar').style.width = pct + '%';
   document.getElementById('progressTxt').textContent = `${pct}% · ${done}/${REG_COUNT} regions`;
   document.getElementById('mistakes').innerHTML = `Mistakes <b>${wrong.size}</b>/4`;
+  const cmb = document.getElementById('btnClearMistakes');   // greyed out until there's something to sweep
+  if (cmb) cmb.disabled = wrong.size === 0;
 }
 
 function fmtTime(ms){
@@ -4112,6 +4115,7 @@ setMusicUI();
 }
 document.getElementById('btnUndo').onclick = undo;
 document.getElementById('btnHint').onclick = () => giveHint();
+document.getElementById('btnClearMistakes').onclick = () => clearErrors();   // same sweep as the 4-mistakes modal
 // the auto-solver is PIN-gated; once unlocked it stays open for the session
 let solveUnlocked = false;
 const SOLVE_PIN = '5757';

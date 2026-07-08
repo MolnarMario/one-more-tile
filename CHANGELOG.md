@@ -5,6 +5,15 @@ shipped to the live site.
 
 ---
 
+## [0.16.3] — 2026-07-08 — "Clear errors" button
+
+### Added
+- **A "🧹 Clear errors" button in the toolbar.** It sweeps away every incorrect tile — the same
+  action as the "Clear my errors" button in the four-mistakes prompt — but you can now do it any
+  time, not just once you've hit four. It stays greyed out while you have zero mistakes.
+
+---
+
 ## [0.16.2] — 2026-07-08 — Consistent click-and-drag painting
 
 ### Changed
