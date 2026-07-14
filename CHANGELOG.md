@@ -1,7 +1,17 @@
 # Changelog
 
-All notable changes to **Number Puzzles × Steroids**. Newest first. Dates are when the change
+All notable changes to **One More Tile: The Emergent Canvas**. Newest first. Dates are when the change
 shipped to the live site.
+
+---
+
+## [0.17.0] — 2026-07-14 — Renamed to "One More Tile: The Emergent Canvas"
+
+### Changed
+- **The game is now "One More Tile: The Emergent Canvas"** (formerly *Number Puzzles × Steroids*).
+  New title bar, on-screen heading, loading screen, and docs. The live site moved to
+  **https://molnarmario.github.io/one-more-tile/** (the old address redirects). Your saved progress,
+  settings, shared codes, and `.npxs` files are unaffected — only the name changed.
 
 ---
 
@@ -464,7 +474,7 @@ shipped to the live site.
 ## [0.1.0] — 2026-06-13 — Initial release
 
 ### Added
-- **Number Puzzles × Steroids** — a single-file Fill-a-pix (Mosaic) game with woven-in sudoku and
+- **One More Tile: The Emergent Canvas** — a single-file Fill-a-pix (Mosaic) game with woven-in sudoku and
   picross, organic region maps, 5 difficulty tiers, mistake forgiveness, animated auto-solver,
   pan/zoom, autosave and gamepad support. The board reveals a hidden pixel-art painting as it's
   solved.

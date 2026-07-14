@@ -1,4 +1,4 @@
-# Number Puzzles × Steroids
+# One More Tile: The Emergent Canvas
 
 A single-file browser puzzle game inspired by [Proverbs](https://store.steampowered.com/app/2748080/Proverbs/)-style
 **Fill-a-pix (Mosaic)** — with **sudoku** and **picross** puzzles woven directly into the same
@@ -6,7 +6,7 @@ canvas. Solve the cross-stitch board to reveal a hidden pixel-art painting, regi
 
 No build, no server, no dependencies — open `index.html` in a browser and play.
 
-**▶ Play it now: https://molnarmario.github.io/number-puzzles-x-steroids/**
+**▶ Play it now: https://molnarmario.github.io/one-more-tile/**
 
 > New here and want the full engineering rundown (architecture, data flow, key globals, where the
 > seams are)? See **[CLAUDE.md](CLAUDE.md)** — a map of the codebase written for a new person or AI.

@@ -1,6 +1,6 @@
 # CLAUDE.md — architecture map
 
-Orientation for a new person or AI working on **Number Puzzles × Steroids**. It explains how the
+Orientation for a new person or AI working on **One More Tile: The Emergent Canvas**. It explains how the
 code is laid out, how a board goes from image → puzzle → play, the key state, and the invariants you
 must not break. Player-facing docs live in [README.md](README.md); the shipped-change log is
 [CHANGELOG.md](CHANGELOG.md).
@@ -25,7 +25,7 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 - **Docs** — `README.md` (players), `CLAUDE.md` (this), `CHANGELOG.md` (per-version history).
 
 ### Running / verifying / debugging
-- **Play**: open `index.html`. Live: https://molnarmario.github.io/number-puzzles-x-steroids/
+- **Play**: open `index.html`. Live: https://molnarmario.github.io/one-more-tile/
 - **`?audit=1`**: rebuilds every map × every difficulty and asserts zero pre-filled cells + full
   logical solvability; sets `document.title` to `AUDIT PASS`/`AUDIT FAIL` (headless-friendly). This
   is *the* correctness check — run it after touching generation. Entry: `auditGivens()` (~line 2063).
