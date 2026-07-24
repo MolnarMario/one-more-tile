@@ -12,9 +12,9 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 
 ## 1. The shape of the project
 
-- **`index.html`** — the entire game: HTML + CSS + one big inline `<script>` (~4,350 lines). No
+- **`index.html`** — the entire game: HTML + CSS + one big inline `<script>` (~5,050 lines). No
   modules, no bundler, no dependencies. Open it in a browser and it runs. This is the only shipped
-  file (plus its embedded image data URIs).
+  file (plus its embedded image data URIs). Boot lands on the **home menu** (§10), not a board.
 - **Dev tools** (not shipped; generated *from* `index.html` so they reuse its exact code):
   - `region-editor.html` ← `node _build_editor.js` (uses `index.html` + `_editor.src.js`) — author
     maps by drawing region borders; exports a `.npxsmap.json`.
@@ -34,11 +34,16 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 
 ---
 
-## 2. Lifecycle: boot → generate → play
+## 2. Lifecycle: boot → menu → generate → play
 
-`img.onload → startGeneration()` (~1301), **unless** `AUDIT_MODE` (`?audit=`) which skips normal
-boot and lets `auditGivens()` drive the pipeline. The pipeline (same for first load, `rebuildForMap`
-on map switch, and — minus the `sol` stages — `setDifficulty`):
+**Boot lands on the home menu, not a board.** At the end of the script (`if (!AUDIT_MODE)`) the loader
+is dismissed and `showMenu()` shows `#menuScreen`; nothing generates until the player picks a canvas
+(see §10). `AUDIT_MODE` (`?audit=`) still skips everything and lets `auditGivens()` drive the pipeline
+directly.
+
+Picking a map calls `menuLaunch(id)` → **first launch** sets `img.onload = startGeneration; img.src =
+…` (the classic boot, just deferred); a **later switch** calls `loadMap(id)`. The pipeline (same for
+first load, `rebuildForMap` on map switch, and — minus the `sol` stages — `setDifficulty`):
 
 ```
 sampleImage(img)      image → sol[] (light/dark) + cellCol[] (art) + edge[]
@@ -51,7 +56,10 @@ genComplete() → done()     handoff: finishSetup (load) / callbacks (map, diff)
 ```
 
 `finishSetup()` (~1889): `generated = true`, `loadSave()`, `applyGivens()`, re-check regions, start
-the render `loop()`. After this, gameplay is live and `loop()` runs continuously.
+the render `loop()`, then `runPendingAfterGen()`. After this, gameplay is live and `loop()` runs
+continuously. **`pendingAfterGen`** is a one-shot the menu stashes so a co-op session starts *after*
+the board is ready; every completion path (`finishSetup`, `loadMap`'s rebuild callback, and
+`setDifficulty`'s reweave) drains it.
 
 **Determinism**: everything keys off `SEED = mapDef().seed`. Same map + seed ⇒ identical board.
 
@@ -79,8 +87,11 @@ the render `loop()`. After this, gameplay is live and `loop()` runs continuously
 | `ZONES`, `PICROSS`, `picrossByRegion` | Arrays/Map | plot descriptors (set by `buildLayout`) |
 | `DIFF`, `DIFF_ORDER`, `difficulty` | table/…/string | difficulty tiers (see §4); `difficulty` persisted |
 | `MAPS`, `currentMap`, `mapDef()`, `HAND_LAYOUTS`, `MAP_QUOTES` | — | maps registry, hand partitions, quotes-by-region-id |
+| `MAP_META`, `PREVIEW_RLE`, `MAP_ADDED_ORDER` | objects/array | baked per-map region/square counts + region RLE for menu card previews (watershed maps); git add-order for the sort (see §10) |
 | `GEN`, `GTL_BASE` | object/const | loading-animation state machine + base timeline (see §5) |
-| `players[]`, `dpr`, `needsDraw`, `C`, `TINTS` | — | cameras, DPR, dirty flag, palette, region tints |
+| `players[]`, `dpr`, `needsDraw`, `C`, `TINTS` | — | cameras, DPR, dirty flag, palette (mutated by `buildPalette`), region tints (derived from `themeHue`) |
+| `themeHue`, `MENU`, `pendingAfterGen` | number/obj/fn | current interface hue (see §10) / menu state machine / one-shot post-generation action |
+| `timerBase`, `timerStart` | numbers | per-map **accumulated** play-time + current run start (see §10) |
 | `net`, `onlineRole`, `online`, `coop`, `PROTO_V` | — | multiplayer transport/role/flags |
 | `solving`, `solveQueue`, `wrong` | — | auto-solve state / mistake set |
 
@@ -183,12 +194,15 @@ progress, _pct, _hdr}`.
 
 ## 7. State, sharing, multiplayer, QoL
 
-- **Save** (per map, autosave): `stateKey()` = `proverbs2-<map>-v3`, `zonesKey()` = `…-plots`.
-  `scheduleSave()` (~2479, debounced; bails when an online *joiner* or during `GEN.active`) writes
-  `state` + zone entries to `localStorage`; `loadSave()` (~2493) restores them and recomputes the
-  `wrong` set against the current `sol`. *After the zero-given change, an old save may have a few
-  marks that now mismatch a repaired `sol` pixel — they surface as mistakes; "Clear my errors" fixes
-  them.*
+- **Save** (per map, autosave): `stateKey()` = `proverbs2-<map>-v3`, `zonesKey()` = `…-plots`,
+  `timerKey()` = `…-time` (accumulated play-time, see §10). `scheduleSave()` (debounced; bails when
+  an online *joiner* or during `GEN.active`) writes `state` + zone entries + the timer to
+  `localStorage`; `loadSave()` restores them (and `timerBase`) and recomputes the `wrong` set against
+  the current `sol`. Other keys: `MAP_KEY` (`proverbs2-map`, last map), `DIFF_KEY` (default tier),
+  `THEME_KEY` (`proverbs2-hue`), `MAP_SORT_KEY`, `LAST_SOLO_KEY` (Continue target), `MUSIC_VOL_KEY`,
+  `PAD_KEY`, `proverbs2-quotes`, `proverbs2-advseen`. *After the zero-given change, an old save may
+  have a few marks that now mismatch a repaired `sol` pixel — they surface as mistakes; "Clear my
+  errors" fixes them.*
 - **Share**: `exportCode()` / `importCode()` / `applyImported()` (~2558+); `SHARE_VER = 4` (2-byte
   board dims). Exports the whole canvas as a `NPXS…` code or `.npxs` file; import replays progress
   and completed regions.
@@ -199,7 +213,8 @@ progress, _pct, _hdr}`.
   split-screen co-op uses `players[]`/panes; `coop`/`online` flags distinguish modes.
 - **QoL**: `pushUndo`/`undo`/`clearUndo` (whole-stroke snapshots); `giveHint(pl)` (~2830) points at
   a forced move near the cursor; auto-solve via `solving`+`solveQueue` (PIN-gated); mistake handling
-  via the `wrong` set + `checkRegion`/`checkWin` + a forgiving modal; a play timer; gamepad support.
+  via the `wrong` set + `checkRegion`/`checkWin` + a forgiving modal; the **per-map play timer** and
+  **Options/theming** (§10); gamepad support.
 - **Quotes**: `MAP_QUOTES[map][regionId]`; `maybeShowQuote()` (~2344) fires when a region *and* its
   attached plots are done; clicking a finished region replays it.
 
@@ -240,8 +255,55 @@ progress, _pct, _hdr}`.
 | Add/adjust quotes | `MAP_QUOTES[mapId]` keyed by region id |
 | Tune difficulty | the `DIFF` table (`redundancy`/`extremeKeep`/`zGivens`/`zSwaps`/`basicOnly`) |
 | Tune the loading animation | `GTL_BASE` (timeline), the `sc` scale in `beginGen`, `drawGen` |
-| Change colours | the `C` palette / `TINTS` |
+| Change colours / theme | edit `:root` HSL vars (CSS chrome) **and** `buildPalette()` (canvas `C` + `TINTS`) together; both key off `--hue`/`themeHue`. Add/adjust theme swatches in `THEME_PRESETS` (§10) |
+| The home menu / map grid | §10 — `#menuScreen` markup, `showMenu`/`menuShowView`/`menuOpenGrid`/`menuPlay`, sort in `menuSortedIds` |
+| The play timer | §10 — `timerTotal`/`timerPause`/`persistTimer`, `timerKey()` |
 | Change the clue rule | `nbhd` construction in `buildLayout` (⚠ affects everything) |
 | Solvability logic | `repairTexture`/`repairRegion`/`repairPicross` and the `genRegionClues` solver |
 | Verify a change | `?audit=1` (all maps × tiers); syntax-check the inline script under Node |
 | Ship it | bump `APP_VERSION`, add a `CHANGELOG.md` entry, rebuild dev tools if blocks changed, one clean push |
+
+---
+
+## 10. Home menu, Options, theming & the play timer
+
+Everything here is chrome around the generation core — none of it touches `sol`/`clue`/`nbhd`, so
+`?audit=1` is unaffected.
+
+### Home menu (`#menuScreen`)
+- **Landing screen** (see §2). A vertical button stack — **Single Player · Co-op · Continue · Options ·
+  Credits** — over swappable sub-views. `MENU = {view, mode, stepVal, …}` is the state; `menuShowView(v)`
+  toggles the `.menuView` divs (`home`/`credits`/`coopMode`/`onlineChoice`/`grid`).
+- **Map grid**: `menuOpenGrid(mode)` (`'solo'|'local'|'host'`) configures the title + player/guest
+  stepper and shows cards built once by `menuBuildGrid()`. Each card's thumbnail is drawn by
+  `menuRenderCard(id)` (region tint fill + gold borders, cached per `id@hue`); `menuPaintCards()`
+  repaints them on a theme change. Card **counts** come from `MAP_META[id]` (`regions`/`cells`), baked
+  once from the deterministic pipeline (watershed maps also bake `PREVIEW_RLE`; hand maps reuse
+  `HAND_LAYOUTS[id].regionRLE`).
+- **Sort**: `#mapSort` → `menuSortedIds()` (A–Z/Z–A via `name.localeCompare` — map names now end with
+  their emoji so this sorts naturally; newest/oldest via `MAP_ADDED_ORDER`; most/fewest via
+  `MAP_META.cells`), reordered in the DOM by `menuApplySort()`, persisted to `MAP_SORT_KEY`.
+- **Launch**: `menuPlay(id)` tears down any live session, records `LAST_SOLO_KEY` (solo only), sets
+  `pendingAfterGen` (co-op start), then `menuLaunch(id)`. **Continue** (`menuContinue`) resumes
+  `LAST_SOLO_KEY`. Online host/join **delegate to the existing `#onlineModal`** so all code-sharing UI
+  is reused. Reopened mid-game via the header **🏠 Menu** button.
+
+### Options (`#optionsModal`) — opened from 🏠 menu footer and the toolbar **⚙ Options**
+- **Interface colour**: `THEME_PRESETS` swatches + a hue slider both call `applyTheme(hue, persist)`,
+  which sets the CSS custom property `--hue`, runs `buildPalette()` (recomputes the canvas `C` palette
+  and `TINTS` from `themeHue` via `hsl2rgb`/`themed`), re-runs `assignRegionTints()` on a live board,
+  and repaints menu cards. **Only the purple/accent family + accent2 + region tints shift**; gold
+  (sudoku), teal (picross) and red (errors) are intentionally fixed. Persisted to `THEME_KEY`.
+  ⚠ CSS chrome (`:root`) and the JS palette are two halves of one system — change both together.
+- **Music**: `toggleMusic()`/`setMusicVol()` are shared by the header player and the Options controls;
+  `setMusicUI()` updates both. **Default difficulty**: `setDefaultDifficulty()` (reweaves if a board is
+  live, else just sets `difficulty`). **Controller**: `openPad()` opens the same `#padModal` (the 🎮
+  header button moved into Options).
+
+### Play timer (per map, persistent)
+- Total = `timerBase` (banked ms, loaded from `timerKey()`) + live delta (`Date.now() - timerStart`,
+  `-1` = paused). `timerTotal()` reads it; `updateTimer()` renders in the `loop`.
+- **Starts/resumes** on the first stitch (`setCell`). **Pauses + banks** (`timerPause()` → folds delta
+  into `timerBase`, persists) on: opening the menu (`showMenu`), switching maps (`loadMap`), tab hidden
+  (`visibilitychange`) and page close (`pagehide`). `persistTimer()` no-ops before a board exists and
+  for online joiners. So closed/background/menu time is never counted, and returning never resets to 0.

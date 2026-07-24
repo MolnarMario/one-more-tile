@@ -15,10 +15,14 @@ No build, no server, no dependencies — open `index.html` in a browser and play
 
 ## What's inside
 
-### Multiple paintings, each its own puzzle
-Pick a **map** from the toolbar dropdown — each is a different painting turned into its own
-puzzle, with **separate, autosaved progress**. Drop in any pixel-art image and the generator
-builds a fitting puzzle around it:
+### A home menu, then multiple paintings
+The game opens on a **home menu** — a vertical stack of buttons: **Single Player · Co-op ·
+Continue · Options · Credits**. **Single Player** and **Co-op** lead to a **grid of canvas cards**
+(each shows its region lines, and its region/square counts on hover); **Continue** drops you back
+into your most recently played single-player canvas. Reopen the menu any time with the **🏠 Menu**
+button in the toolbar. Each map is a different painting turned into its own puzzle, with
+**separate, autosaved progress**. Drop in any pixel-art image and the generator builds a fitting
+puzzle around it:
 
 - **The board's shape follows the image.** A wide painting makes a wide board, a square one a
   square board — derived from the image's aspect ratio at a roughly constant cell budget, so
@@ -64,7 +68,9 @@ real clue-thinning progress, and you can **scroll to zoom** the board while it l
 (more to compute) get a slower, more deliberate reveal.
 
 ### Quality of life
-- **Play timer** in the header, from your first stitch.
+- **Play timer** in the header — per canvas, and it *remembers your time*: leave and come back and
+  it resumes where it stopped. It counts only active time (pauses when you open the menu, switch
+  maps, background the tab or close the page; resumes on your next stitch).
 - **Undo** (toolbar button or `Ctrl+Z`) — whole drag strokes, region completions and error
   sweeps all roll back as one step.
 - **Local hints** — press `H`; it points at a forced move *near where you're working* and tells
@@ -74,6 +80,9 @@ real clue-thinning progress, and you can **scroll to zoom** the board while it l
   friend's; the recipient's game replays the progress, completed regions and all.
 - **Multiplayer** — local split-screen co-op (up to 4) and online co-op/watch (both peers must be
   on the same version). In an online session you can keep the shared board as your own solo save.
+- **Options** (⚙ in the toolbar or on the home menu) — recolour the whole interface from a palette
+  of presets or a hue slider (default purple), mute/adjust the music, set your default difficulty
+  (Medium), and open **controller setup**.
 - **Mistake forgiveness** (no game over), autosave per map, pan/zoom, and full **gamepad support**
   with remappable buttons.
 
