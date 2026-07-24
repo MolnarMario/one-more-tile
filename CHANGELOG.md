@@ -5,6 +5,17 @@ shipped to the live site.
 
 ---
 
+## [0.21.2] — 2026-07-24 — Cozy menu
+
+### Changed
+- **The home menu is centred** vertically and horizontally on the landing screen (it already was
+  in-game).
+- **A soft ambient background** on the home menu — a few theme-coloured orbs drifting slowly. It
+  never shows any map art (nothing to spoil) and moves gently; it stops entirely if your system
+  prefers reduced motion. Hidden in-game, where the board shows through the menu modal.
+
+---
+
 ## [0.21.1] — 2026-07-24 — Menu/modal polish
 
 ### Fixed
