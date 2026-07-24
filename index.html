@@ -171,7 +171,29 @@
     background:var(--menu-bg)}
   #menuScreen.show{display:block}
   .menuInner{min-height:100%;display:flex;flex-direction:column;align-items:center;
-    padding:38px 20px 60px;position:relative}
+    padding:38px 20px 60px;position:relative;z-index:1}
+  /* landing page: centre the menu both ways (safe = don't clip tall views like the grid) */
+  #menuScreen:not(.ingame) .menuInner{justify-content:safe center}
+
+  /* cozy ambient background — a few soft theme-coloured orbs drifting slowly. Purely
+     decorative (behind the content), never shows map art, and calms to a stop for
+     anyone who prefers reduced motion. Hidden in-game where the board shows through. */
+  .menuFx{position:absolute;inset:0;overflow:hidden;z-index:0;pointer-events:none}
+  #menuScreen.ingame .menuFx{display:none}
+  .menuFx .blob{position:absolute;border-radius:50%;filter:blur(72px);will-change:transform}
+  .menuFx .b1{width:48vmax;height:48vmax;left:-10vmax;top:-8vmax;opacity:.45;
+    background:radial-gradient(circle, hsl(var(--hue) 72% 74%) 0%, transparent 70%);
+    animation:blobA 34s ease-in-out infinite alternate}
+  .menuFx .b2{width:40vmax;height:40vmax;right:-8vmax;top:16vmax;opacity:.38;
+    background:radial-gradient(circle, hsl(calc(var(--hue) + 46) 60% 74%) 0%, transparent 70%);
+    animation:blobB 43s ease-in-out infinite alternate}
+  .menuFx .b3{width:42vmax;height:42vmax;left:22vmax;bottom:-12vmax;opacity:.34;
+    background:radial-gradient(circle, hsl(calc(var(--hue) - 32) 66% 76%) 0%, transparent 70%);
+    animation:blobC 38s ease-in-out infinite alternate}
+  @keyframes blobA{from{transform:translate(0,0) scale(1)}   to{transform:translate(6vmax,4vmax) scale(1.12)}}
+  @keyframes blobB{from{transform:translate(0,0) scale(1)}   to{transform:translate(-5vmax,-6vmax) scale(1.1)}}
+  @keyframes blobC{from{transform:translate(0,0) scale(1.05)} to{transform:translate(4vmax,-4vmax) scale(.95)}}
+  @media (prefers-reduced-motion: reduce){ .menuFx .blob{animation:none} }
   /* in-game: the menu is a centred modal over the board (dim scrim + a card),
      dismissable by clicking the scrim — see the landing page keeps the full layout */
   #menuScreen.ingame{background:var(--scrim)}
@@ -308,6 +330,7 @@
 </div>
 
 <div id="menuScreen">
+  <div class="menuFx" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span></div>
   <div class="menuInner">
     <div class="menuBrand"><h1>ONE MORE TILE<small>the emergent canvas</small></h1></div>
 
@@ -722,7 +745,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.21.1';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.21.2';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
