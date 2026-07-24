@@ -5,6 +5,82 @@ shipped to the live site.
 
 ---
 
+## [0.21.0] — 2026-07-24 — The play timer resumes where you left off
+
+### Changed
+- **The timer is now per-canvas and remembers your time.** Come back to a map later and it picks up
+  from where it stopped instead of resetting to `00:00`. It counts only **active** time — it pauses
+  when you open the menu, switch maps, background the tab, or close the page, so time spent away is
+  never added; it resumes on your next stitch. Reset a canvas and its clock starts fresh.
+
+---
+
+## [0.20.0] — 2026-07-24 — Home menu as a stacked button list
+
+### Changed
+- **The home screen is now a classic vertical menu** — same-size buttons, one under another:
+  **Single Player · Co-op · Continue · Options · Credits** — instead of the two side-by-side cards.
+- **Continue** jumps straight back into your **most recently played single-player canvas** (greyed
+  out until you've played one).
+- **Options** and **Credits** are first-class menu entries now; **Credits** opens a small about
+  screen. The buttons follow the interface theme you pick in Options.
+- **The canvas grid has a Sort control** — Name A→Z / Z→A, Newest / Oldest added, or Most / Fewest
+  squares (your choice is remembered).
+- Map names now read with the **emoji at the end** (e.g. “Castle 🏰”), so alphabetical sorting works
+  naturally.
+
+### Fixed
+- Menu buttons no longer flash **white-on-white** (invisible label) on hover.
+
+---
+
+## [0.19.0] — 2026-07-24 — Options menu: themes, music, difficulty, controller
+
+### Added
+- **An ⚙ Options menu** (from the toolbar and the home menu) collecting the game's settings:
+  - **Interface colour.** Pick from preset swatches (Purple is the default) or drag a hue slider —
+    the *entire* interface recolours from one hue: chrome, panels, gradients, the board background,
+    region tints and clue ink, live. Gold (sudoku), teal (picross) and red (errors) stay put on
+    purpose, so those cues remain readable in any theme. Your choice is saved.
+  - **Music** — mute/resume and a volume slider, kept in sync with the toolbar's player.
+  - **Default difficulty** (Medium by default) — the tier new canvases start at. The toolbar
+    dropdown still switches tiers live mid-game.
+- The **controller setup** (🎮) moved from the toolbar into Options.
+
+### Changed
+- The toolbar's 🎮 button is now **⚙ Options**; the music player stays in the toolbar.
+- Difficulty is no longer chosen on the map-picker grid (it lives in Options + the toolbar dropdown).
+
+### Notes
+- Theming only changes colours — puzzle generation, the zero-given guarantee and your saves are
+  untouched.
+
+---
+
+## [0.18.0] — 2026-07-24 — Home menu: Single Player / Co-op + a map picker
+
+### Added
+- **A proper home menu on launch.** The game now opens on a landing screen instead of dropping
+  straight into a board. Choose **▶ Single Player** or **👥 Co-op**, then pick a canvas from a grid
+  of cards. Each card shows the map's **region lines** in the background; hover (or focus) a card to
+  see how many **regions** and **squares** that canvas has.
+- **Difficulty is chosen right in the menu** (a row of pills above the grid), alongside the map — it
+  still lives in the toolbar too, so you can switch tiers mid-game exactly as before.
+- **Co-op flows through the menu.** *Local* lets you set 2–4 players up front before the split-screen
+  board loads; *Online* offers **Host** (pick a canvas and get a code to share) and **Join** (enter a
+  friend's code — you'll play their board). The online code-sharing, loopback test, and disconnect
+  controls are unchanged.
+
+### Changed
+- **The toolbar's map dropdown is now a 🏠 Menu button** that reopens the home menu, where you switch
+  canvas or mode. Difficulty, and every other toolbar control, is unchanged.
+
+### Notes
+- Puzzle generation is untouched — the zero-given guarantee and every difficulty tier behave exactly
+  as before; your per-map saves, shared codes and settings carry over.
+
+---
+
 ## [0.17.0] — 2026-07-14 — Renamed to "One More Tile: The Emergent Canvas"
 
 ### Changed
