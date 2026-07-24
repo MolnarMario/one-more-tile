@@ -5,6 +5,20 @@ shipped to the live site.
 
 ---
 
+## [0.22.0] — 2026-07-24 — A visual tutorial
+
+### Added
+- **The "How to play" screen now shows the rules, not just tells them.** New little tile diagrams
+  illustrate: counting the light neighbours (a worked “5”), the **0 / 9** footholds, how a clue
+  stays inside its **map** (two regions split by a gold border), and what **gold sudoku plots** and
+  **teal picross patches** look like. All theme-coloured.
+
+### Changed
+- The home-menu **"How to play"** button lost its leading “?” and is now a softer outlined pill —
+  distinct from the main menu buttons without shouting.
+
+---
+
 ## [0.21.2] — 2026-07-24 — Cozy menu
 
 ### Changed
