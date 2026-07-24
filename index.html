@@ -62,9 +62,14 @@
   button:disabled:hover{background:rgba(255,255,255,.6)}
   button.primary{background:var(--grad-primary);border:none;color:#fff;font-weight:600}
   button.primary:hover{filter:brightness(1.08)}
-  select{background:rgba(255,255,255,.6);border:1px solid var(--panel-border);color:var(--text);
-    border-radius:8px;padding:7px 9px;font-size:13px;cursor:pointer;font-family:inherit}
-  select:hover{background:rgba(255,255,255,.95)}
+  /* native dropdown arrow removed for a clean custom chevron + room to breathe */
+  select{appearance:none;-webkit-appearance:none;
+    background-color:rgba(255,255,255,.6);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23594f78' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 11px center;
+    border:1px solid var(--panel-border);color:var(--text);
+    border-radius:8px;padding:7px 32px 7px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+  select:hover{background-color:rgba(255,255,255,.95)}
   select option{background:var(--card);color:var(--text)}
 
   /* ---------- music player ---------- */
@@ -121,8 +126,10 @@
 
   /* ---------- modal / overlay ---------- */
   .overlay{position:fixed;inset:0;background:var(--scrim);z-index:40;display:flex;
-    align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .4s}
+    align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .4s;padding:16px}
   .overlay.show{opacity:1;pointer-events:auto}
+  /* controller setup is opened from within Options, so it must sit ABOVE the z-40 overlays */
+  #padModal{z-index:46}
   .card{background:var(--card);border:1px solid var(--panel-border);border-radius:16px;
     padding:28px 32px;max-width:min(560px, calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;text-align:center;box-shadow:0 24px 70px rgba(70,48,130,.35)}
   .card h2{color:var(--accent);font-size:19px;margin-bottom:10px;letter-spacing:1px}
@@ -165,6 +172,13 @@
   #menuScreen.show{display:block}
   .menuInner{min-height:100%;display:flex;flex-direction:column;align-items:center;
     padding:38px 20px 60px;position:relative}
+  /* in-game: the menu is a centred modal over the board (dim scrim + a card),
+     dismissable by clicking the scrim — see the landing page keeps the full layout */
+  #menuScreen.ingame{background:var(--scrim)}
+  #menuScreen.ingame.show{display:flex;align-items:center;justify-content:center;padding:20px}
+  #menuScreen.ingame .menuInner{min-height:auto;width:auto;background:var(--card);
+    border:1px solid var(--panel-border);border-radius:18px;box-shadow:0 24px 70px rgba(70,48,130,.4);
+    max-width:min(900px, calc(100vw - 40px));max-height:calc(100vh - 40px);overflow:auto;padding:26px 30px 32px}
   .menuBrand h1{font-size:26px;letter-spacing:8px;color:var(--accent);font-weight:600;text-align:center}
   .menuBrand h1 small{display:block;font-size:11px;letter-spacing:3px;color:var(--muted);font-weight:400;margin-top:4px}
   .menuView{width:100%;max-width:1000px;margin-top:26px;display:flex;flex-direction:column;align-items:center}
@@ -708,7 +722,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.21.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.21.1';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -4328,15 +4342,25 @@ const MODAL_CLOSE = {
   onlineModal: 'btnCloseOnline', shareModal: 'btnCloseShare', padModal: 'btnClosePad',
   optionsModal: 'btnCloseOptions',
 };
-addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  const open = document.querySelector('.overlay.show');
-  if (!open) return;
+// close an overlay via its mapped button (falls back to the last button / hiding)
+function closeOverlay(open){
   const btn = document.getElementById(MODAL_CLOSE[open.id] || '');
   if (btn) btn.click();
   else { const bs = open.querySelectorAll('.btns button'); if (bs.length) bs[bs.length - 1].click(); else open.classList.remove('show'); }
+}
+addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  // topmost open overlay = last in DOM among the shown ones (matches paint order)
+  const shown = document.querySelectorAll('.overlay.show');
+  const open = shown[shown.length - 1];
+  if (!open) return;
+  closeOverlay(open);
   e.preventDefault(); e.stopPropagation();
 }, true);
+// clicking the scrim outside a modal's card closes it, exactly like its Close/Done button
+document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
+  if (e.target === o) closeOverlay(o);
+}));
 
 function zoomCenter(k, pl = players[0]){
   const v = pl.view, cx = paneW(pl) / 2, cy = paneH(pl) / 2;
@@ -4794,12 +4818,16 @@ function menuOpenGrid(mode){
 
 function showMenu(){
   timerPause();   // opening the menu isn't solving time — bank + freeze the clock (resumes on the next stitch)
+  const ms = document.getElementById('menuScreen');
+  ms.classList.toggle('ingame', !!generated);   // in-game: centred modal over the board; landing: full page
   document.getElementById('menuClose').style.display = generated ? '' : 'none';
   menuRefreshContinue();
   menuShowView('home');
-  document.getElementById('menuScreen').classList.add('show');
+  ms.classList.add('show');
 }
 function hideMenu(){ document.getElementById('menuScreen').classList.remove('show'); }
+// dismiss the whole in-game menu (returns to the board); no-op on the landing page
+function closeMenu(){ if (generated) hideMenu(); }
 
 // load the chosen map at the current (Options/header) difficulty: first launch →
 // startGeneration; later → loadMap. pendingAfterGen then starts any co-op session.
@@ -4887,21 +4915,29 @@ document.getElementById('menuStepPlus').onclick = () => {
   MENU.stepVal = Math.min(MENU.stepMax, MENU.stepVal + 1);
   document.getElementById('menuStepVal').textContent = String(MENU.stepVal);
 };
-// Esc steps back through the menu; from home it closes the menu, but only once
-// there's a board to return to
+// step back through the menu; from home, close it (only once there's a board to
+// return to). Shared by the Esc key and clicking the in-game modal's backdrop.
+// Returns true if it handled the event.
+function menuEscape(){
+  const ms = document.getElementById('menuScreen');
+  if (!ms.classList.contains('show')) return false;
+  const v = MENU.view;
+  if (v === 'grid')              menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
+  else if (v === 'onlineChoice') menuShowView('coopMode');
+  else if (v === 'coopMode')     menuShowView('home');
+  else if (v === 'credits')      menuShowView('home');
+  else if (generated)            hideMenu();
+  else return false;
+  return true;
+}
 addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  const ms = document.getElementById('menuScreen');
-  if (!ms.classList.contains('show')) return;
-  const v = MENU.view;
-  if (v === 'grid')            menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
-  else if (v === 'onlineChoice') menuShowView('coopMode');
-  else if (v === 'coopMode')   menuShowView('home');
-  else if (v === 'credits')    menuShowView('home');
-  else if (generated)          hideMenu();
-  else return;
-  e.preventDefault(); e.stopPropagation();
+  if (menuEscape()) { e.preventDefault(); e.stopPropagation(); }
 }, true);
+// click on the in-game modal's scrim (outside the card) dismisses it, exactly like Esc
+document.getElementById('menuScreen').addEventListener('click', e => {
+  if (e.target.id === 'menuScreen') menuEscape();
+});
 
 document.getElementById('btnPadDefaults').onclick = () => {
   padMap = Object.assign({}, PAD_DEFAULTS);
