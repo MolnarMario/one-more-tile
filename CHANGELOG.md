@@ -5,6 +5,19 @@ shipped to the live site.
 
 ---
 
+## [0.21.1] — 2026-07-24 — Menu/modal polish
+
+### Fixed
+- **In-game menu is now a proper centred modal** over a dimmed board, dismissable by clicking the
+  backdrop (same as Esc) — not a full-screen page. The landing page keeps its full layout.
+- **Clicking outside any modal closes it** (same as its Close/Done button) — including Options.
+- **Controller setup** opened from Options now sits **above** it (z-index) instead of behind, and
+  closes back to Options.
+- **Dropdowns** get a clean custom chevron with proper padding (the native arrow is gone); modals
+  have edge padding so nothing crowds the screen.
+
+---
+
 ## [0.21.0] — 2026-07-24 — The play timer resumes where you left off
 
 ### Changed
