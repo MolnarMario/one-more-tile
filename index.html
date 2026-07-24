@@ -150,6 +150,25 @@
   .dgrid .clue{background:hsl(var(--hue) 39% 76%);color:hsl(var(--hue) 44% 24%)}
   .dlegend{font-size:12px;color:var(--muted);margin:-8px 0 16px}
   .dlegend b.l{color:#3a9d7e}.dlegend b.d{color:#c44a6a}
+  /* ---------- how-to-play visual diagrams (mini tile boards) ---------- */
+  .tut{display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;text-align:left;margin:16px 0}
+  .tut-txt{flex:1 1 190px;min-width:170px;font-size:13px;color:var(--muted);line-height:1.6}
+  .tut-txt b{color:var(--accent)}
+  .tut-intro{font-size:14px;color:var(--text);line-height:1.6;margin-bottom:6px}
+  .tut-note{font-size:12.5px;color:var(--muted);line-height:1.7;margin:6px 0 4px;text-align:center}
+  .mini{display:grid;gap:3px;justify-content:center;flex:0 0 auto}
+  .mini.m3{grid-template-columns:repeat(3,30px);grid-template-rows:repeat(3,30px)}
+  .mini .c{display:flex;align-items:center;justify-content:center;border-radius:5px;font-weight:700;
+    font-size:15px;color:var(--text);background:hsl(calc(var(--hue) + 1) 45% 83%)}
+  .mini .lit{background:#fdfcff}
+  .mini .drk{background:hsl(var(--hue) 38% 34%);color:hsl(var(--hue) 60% 90%)}
+  .mini .t2{background:hsl(calc(var(--hue) + 42) 40% 82%)}
+  .mini .k{color:var(--accent);font-size:18px}                     /* the highlighted clue number */
+  .mini.plot{padding:4px;border-radius:9px}
+  .mini.gold{background:hsl(40 60% 90%);box-shadow:inset 0 0 0 3px #e0a24a}
+  .mini.teal{background:hsl(168 45% 90%);box-shadow:inset 0 0 0 3px #2fb39a}
+  .tut .wall{flex:0 0 auto;width:6px;min-height:102px;border-radius:3px;background:#e0a24a}
+  b.gold{color:#b07a1a}b.teal{color:#1f9c84}b.bad{color:#d23c4e}
   /* character dialogue box */
   .card.dialogue{text-align:left;border-left:5px solid var(--accent);max-width:480px}
   .card.dialogue .dlg-name{color:var(--accent);font-weight:700;letter-spacing:.5px;font-size:15px;margin-bottom:10px}
@@ -232,6 +251,10 @@
   .credits b{color:var(--text)}
   .credits .cr-thanks{color:var(--accent);font-size:16px;font-weight:600;margin-top:6px}
   .menuFoot{margin-top:30px}
+  /* a softer, rounded "link" pill — distinct from the solid gradient stack buttons */
+  .menuLink{background:rgba(255,255,255,.35);border:1px solid var(--accent);color:var(--accent);
+    border-radius:22px;padding:9px 20px;font-weight:600;letter-spacing:.4px;font-size:13px}
+  .menuLink:hover{background:var(--accent);border-color:var(--accent);color:#fff}
   .menuBack{align-self:flex-start;margin-bottom:10px}
   .menuOpts{display:flex;gap:26px;flex-wrap:wrap;align-items:center;justify-content:center;margin-bottom:22px}
   .menuOptLbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-right:8px}
@@ -343,7 +366,7 @@
         <button class="menuStackBtn" id="menuOptions">Options</button>
         <button class="menuStackBtn" id="menuCredits">Credits</button>
       </div>
-      <div class="menuFoot"><button id="menuHelp">? How to play</button></div>
+      <div class="menuFoot"><button id="menuHelp" class="menuLink">📖 How to play</button></div>
     </div>
 
     <div class="menuView" id="menuCreditsView" style="display:none">
@@ -427,19 +450,64 @@
 </div>
 
 <div class="overlay" id="helpModal">
-  <div class="card">
+  <div class="card" style="max-width:min(600px, calc(100vw - 24px))">
     <h2>How to play</h2>
-    <ul>
-      <li><b>Count the neighbors:</b> each number tells how many <b>light</b> tiles sit in the 3×3 block centered on it — <i>including the numbered tile itself</i>.</li>
-      <li><b>9</b> = the whole block is light. <b>0</b> = the whole block is dark.</li>
-      <li>Clues only count tiles inside their own <b>map</b> — the odd-shaped territories with thick borders.</li>
-      <li>Numbers fade once satisfied; they turn <b style="color:#d23c4e">red</b> if contradicted.</li>
-      <li><b style="color:#b07a1a">Gold plots</b> are sudoku, stitched right into the canvas: click a tile and type a digit (or click to cycle). Every row, column and outlined shape needs each number exactly once.</li>
-      <li><b style="color:#1f9c84">Teal patches</b> are picross: hover near one and its run clues appear. Each number is a run of consecutive light tiles, in order, in that row or column. Stitch them with the usual left/right click — the answer is the painting itself.</li>
-      <li>A map is done only when <b>every</b> tile is placed — light tiles light (left&nbsp;click) <i>and</i> dark/background tiles dark (right&nbsp;click). Finish a map, plot or patch and the painting beneath is revealed.</li>
-      <li><b>Difficulty</b> (toolbar) scales everything — easier tiers keep more clues and more free 0/9 moves, and give sudoku plots extra digits and tamer shapes. Every tile is yours to stitch: nothing is ever pre-filled. Your stitches and digits always survive the switch.</li>
-      <li><b>Very Easy–Medium</b> need only neighbor-counting. <b>Hard</b> and <b>Very Hard</b> add <b>Advanced Deductions</b> (comparing overlapping clues) — but <i>guessing is never required</i> on any tier. Stuck? Press <b>H</b> for a hint.</li>
-    </ul>
+    <p class="tut-intro">It's a stitch-by-numbers puzzle. Every number tells you how many of the nine tiles around it are <b>light</b>. <b>Left-click</b> a tile to make it light, <b>right-click</b> for dark.</p>
+
+    <div class="tut">
+      <div class="mini m3">
+        <div class="c lit"></div><div class="c drk"></div><div class="c lit"></div>
+        <div class="c drk"></div><div class="c lit k">5</div><div class="c lit"></div>
+        <div class="c lit"></div><div class="c drk"></div><div class="c drk"></div>
+      </div>
+      <p class="tut-txt">Count the neighbours. This <b>5</b> means five of its 3×3 block are light — the five pale tiles, <i>itself included</i>.</p>
+    </div>
+
+    <div class="tut">
+      <div class="mini m3">
+        <div class="c drk"></div><div class="c drk"></div><div class="c drk"></div>
+        <div class="c drk"></div><div class="c drk k">0</div><div class="c drk"></div>
+        <div class="c drk"></div><div class="c drk"></div><div class="c drk"></div>
+      </div>
+      <div class="mini m3">
+        <div class="c lit"></div><div class="c lit"></div><div class="c lit"></div>
+        <div class="c lit"></div><div class="c lit k">9</div><div class="c lit"></div>
+        <div class="c lit"></div><div class="c lit"></div><div class="c lit"></div>
+      </div>
+      <p class="tut-txt"><b>0</b> means every tile around it is dark. <b>9</b> means every tile is light. These are your easiest footholds.</p>
+    </div>
+
+    <div class="tut">
+      <div class="mini m3">
+        <div class="c"></div><div class="c"></div><div class="c t2"></div>
+        <div class="c"></div><div class="c k">3</div><div class="c t2"></div>
+        <div class="c"></div><div class="c"></div><div class="c t2"></div>
+      </div>
+      <div class="wall"></div>
+      <div class="mini m3">
+        <div class="c t2"></div><div class="c t2"></div><div class="c t2"></div>
+        <div class="c t2"></div><div class="c t2"></div><div class="c t2"></div>
+        <div class="c t2"></div><div class="c t2"></div><div class="c t2"></div>
+      </div>
+      <p class="tut-txt">Thick <b class="gold">gold borders</b> split the canvas into <b>maps</b>. A clue only ever counts tiles inside its own map — never across a border.</p>
+    </div>
+
+    <div class="tut">
+      <div class="mini m3 plot gold">
+        <div class="c lit">1</div><div class="c lit">2</div><div class="c lit">3</div>
+        <div class="c lit">3</div><div class="c lit"></div><div class="c lit">1</div>
+        <div class="c lit"></div><div class="c lit">3</div><div class="c lit">2</div>
+      </div>
+      <div class="mini m3 plot teal">
+        <div class="c lit"></div><div class="c drk"></div><div class="c lit"></div>
+        <div class="c drk"></div><div class="c lit"></div><div class="c lit"></div>
+        <div class="c lit"></div><div class="c drk"></div><div class="c drk"></div>
+      </div>
+      <p class="tut-txt"><b class="gold">Gold plots</b> are sudoku — type a digit so each row, column and shape has every number once. <b class="teal">Teal patches</b> are picross — hover to see run-clues (lengths of light runs).</p>
+    </div>
+
+    <p class="tut-note">Numbers fade once satisfied and turn <b class="bad">red</b> if contradicted. Place <i>every</i> tile — light and dark — and the hidden painting is revealed. Stuck? Press <b>H</b> for a hint — <b>guessing is never needed</b>.</p>
+
     <div class="btns" style="margin-top:18px">
       <button id="btnShowAdvanced">Advanced deductions ↗</button>
       <button class="primary" id="btnCloseHelp">Back to stitching</button>
@@ -745,7 +813,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.21.2';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.22.0';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
