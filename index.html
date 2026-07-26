@@ -813,7 +813,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.22.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.22.1';   // shown bottom-right; keep in sync with CHANGELOG
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -2315,9 +2315,8 @@ function finishSetup(){
   updateUndoBtn();
   runPendingAfterGen();                 // e.g. begin the co-op session the menu queued
   setTimeout(maybeShowAdvanced, 600);   // returning players already on Hard+
-  // dead last: kick off the (large) background-music download, well after the
-  // first frames are on screen, when the main thread is idle — never competes
-  // with core game loading. initBgm() guards against running twice.
+  // fallback: ensure the music is running even if a board loads before boot's
+  // idle-callback fired (initBgm() no-ops if it already started at the menu).
   setTimeout(() => {
     if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 5000 });
     else initBgm();
@@ -4463,11 +4462,12 @@ function zoomCenter(k, pl = players[0]){
 
 // ============================================================
 //  BACKGROUND MUSIC — a deliberately deferred, lightweight player.
-//  The track (~58 MB) is the LAST asset touched: its `src` is attached
-//  only by initBgm(), fired from finishSetup() once the puzzle has
-//  generated and drawn, so it never competes with core game loading.
-//  Browsers block autoplay-with-sound until a user gesture, so if the
-//  initial play() is refused we start on the player's first interaction.
+//  The track (~58 MB) is attached only by initBgm(), kicked off at boot (once the
+//  home menu is up) so the music plays across every screen — menu, map picking,
+//  loading and gameplay. Browsers block autoplay-with-sound until a user gesture,
+//  so if the initial play() is refused we start on the player's first interaction.
+//  initBgm() is idempotent (guards on bgmInit), so finishSetup() can safely call it
+//  too as a fallback. The user can pause any time (header player / Options).
 // ============================================================
 const bgm = document.getElementById('bgm');
 const btnMusic = document.getElementById('btnMusic');
@@ -4508,13 +4508,13 @@ function playBgm(){
   const p = bgm.play();
   if (p && p.catch) p.catch(() => {});   // swallow the autoplay rejection; armAutoplay() handles it
 }
-// if the browser refuses autoplay, start on the very first user gesture
+// if the browser refuses autoplay, start on the player's first interaction. We keep
+// listening across interactions until playback actually begins (the very first click
+// can land before the track has buffered), then clean up on the 'play' event.
 function armAutoplay(){
-  const kick = () => {
-    removeEventListener('pointerdown', kick); removeEventListener('keydown', kick);
-    if (bgmWanted && bgmReady && bgm.paused) playBgm();
-  };
+  const kick = () => { if (bgmWanted && bgmReady && bgm.paused) playBgm(); };
   addEventListener('pointerdown', kick); addEventListener('keydown', kick);
+  bgm.addEventListener('play', () => { removeEventListener('pointerdown', kick); removeEventListener('keydown', kick); }, { once: true });
 }
 // attach the (large) track and try to autoplay — runs at most once
 function initBgm(){
@@ -5186,6 +5186,12 @@ if (!AUDIT_MODE) {
   applyTheme(themeHue, false);
   document.getElementById('loader').classList.add('done');
   showMenu();
+  // start the music as soon as the game opens — it plays right through the menu,
+  // map picking, loading and gameplay (nothing stops it but the user). Browsers
+  // hold autoplay until the first interaction; armAutoplay() (inside initBgm) kicks
+  // it off on that first click. Turn it off any time in Options or the header.
+  if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 2000 });
+  else setTimeout(initBgm, 150);
 }
 </script>
 </body>

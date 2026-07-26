@@ -5,6 +5,16 @@ shipped to the live site.
 
 ---
 
+## [0.22.1] — 2026-07-27 — Music from the first moment
+
+### Changed
+- **The music now starts as soon as the game opens** (at the home menu) and plays right through
+  picking a canvas, loading and playing — instead of only starting once a board was generated.
+  Browsers that block autoplay start it on your first click. Turn it off any time in **Options** or
+  the header music player.
+
+---
+
 ## [0.22.0] — 2026-07-24 — A visual tutorial
 
 ### Added
