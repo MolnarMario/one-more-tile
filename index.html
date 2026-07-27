@@ -36,7 +36,7 @@
   html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
     font-family:"Segoe UI",system-ui,sans-serif;user-select:none}
   #game{position:fixed;inset:0;display:block;cursor:crosshair;
-    background:var(--game-bg)}
+    background:var(--game-bg);touch-action:none}   /* touch-action:none: we handle pan/zoom ourselves */
   #game.panning{cursor:grabbing}
 
   /* ---------- HUD ---------- */
@@ -65,7 +65,9 @@
   /* native dropdown arrow removed for a clean custom chevron + room to breathe */
   select{appearance:none;-webkit-appearance:none;
     background-color:rgba(255,255,255,.6);
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23594f78' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    /* chevron colour follows the theme via --chevron (set in applyTheme); the
+       inline data-URI here is the fallback if the JS override hasn't run yet */
+    background-image:var(--chevron, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23594f78' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"));
     background-repeat:no-repeat;background-position:right 11px center;
     border:1px solid var(--panel-border);color:var(--text);
     border-radius:8px;padding:7px 32px 7px 12px;font-size:13px;cursor:pointer;font-family:inherit}
@@ -327,6 +329,7 @@
       <button id="btnClearMistakes" title="Sweep away every incorrect tile" disabled>🧹 Clear errors</button>
     </div>
     <div class="hud-group">
+      <button id="btnBrush" title="Touch brush — what a tap or drag places (tap to flip)" style="display:none">💡 Light</button>
       <button id="btnZoomOut" title="Zoom out (−)">−</button>
       <button id="btnZoomIn" title="Zoom in (+)">+</button>
       <button id="btnFit" title="Fit to view (F)">⛶ Fit</button>
@@ -813,7 +816,12 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.22.1';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.23.0';   // shown bottom-right; keep in sync with CHANGELOG
+// online co-op compatibility key. Peers may play together only if these match.
+// Bump ONLY when generation, the share/snapshot format, or the net protocol
+// changes — NOT for cosmetic releases — so friends on adjacent UI builds can
+// still connect. (2 = share format v5, which snapshots ride on.)
+const BOARD_COMPAT = 2;
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -1418,13 +1426,23 @@ function assignRegionTints(){
 buildPalette();   // prime C + TINTS at the restored/default hue before the first build
 // apply a hue everywhere: CSS chrome (var --hue), canvas palette, and — if a board
 // is live — recolour its regions and repaint
+// the dropdown chevron is a data-URI SVG, so its stroke can't read a CSS var —
+// rebuild it in the themed muted tone and expose it as --chevron
+function chevronUrl(){
+  const [r, g, b] = hsl2rgb(themeHue - 2, 30, 40);
+  const hex = '%23' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+  return "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='" + hex + "' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
+}
 function applyTheme(hue, persist){
   themeHue = ((hue % 360) + 360) % 360;
   document.documentElement.style.setProperty('--hue', String(themeHue));
+  document.documentElement.style.setProperty('--chevron', chevronUrl());
   buildPalette();
   if (persist) { try { localStorage.setItem(THEME_KEY, String(themeHue)); } catch (e) {} }
   if (typeof generated !== 'undefined' && generated) { assignRegionTints(); needsDraw = true; }
-  if (typeof menuPaintCards === 'function') menuPaintCards();   // recolour menu thumbnails
+  // drop the previous hue's cached card thumbnails before repainting, so sweeping
+  // the hue slider can't leak an offscreen canvas per hue (cache is keyed id@hue)
+  if (typeof menuPaintCards === 'function') { for (const k in _menuCardCache) delete _menuCardCache[k]; menuPaintCards(); }   // recolour menu thumbnails
 }
 
 // ============================================================
@@ -2318,6 +2336,7 @@ function finishSetup(){
   // fallback: ensure the music is running even if a board loads before boot's
   // idle-callback fired (initBgm() no-ops if it already started at the menu).
   setTimeout(() => {
+    if (!bgmWanted) return;   // don't fetch the (large) track for someone who turned music off
     if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 5000 });
     else initBgm();
   }, 1200);
@@ -2331,7 +2350,8 @@ function finishSetup(){
 //  nothing is spoiled), (3) a sweep thins to the real clue set, kept
 //  clues crystallising from clue[]. Choreographed with a minimum
 //  duration and gated so it never finishes before generation is truly
-//  done; click / any key skips. Reuses the board camera + palette.
+//  done (there is no skip — the camera stays live to pan/zoom while it
+//  plays). Reuses the board camera + palette.
 // ============================================================
 let loopStarted = false;
 function startLoop(){ if (loopStarted) return; loopStarted = true; requestAnimationFrame(loop); }
@@ -2844,6 +2864,10 @@ function updateUndoBtn(){
 }
 function undo(){
   if (solving || !generated) return;
+  // online guests aren't authoritative over the shared board: ask the host to
+  // undo instead. The host's own undo() runs netResync(), syncing every peer —
+  // so a guest can no longer clobber the host with its local snapshot.
+  if (online && onlineRole === 'join') { netSend('undo-request'); return; }
   if (!undoStack.length) { toast('Nothing to undo.', true); return; }
   const snap = undoStack.pop();
   state.set(snap.state);
@@ -2904,6 +2928,18 @@ function updateTimer(){
 
 // ---------- persistence ----------
 let saveTimer = null;
+// write state + zone entries + timer for the current map immediately. Same guards
+// as scheduleSave: online joiners never own the save, and we never persist mid-
+// switch (state[] can still hold the old map's paint) or before a board exists.
+function saveNow(){
+  if (net && onlineRole === 'join') return;
+  if (!generated || GEN.active) return;
+  try {
+    localStorage.setItem(stateKey(), Array.from(state.subarray(0, N)).join(''));
+    localStorage.setItem(zonesKey(), JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
+    localStorage.setItem(timerKey(), String(timerTotal()));
+  } catch (e) {}
+}
 function scheduleSave(){
   // online: the HOST owns the canonical save (it persists every move, its own and
   // the joiner's). The joiner never writes localStorage, so its solo progress for
@@ -2911,13 +2947,7 @@ function scheduleSave(){
   if (net && onlineRole === 'join') return;
   if (GEN.active) return;   // never persist mid-switch: state[] can still be the old map's paint
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(stateKey(), Array.from(state.subarray(0, N)).join(''));
-      localStorage.setItem(zonesKey(), JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
-      localStorage.setItem(timerKey(), String(timerTotal()));
-    } catch (e) {}
-  }, 400);
+  saveTimer = setTimeout(saveNow, 400);   // debounced; saveNow re-checks the guards when it fires
 }
 function loadSave(){
   try {
@@ -2967,15 +2997,21 @@ function resetGame(){
 //
 //  Boards differ in size per map, so the code is self-describing.
 //  Binary layout (then base64, prefixed with SHARE_TAG):
-//    [0]      version (=4; v3 codes still decode, with 1-byte GW/GH at [3]/[4])
+//    [0]      version (v5 current; v3/v4 still decode)
 //    [1]      difficulty index into DIFF_ORDER (0..4)
-//    [2]      map index into MAPS (which painting this progress is for)
-//    [3-4]    board width GW (2 bytes, big-endian); [5-6] board height GH; [7] zone count
+//    v5:  [2] map-id length L, then [3..3+L-1] the map id (ASCII) — a STABLE
+//         identity, unlike an array index; then GW(2, big-endian), GH(2), zones(1)
+//    v3/v4: [2] map index into LEGACY_MAP_IDS; v4 dims 2 bytes [3-6] + [7]=zones,
+//         v3 dims 1 byte [3]/[4] + [5]=zones
 //    then per zone: [n][ceil(n*n/2) bytes of digits, 4 bits each]
 //    then state: GW*GH cells, 2 bits each, 4 per byte → ceil(N/4) bytes
 // ============================================================
 const SHARE_TAG = 'NPXS3:';
-const SHARE_VER = 4;       // 2-byte board dims (boards can now exceed 255 cells/side)
+const SHARE_VER = 5;       // v5 encodes the map by id (stable) rather than its MAPS index
+// FROZEN persistence table: v3/v4 codes stored the map as an index into MAPS as it
+// was ordered at v4. Decoding those old codes must use THIS order — never the live
+// MAPS array — so DO NOT edit or reorder this even when maps are added/reordered.
+const LEGACY_MAP_IDS = ['angels', 'amigos', 'blinding-lights', 'zenitsu', 'castle', 'crew', 'fighters'];
 
 function b64FromBytes(bytes){
   let s = '';
@@ -2991,17 +3027,21 @@ function bytesFromB64(str){
 
 // build the self-describing binary blob from the current game state
 function exportCode(){
+  const idBytes = [];
+  for (let k = 0; k < currentMap.length; k++) idBytes.push(currentMap.charCodeAt(k) & 255);
+  const header = 3 + idBytes.length;            // [ver][diff][idLen] + id bytes
   const stBytes = (N + 3) >> 2;                 // 4 cells per byte
   let zBytes = 0;
   for (const z of ZONES) zBytes += 1 + ((z.n * z.n + 1) >> 1);   // 1 byte n + entries
-  const buf = new Uint8Array(8 + zBytes + stBytes);
+  const buf = new Uint8Array(header + 5 + zBytes + stBytes);     // +5 = GW(2) GH(2) zones(1)
   buf[0] = SHARE_VER;
   buf[1] = Math.max(0, DIFF_ORDER.indexOf(difficulty));
-  buf[2] = mapIndex();
-  buf[3] = (GW >> 8) & 255; buf[4] = GW & 255;     // GW, GH as 2 bytes each (big-endian)
-  buf[5] = (GH >> 8) & 255; buf[6] = GH & 255;
-  buf[7] = ZONES.length;
-  let o = 8;
+  buf[2] = idBytes.length;
+  for (let k = 0; k < idBytes.length; k++) buf[3 + k] = idBytes[k];
+  let o = header;
+  buf[o++] = (GW >> 8) & 255; buf[o++] = GW & 255;     // GW, GH as 2 bytes each (big-endian)
+  buf[o++] = (GH >> 8) & 255; buf[o++] = GH & 255;
+  buf[o++] = ZONES.length;
   for (const z of ZONES) {
     const NN = z.n * z.n;
     const e = z.entries || new Uint8Array(NN);
@@ -3028,17 +3068,28 @@ function decodeCode(code){
     s = s.replace(/\s+/g, '');
     const buf = bytesFromB64(s);
     const ver = buf[0];
-    if (buf.length < 6 || (ver !== 3 && ver !== 4)) return null;   // v3 = 1-byte dims, v4 = 2-byte dims
+    if (buf.length < 6 || (ver !== 3 && ver !== 4 && ver !== 5)) return null;   // v3 = 1-byte dims, v4 = 2-byte dims, v5 = map id
     const diff = DIFF_ORDER[buf[1]];
     if (!diff) return null;
-    const map = (MAPS[buf[2]] || {}).id;
-    if (!map) return null;
-    let gw, gh, nz, o;
-    if (ver === 4) {
-      if (buf.length < 8) return null;
-      gw = (buf[3] << 8) | buf[4]; gh = (buf[5] << 8) | buf[6]; nz = buf[7]; o = 8;
+    let map, gw, gh, nz, o;
+    if (ver === 5) {
+      const idLen = buf[2];
+      if (idLen < 1 || idLen > 64 || buf.length < 3 + idLen + 5) return null;
+      let id = '';
+      for (let k = 0; k < idLen; k++) id += String.fromCharCode(buf[3 + k]);
+      if (!MAPS.some(m => m.id === id)) return null;   // unknown / newer map id
+      map = id;
+      const h = 3 + idLen;
+      gw = (buf[h] << 8) | buf[h + 1]; gh = (buf[h + 2] << 8) | buf[h + 3]; nz = buf[h + 4]; o = h + 5;
     } else {
-      gw = buf[3]; gh = buf[4]; nz = buf[5]; o = 6;
+      map = LEGACY_MAP_IDS[buf[2]];                    // FROZEN v3/v4 index → id
+      if (!map || !MAPS.some(m => m.id === map)) return null;
+      if (ver === 4) {
+        if (buf.length < 8) return null;
+        gw = (buf[3] << 8) | buf[4]; gh = (buf[5] << 8) | buf[6]; nz = buf[7]; o = 8;
+      } else {
+        gw = buf[3]; gh = buf[4]; nz = buf[5]; o = 6;
+      }
     }
     if (gw < 1 || gh < 1 || gw * gh > MAXN) return null;
     const nn = gw * gh;
@@ -3649,7 +3700,7 @@ function peerPlayerFor(id, idx){
            hoverCell: -1, lastInput: 'pad', padActive: true, selZ: -1, selP: -1, _remote: true };
 }
 
-function netEnvelope(type, data){ return { v: PROTO_V, app: APP_VERSION, pid: myPeerId, seq: netSeq++, type, data }; }
+function netEnvelope(type, data){ return { v: PROTO_V, app: APP_VERSION, compat: BOARD_COMPAT, pid: myPeerId, seq: netSeq++, type, data }; }
 function netSend(type, data){ if (net) net.send(netEnvelope(type, data)); }                       // broadcast to all
 function netSendTo(pid, type, data){ if (net && net.sendTo) net.sendTo(pid, netEnvelope(type, data)); }
 // emit a local move to everyone — no-op unless online and not currently replaying
@@ -3682,10 +3733,10 @@ function applyRemote(ev){
 function onNetMessage(msg){
   if (!msg || typeof msg !== 'object') return;
   switch (msg.type) {
-    case 'hello':       // host → joiner: version handshake
+    case 'hello':       // host → joiner: compatibility handshake
       if (onlineRole !== 'join') break;
       hostPid = msg.pid;   // remember the host so we know whose leaving ends the session
-      if (msg.app !== APP_VERSION) {
+      if (msg.compat !== BOARD_COMPAT) {   // board/format/protocol compat, not release version
         netSend('hello-ack', { ok: false, reason: 'version' });
         toast('Version mismatch — host is on v' + msg.app + ', you are on v' + APP_VERSION + '. Update to play together.', true);
         leaveOnline();
@@ -3701,7 +3752,7 @@ function onNetMessage(msg){
       toast('A player is joining your board.', true);
       break;
     case 'snapshot':    // host → joiner: adopt the host's board + progress
-      if (onlineRole !== 'join') break;
+      if (onlineRole !== 'join' || msg.pid !== hostPid) break;   // only the host may push the board
       if (msg.data && msg.data.code) {
         joinerBackup = joinerBackup || exportCode();   // remember our own solo board
         importCode(msg.data.code, () => {
@@ -3721,8 +3772,12 @@ function onNetMessage(msg){
         if (!prev || msg.seq > (prev.seq || -1)) { coopPeers[msg.pid] = { cell: msg.data.cell, view: msg.data.view, seq: msg.seq }; needsDraw = true; }
       }
       break;
-    case 'resync':      // drift self-heal / post-undo: adopt a fresh full snapshot
-      if (online && msg.data && msg.data.code) importCode(msg.data.code, () => { needsDraw = true; });
+    case 'resync':      // host → joiner: drift self-heal / post-undo full snapshot
+      if (online && onlineRole === 'join' && msg.pid === hostPid && msg.data && msg.data.code)
+        importCode(msg.data.code, () => { needsDraw = true; });
+      break;
+    case 'undo-request':   // a guest asked to undo; the host is authoritative and undoes for everyone
+      if (onlineRole === 'host') undo();
       break;
     case 'bye':
       handlePeerGone('A player left.', msg.pid);
@@ -4390,8 +4445,126 @@ cvs.addEventListener('wheel', e => {
   v.s = ns; pl.viewAnim = null; needsDraw = true;
 }, { passive: false });
 
+// ============================================================
+//  TOUCH INPUT — runs ALONGSIDE the mouse handlers (which are untouched). One
+//  finger stitches/selects using the current brush; two fingers pan + pinch-zoom.
+//  Listeners live on `cvs`: a touch is delivered to its origin element for the
+//  whole gesture, so canvas gestures never steal scrolling from modals/menu, and
+//  preventDefault() (with #game touch-action:none) suppresses synthetic mouse
+//  events + page zoom. Drives player 0 (touch co-op is out of scope).
+// ============================================================
+let touchBrush = 1;               // 1 = light, 2 = dark — what a tap/drag places
+let touchRevealed = false;
+const touchPts = new Map();       // identifier -> { x, y } (canvas-originated touches only)
+let touchGesture = null;          // 2-finger ref: { mx, my, dist }
+let touchStroke = null;           // 1-finger: { color, touched:Set } paint, or { pan:true, x, y }
+
+function revealBrushBtn(){
+  if (touchRevealed) return;
+  touchRevealed = true;
+  const b = document.getElementById('btnBrush');
+  if (b) b.style.display = '';
+}
+function updateBrushBtn(){
+  const b = document.getElementById('btnBrush');
+  if (b) b.textContent = touchBrush === 1 ? '💡 Light' : '⬛ Dark';
+}
+function touchGestureRef(){
+  const pts = [...touchPts.values()];
+  const a = pts[0], b = pts[1] || pts[0];
+  return { mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, dist: Math.hypot(a.x - b.x, a.y - b.y) };
+}
+
+cvs.addEventListener('touchstart', e => {
+  revealBrushBtn();
+  for (const t of e.changedTouches) touchPts.set(t.identifier, { x: t.clientX, y: t.clientY });
+  e.preventDefault();
+  const pl = players[0];
+  pl.viewAnim = null;
+  if (touchPts.size >= 2) { touchStroke = null; touchGesture = touchGestureRef(); return; }   // two fingers → pan/zoom
+  const t = e.changedTouches[0];
+  const asPan = () => { touchStroke = { pan: true, x: t.clientX, y: t.clientY }; };
+  if (GEN.active) { asPan(); return; }          // camera-only while the board generates
+  if (!generated) return;
+  const i = cellAt(localX(t.clientX, pl), localY(t.clientY, pl), pl.view);
+  if (i < 0 || solving) { asPan(); return; }
+  pl.cursor = i; pl.hoverCell = i; pl.lastInput = 'mouse';
+  needsDraw = true;
+  if (tryReplayQuote(i)) { touchStroke = null; return; }   // tap a finished region → replay its quote
+  const zi = zoneOf[i];
+  if (zi >= 0) {                                 // sudoku cell: tap selects, tap-again cycles (+1, wraps)
+    const zone = ZONES[zi];
+    if (!regionDone[zone.region] && zone.entries) {
+      const p = (((i / GW) | 0) - zone.y) * zone.n + (i % GW - zone.x);
+      if (zone.puzzle[p] === 0) {
+        if (pl.selZ === zi && pl.selP === p) cycleZone(zone, p, +1);
+        else { pl.selZ = zi; pl.selP = p; }
+      }
+    }
+    touchStroke = null;
+    return;
+  }
+  if (pl.selZ >= 0) { pl.selZ = -1; pl.selP = -1; }
+  if (gameWon) { touchStroke = null; return; }
+  if (!regionDone[regionOf[i]] && !locked[i]) pushUndo();   // one undo entry per stroke
+  const c = touchBrush;
+  setCell(i, state[i] === c ? 0 : c);            // same per-cell toggle rule as a mouse click
+  touchStroke = { color: c, touched: new Set([i]) };
+}, { passive: false });
+
+cvs.addEventListener('touchmove', e => {
+  for (const t of e.changedTouches) if (touchPts.has(t.identifier)) touchPts.set(t.identifier, { x: t.clientX, y: t.clientY });
+  e.preventDefault();
+  const pl = players[0], v = pl.view;
+  if (touchPts.size >= 2) {                      // pan by midpoint delta + pinch-zoom about the midpoint
+    const g = touchGestureRef();
+    if (touchGesture) {
+      v.x += g.mx - touchGesture.mx; v.y += g.my - touchGesture.my;
+      if (touchGesture.dist > 0 && g.dist > 0) {
+        const ns = Math.max(3, Math.min(48, v.s * (g.dist / touchGesture.dist)));
+        const lx = localX(g.mx, pl), ly = localY(g.my, pl);
+        v.x = lx - (lx - v.x) * ns / v.s; v.y = ly - (ly - v.y) * ns / v.s; v.s = ns;
+      }
+      needsDraw = true;
+    }
+    touchGesture = g;
+    return;
+  }
+  if (!touchStroke) return;
+  const t = e.changedTouches[0];
+  if (touchStroke.pan) { v.x += t.clientX - touchStroke.x; v.y += t.clientY - touchStroke.y; touchStroke.x = t.clientX; touchStroke.y = t.clientY; needsDraw = true; return; }
+  if (GEN.active || !generated || solving || gameWon) return;
+  const i = cellAt(localX(t.clientX, pl), localY(t.clientY, pl), pl.view);
+  if (i < 0 || zoneOf[i] >= 0) return;
+  pl.cursor = i; pl.hoverCell = i;
+  const c = touchStroke.color;
+  if (c && !touchStroke.touched.has(i)) { touchStroke.touched.add(i); setCell(i, state[i] === c ? 0 : c); }
+}, { passive: false });
+
+function endTouch(e){
+  for (const t of e.changedTouches) touchPts.delete(t.identifier);
+  e.preventDefault();
+  const pl = players[0];
+  if (touchPts.size >= 2) { touchGesture = touchGestureRef(); return; }
+  if (touchPts.size === 1) {                     // dropped from two fingers to one → keep panning, don't stitch
+    touchGesture = null;
+    const only = [...touchPts.values()][0];
+    touchStroke = { pan: true, x: only.x, y: only.y };
+    return;
+  }
+  touchGesture = null; touchStroke = null;       // all fingers up
+  pl.hoverCell = -1; needsDraw = true;
+}
+cvs.addEventListener('touchend', endTouch, { passive: false });
+cvs.addEventListener('touchcancel', endTouch, { passive: false });
+
 addEventListener('keydown', e => {
   if (e.repeat) return;
+  // typing in a text field / dropdown must never reach the board (camera keys,
+  // hint, z/x stitch, space-pan). The capture-phase Esc handlers below are
+  // separate and intentionally still fire while a field is focused.
+  const tag = (e.target && e.target.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
   const pl = mousePlayer();   // the keyboard belongs to player 1 (the mouse player)
   // camera controls (zoom / fit) stay live even during the loading animation
   if (e.key === 'f' || e.key === 'F') { fitView(pl); return; }
@@ -4476,26 +4649,30 @@ const optVol = document.getElementById('optVol');       // Options-menu volume (
 const optMute = document.getElementById('optMute');     // Options-menu play/pause (mirrors btnMusic)
 const MUSIC_SRC = 'Chill-music-1hour.mp3';
 const MUSIC_VOL_KEY = 'proverbs2-musicvol';
+const MUSIC_ON_KEY = 'proverbs2-musicon';   // persisted on/off preference (default on)
 let bgmInit = false;        // has the track been attached yet?
 let bgmReady = false;       // enough buffered to play?
-let bgmWanted = true;       // should it be playing? (autoplay on by default)
+let bgmWanted = true;       // should it be playing? (on by default; the saved pref can turn it off)
+try { if (localStorage.getItem(MUSIC_ON_KEY) === '0') bgmWanted = false; } catch (e) {}
 
 // restore the saved volume; default to a gentle 0.5 (both sliders stay in sync)
 try { const v = parseFloat(localStorage.getItem(MUSIC_VOL_KEY)); if (v >= 0 && v <= 1) { musicVol.value = v; optVol.value = v; } } catch (e) {}
 optVol.value = musicVol.value;
 
 function setMusicUI(){
-  const playing = bgmReady && !bgm.paused;
-  btnMusic.textContent = playing ? '⏸' : '▶';
-  btnMusic.classList.toggle('playing', playing);
-  optMute.textContent = playing ? '🔊 On' : '🔇 Off';
-  optMute.classList.toggle('playing', playing);
+  // reflect the player's INTENT (bgmWanted), not just whether audio is currently
+  // flowing — so toggling off mid-buffer updates the control immediately
+  btnMusic.textContent = bgmWanted ? '⏸' : '▶';
+  btnMusic.classList.toggle('playing', bgmWanted);
+  optMute.textContent = bgmWanted ? '🔊 On' : '🔇 Off';
+  optMute.classList.toggle('playing', bgmWanted);
 }
 // shared by the header player and the Options controls so the two never drift
 function toggleMusic(){
-  if (!bgmInit) initBgm();
-  if (bgm.paused) { bgmWanted = true; playBgm(); }
-  else { bgmWanted = false; bgm.pause(); }
+  bgmWanted = !bgmWanted;
+  try { localStorage.setItem(MUSIC_ON_KEY, bgmWanted ? '1' : '0'); } catch (e) {}
+  if (bgmWanted) { if (!bgmInit) initBgm(); playBgm(); }   // initBgm attaches the track on first enable
+  else bgm.pause();
   setMusicUI();
 }
 function setMusicVol(v){
@@ -5039,6 +5216,11 @@ document.getElementById('btnPadDefaults').onclick = () => {
 document.getElementById('btnZoomIn').onclick = () => zoomCenter(1.25);
 document.getElementById('btnZoomOut').onclick = () => zoomCenter(1 / 1.25);
 document.getElementById('btnFit').onclick = () => fitView();
+// touch brush: flips what a tap/drag places (light ↔ dark). The button stays
+// hidden until touch is detected (coarse pointer at boot, or the first canvas touch).
+document.getElementById('btnBrush').onclick = () => { touchBrush = touchBrush === 1 ? 2 : 1; updateBrushBtn(); document.getElementById('btnBrush').blur(); };
+updateBrushBtn();
+try { if (matchMedia('(pointer: coarse)').matches) revealBrushBtn(); } catch (e) {}
 document.getElementById('btnHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
 document.getElementById('btnCloseHelp').onclick = () => document.getElementById('helpModal').classList.remove('show');
 document.getElementById('btnShowAdvanced').onclick = () => {
@@ -5117,9 +5299,11 @@ document.getElementById('btnPlayAgain').onclick = () => {
 };
 
 // pause + bank the play clock whenever the tab is backgrounded or closed, so
-// closed/hidden time is never counted and the last seconds aren't lost on reload
-addEventListener('visibilitychange', () => { if (document.hidden) timerPause(); });
-addEventListener('pagehide', timerPause);
+// closed/hidden time is never counted and the last seconds aren't lost on reload.
+// Also flush any pending debounced save synchronously — otherwise a stitch made
+// within 400ms of leaving would be dropped.
+addEventListener('visibilitychange', () => { if (document.hidden) { timerPause(); clearTimeout(saveTimer); saveNow(); } });
+addEventListener('pagehide', () => { timerPause(); clearTimeout(saveTimer); saveNow(); });
 
 // ============================================================
 //  OPTIONS MENU — interface colour (hue), music, default difficulty, controller
@@ -5190,8 +5374,10 @@ if (!AUDIT_MODE) {
   // map picking, loading and gameplay (nothing stops it but the user). Browsers
   // hold autoplay until the first interaction; armAutoplay() (inside initBgm) kicks
   // it off on that first click. Turn it off any time in Options or the header.
-  if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 2000 });
-  else setTimeout(initBgm, 150);
+  if (bgmWanted) {   // skip the deferred prefetch entirely if music is turned off
+    if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 2000 });
+    else setTimeout(initBgm, 150);
+  }
 }
 </script>
 </body>
