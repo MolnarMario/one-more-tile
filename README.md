@@ -100,6 +100,9 @@ real clue-thinning progress, and you can **scroll to zoom** the board while it l
 | `Ctrl+Z` | undo |
 | `H` | hint · `F` fit view · `+`/`−` zoom · `Z` / `X` mark hovered tile light / dark |
 | 🎮 button | controller status + button remapping |
+| **Touch** — one finger | stitch/drag with the current brush · tap a sudoku cell to select (tap again cycles) · tap a finished region to replay its quote |
+| **Touch** — two fingers | pan + pinch-zoom |
+| 💡/⬛ brush button | (touch) flip what a tap places between light and dark |
 
 ---
 

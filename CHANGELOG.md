@@ -5,6 +5,40 @@ shipped to the live site.
 
 ---
 
+## [0.23.0] — 2026-07-27 — Touch play, sturdier saves & sharing
+
+### Added
+- **Play on a phone or tablet.** One finger stitches and drags to paint; two fingers pan and pinch
+  to zoom. A new **brush toggle** in the header (💡 Light ⇄ ⬛ Dark) chooses what a tap places, and a
+  finger on a sudoku cell selects it (tap again to cycle its digit). The mouse experience is
+  unchanged. *(finding: no touch support)*
+
+### Fixed
+- **Typing in a text field no longer reaches the board.** Entering a share code, a PIN or a join
+  code used to trigger pan/zoom/hint/stitch shortcuts through the field. *(input scoping)*
+- **Your last stitch is no longer lost on a quick close.** Saves are now flushed immediately when the
+  tab is hidden or closed, instead of only on the 400 ms debounce. *(save flush)*
+- **Music on/off is remembered**, and you can turn it off even while the track is still loading (the
+  button now follows your choice, not the buffering state). If you've turned music off, the large
+  track is no longer downloaded at all. *(music toggle + persistence)*
+- **The dropdown chevron now follows the interface colour** instead of staying purple.
+- **Sweeping the interface-hue slider no longer leaks memory** (stale cached menu thumbnails are
+  dropped on each theme change). *(menu-card cache)*
+
+### Changed
+- **Shared/saved canvas codes now identify the map by name, not by list position**, so reordering
+  the map list can never load the wrong painting for an old code. Older codes still load. *(share
+  format v5)*
+- **Online co-op no longer breaks on every release.** Compatibility is now gated on a board/format
+  key that only changes when generation, the code format or the protocol changes — friends on
+  adjacent UI builds can still play together. Only the host can push a full board snapshot, so a
+  guest can't accidentally overwrite everyone's board. *(co-op robustness)*
+- **Co-op undo is now per-player.** In both local split-screen and online co-op, your Undo rolls
+  back only the tiles and digits *you* placed — never a teammate's work — and it stops at any region
+  that's already been completed, so finished art never disappears. *(per-player undo)*
+
+---
+
 ## [0.22.1] — 2026-07-27 — Music from the first moment
 
 ### Changed

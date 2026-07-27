@@ -200,18 +200,27 @@ progress, _pct, _hdr}`.
   `localStorage`; `loadSave()` restores them (and `timerBase`) and recomputes the `wrong` set against
   the current `sol`. Other keys: `MAP_KEY` (`proverbs2-map`, last map), `DIFF_KEY` (default tier),
   `THEME_KEY` (`proverbs2-hue`), `MAP_SORT_KEY`, `LAST_SOLO_KEY` (Continue target), `MUSIC_VOL_KEY`,
-  `PAD_KEY`, `proverbs2-quotes`, `proverbs2-advseen`. *After the zero-given change, an old save may
-  have a few marks that now mismatch a repaired `sol` pixel — they surface as mistakes; "Clear my
-  errors" fixes them.*
-- **Share**: `exportCode()` / `importCode()` / `applyImported()` (~2558+); `SHARE_VER = 4` (2-byte
-  board dims). Exports the whole canvas as a `NPXS…` code or `.npxs` file; import replays progress
-  and completed regions.
+  `MUSIC_ON_KEY` (`proverbs2-musicon`, persisted on/off), `PAD_KEY`, `proverbs2-quotes`,
+  `proverbs2-advseen`. `saveNow()` is the immediate (non-debounced) write; `scheduleSave` debounces
+  onto it, and `pagehide`/`visibilitychange` flush it so the last stitch survives a fast close.
+  *After the zero-given change, an old save may have a few marks that now mismatch a repaired `sol`
+  pixel — they surface as mistakes; "Clear my errors" fixes them.*
+- **Share**: `exportCode()` / `importCode()` / `applyImported()` (~2558+); `SHARE_VER = 5` — v5
+  encodes the map by **id** (`[2]`=idLen, then ASCII id), so reordering `MAPS` no longer corrupts a
+  code. v3/v4 codes still decode via the **frozen** `LEGACY_MAP_IDS` table (the v4 `MAPS` order) —
+  never edit it. Exports the whole canvas as a `NPXS…` code or `.npxs` file; import replays progress.
 - **Multiplayer**: `net` transport + `onlineRole` (`'host'|'join'`); `PROTO_V = 1`;
-  `netEnvelope`/`netSend`/`netEmit` (~3217). A `hello`/`hello-ack` handshake **requires matching
-  `APP_VERSION`** between peers. Host owns the canonical save; `snapshot`/`resync` sync state;
-  `saveCoopToLocal()` (~3342) lets a guest keep the shared board as their own solo save. Local
-  split-screen co-op uses `players[]`/panes; `coop`/`online` flags distinguish modes.
-- **QoL**: `pushUndo`/`undo`/`clearUndo` (whole-stroke snapshots); `giveHint(pl)` (~2830) points at
+  `netEnvelope`/`netSend`/`netEmit` (~3217). A `hello`/`hello-ack` handshake requires matching
+  **`BOARD_COMPAT`** (bumped only on generation/share/protocol changes — *not* `APP_VERSION`, so UI
+  releases don't break co-op). Host owns the canonical save; only the host may push `snapshot`/
+  `resync` (guarded on `hostPid`). **Undo is per-player in co-op**: each player has its own
+  `pl.editStack` of authored edits, and `undoOwn` reverts only that player's tiles/digits (skipping
+  teammate-changed cells and already-completed regions), replaying the reverse through the normal
+  move channel — solo keeps the whole-board snapshot `undoStack`. `saveCoopToLocal()` (~3342) lets a
+  guest keep the shared board as their own solo save. Local split-screen co-op uses `players[]`/
+  panes; `coop`/`online` flags distinguish modes.
+- **QoL**: `pushUndo`/`undo`/`clearUndo` (solo = whole-stroke snapshots; co-op = per-player authored
+  edits, see §7 multiplayer); `giveHint(pl)` (~2830) points at
   a forced move near the cursor; auto-solve via `solving`+`solveQueue` (PIN-gated); mistake handling
   via the `wrong` set + `checkRegion`/`checkWin` + a forgiving modal; the **per-map play timer** and
   **Options/theming** (§10); gamepad support.
@@ -234,8 +243,10 @@ progress, _pct, _hdr}`.
    worker path (the sync fallback masks it). Keep `genRegionClues` closure-free re: worker.
 5. **Hand-layout region ids are used verbatim** (not recompacted) so they align with `MAP_QUOTES`
    keys and saved region-done flags. Don't renumber them.
-6. **`APP_VERSION`** (top of the script, echoed bottom-right) gates online co-op and marks the
-   deployed version — bump it with any shipped change and keep `CHANGELOG.md` in sync.
+6. **`APP_VERSION`** (top of the script, echoed bottom-right) marks the deployed version — bump it
+   with any shipped change and keep `CHANGELOG.md` in sync. Online co-op is gated on **`BOARD_COMPAT`**
+   (next to it), NOT `APP_VERSION`; bump `BOARD_COMPAT` only when generation, the share/snapshot
+   format (`SHARE_VER`), or the net protocol changes, and leave `LEGACY_MAP_IDS` frozen forever.
 7. **The dev tools are generated** from `index.html` via string-marker extraction. `_build_editor.js`
    splits on Block A (`'use strict';` → `// ---------- canvas / view ----------`), Block B
    (`function sampleImage(image){` → `function weaveTexture(){`), Block C
