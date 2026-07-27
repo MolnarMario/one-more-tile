@@ -5,6 +5,16 @@ shipped to the live site.
 
 ---
 
+## [0.24.0] — 2026-07-27 — New canvas: Inferno
+
+### Added
+- **A new canvas — “Inferno 🔥”.** A 184×164 board (30,176 stitches) with 52
+  hand-drawn regions plus the usual 8 sudoku plots and 8 picross patches. Woven
+  and repaired like every other map, so it ships fully solvable with zero
+  pre-filled tiles on every difficulty.
+
+---
+
 ## [0.23.0] — 2026-07-27 — Touch play, sturdier saves & sharing
 
 ### Added
