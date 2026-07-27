@@ -1260,7 +1260,8 @@ function makePlayer(id){
   return { id, view:{ x:0, y:0, s:12 }, viewAnim:null,
            cursor:-1, hoverCell:-1, selZ:-1, selP:-1, drag:null,
            spaceHeld:false, lastInput:'mouse', padIndex:-1,
-           padPrev:[], padActive:false, padMoveNext:0, padMoving:false, device:'mouse' };
+           padPrev:[], padActive:false, padMoveNext:0, padMoving:false, device:'mouse',
+           editStack:[] };   // co-op: this player's own authored-edit history (per-player undo)
 }
 let players = [ makePlayer(0) ];
 let coop = false;
@@ -2831,21 +2832,33 @@ function maybeMistakePrompt(){
 function clearErrors(){
   if (!wrong.size) return;
   pushUndo();
-  const affected = new Set();
-  for (const i of wrong) { state[i] = 0; affected.add(regionOf[i]); }
+  const affected = new Set(), edits = [];
+  for (const i of wrong) { edits.push({ i, prev: state[i], next: 0 }); state[i] = 0; affected.add(regionOf[i]); }
   wrong.clear();
   for (const r of affected) checkRegion(r);   // sweeping the bad marks may complete a region → reveal + quote + win
+  noteStroke(mousePlayer(), edits);           // co-op: whoever cleared can undo the sweep (restores those tiles)
   updateHUD(); scheduleSave(); needsDraw = true;
   netEmit({ t: 'clear' });
 }
 
 // ---------- undo ----------
-// snapshot-based: capture the full mutable game state before each player
-// action and restore it wholesale, so region completions, error sweeps and
-// painted strokes all roll back cleanly. The auto-solver and reset clear it.
+// Two schemes, one Undo button:
+//  • SOLO — snapshot-based: capture the full mutable game state before each
+//    action and restore it wholesale, so region completions, error sweeps and
+//    painted strokes all roll back cleanly.
+//  • CO-OP (local split-screen OR online) — per-player: each player has their
+//    own history of the edits THEY authored (recorded via noteStroke/noteStitch/
+//    noteDigit). Undo reverts only your own last stroke, skipping any tile a
+//    teammate has since changed or that sits in an already-finished region, and
+//    replays the reverse through the normal move channel so peers stay in sync.
+//    So everyone owns their own undo and nobody can roll back a partner's work.
+// The auto-solver, reset, map/difficulty switch and session changes clear it.
 const undoStack = [];
+let undoing = false;                    // true while an undo replays its reverse moves (don't re-record)
+function coopMode(){ return coop || online; }
 function pushUndo(){
-  if (applyingRemote) return;   // a peer's replayed move doesn't enter our local undo stack
+  if (applyingRemote || undoing) return;   // peer/undo replays don't enter the local history
+  if (coopMode()) return;                  // co-op records per-player authored edits instead of snapshots
   undoStack.push({
     state: state.slice(),
     zones: ZONES.map(z => (z.entries ? z.entries.slice() : null)),
@@ -2857,17 +2870,33 @@ function pushUndo(){
   if (undoStack.length > 100) undoStack.shift();
   updateUndoBtn();
 }
-function clearUndo(){ undoStack.length = 0; updateUndoBtn(); }
+// co-op recorders — append an authored edit to a player's own history. Board
+// entries store {i, prev, next}; digit entries store {zi, p, prev, next}. All
+// no-op in solo, while replaying a peer move, and while undoing.
+function noteStroke(pl, edits){
+  if (!coopMode() || applyingRemote || undoing || !pl || !edits) return;
+  const board = edits.filter(e => e.prev !== e.next);
+  if (!board.length) return;
+  pl.editStack.push({ board, digits: [] });
+  if (pl.editStack.length > 200) pl.editStack.shift();
+  updateUndoBtn();
+}
+function noteStitch(pl, i, prev, next){ if (prev !== next) noteStroke(pl, [{ i, prev, next }]); }
+function noteDigit(pl, zi, p, prev, next){
+  if (!coopMode() || applyingRemote || undoing || !pl || prev === next) return;
+  pl.editStack.push({ board: [], digits: [{ zi, p, prev, next }] });
+  if (pl.editStack.length > 200) pl.editStack.shift();
+  updateUndoBtn();
+}
+function clearUndo(){ undoStack.length = 0; for (const p of players) p.editStack = []; updateUndoBtn(); }
 function updateUndoBtn(){
   const b = document.getElementById('btnUndo');
-  if (b) b.disabled = undoStack.length === 0;
+  if (!b) return;
+  b.disabled = coopMode() ? !((players[0].editStack || []).length) : undoStack.length === 0;
 }
 function undo(){
   if (solving || !generated) return;
-  // online guests aren't authoritative over the shared board: ask the host to
-  // undo instead. The host's own undo() runs netResync(), syncing every peer —
-  // so a guest can no longer clobber the host with its local snapshot.
-  if (online && onlineRole === 'join') { netSend('undo-request'); return; }
+  if (coopMode()) { undoOwn(players[0]); return; }   // co-op: each player undoes only their own contributions
   if (!undoStack.length) { toast('Nothing to undo.', true); return; }
   const snap = undoStack.pop();
   state.set(snap.state);
@@ -2880,6 +2909,36 @@ function undo(){
   document.getElementById('winModal').classList.remove('show');
   updateHUD(); scheduleSave(); updateUndoBtn(); needsDraw = true;
   netResync();   // online: undo restores a full snapshot locally, so re-sync the peer to match
+}
+// co-op: revert this player's most recent authored stroke. Reverts run through
+// the normal setCell/setZoneDigit path, so each one broadcasts to peers. Tiles a
+// teammate has changed since (state no longer matches what we set) or tiles in an
+// already-completed region are left alone — finished art never disappears.
+function undoOwn(pl){
+  const stack = pl.editStack || [];
+  if (!stack.length) { toast('Nothing of yours to undo.', true); return; }
+  const edit = stack.pop();
+  undoing = true;
+  let reverted = 0;
+  try {
+    for (let k = edit.board.length - 1; k >= 0; k--) {
+      const { i, prev, next } = edit.board[k];
+      if (regionDone[regionOf[i]]) continue;   // finished region — keep the revealed art
+      if (state[i] !== next) continue;          // a teammate changed it since — not ours to undo
+      setCell(i, prev);                         // updates wrong/region + broadcasts the revert
+      reverted++;
+    }
+    for (let k = edit.digits.length - 1; k >= 0; k--) {
+      const { zi, p, prev, next } = edit.digits[k];
+      const zone = ZONES[zi];
+      if (!zone || !zone.entries || regionDone[zone.region]) continue;
+      if (zone.puzzle[p] !== 0 || zone.entries[p] !== next) continue;
+      setZoneDigit(zone, p, prev);
+      reverted++;
+    }
+  } finally { undoing = false; }
+  if (!reverted) toast('That step is already finished or a teammate changed it.', true);
+  updateHUD(); updateUndoBtn(); needsDraw = true;
 }
 
 // ---------- HUD ----------
@@ -3467,11 +3526,12 @@ function padPrimary(pl){
     const p = (((i / GW) | 0) - zone.y) * zone.n + (i % GW - zone.x);
     if (zone.puzzle[p] !== 0) return;
     pl.selZ = zi; pl.selP = p;
-    cycleZone(zone, p, +1);
+    cycleZone(zone, p, +1, pl);
     return;
   }
   if (!regionDone[regionOf[i]] && !locked[i]) pushUndo();   // each controller tile is its own undo step
-  setCell(i, state[i] === 1 ? 0 : 1);
+  const prev = state[i], next = state[i] === 1 ? 0 : 1;
+  setCell(i, next); noteStitch(pl, i, prev, next);
 }
 
 function padSecondary(pl){
@@ -3484,11 +3544,12 @@ function padSecondary(pl){
     const p = (((i / GW) | 0) - zone.y) * zone.n + (i % GW - zone.x);
     if (zone.puzzle[p] !== 0) return;
     pl.selZ = zi; pl.selP = p;
-    cycleZone(zone, p, -1);
+    cycleZone(zone, p, -1, pl);
     return;
   }
   if (!regionDone[regionOf[i]] && !locked[i]) pushUndo();   // each controller tile is its own undo step
-  setCell(i, state[i] === 2 ? 0 : 2);
+  const prev = state[i], next = state[i] === 2 ? 0 : 2;
+  setCell(i, next); noteStitch(pl, i, prev, next);
 }
 
 function pollGamepad(now){
@@ -3650,6 +3711,7 @@ function tryLocalJoin(gps){
 function startCoop(n){
   maxPlayers = Math.max(2, Math.min(4, n | 0));
   coop = true;
+  clearUndo();   // entering co-op switches to per-player undo — start every player's history clean
   document.getElementById('coopModal').classList.remove('show');
   players[0].device = 'mouse';
   players[0].padIndex = -1;    // P1 is mouse + keyboard; controllers claim the other spots
@@ -3662,6 +3724,7 @@ function startCoop(n){
 function exitCoop(){
   coop = false;
   players.length = 1;          // drop the extra players
+  clearUndo();                 // back to solo snapshot undo — discard the co-op edit histories
   players[0].device = 'mouse';
   players[0].padIndex = -1;    // solo pollGamepad re-binds the first connected pad
   fitView(players[0]);         // P1 reclaims the full window
@@ -3772,12 +3835,9 @@ function onNetMessage(msg){
         if (!prev || msg.seq > (prev.seq || -1)) { coopPeers[msg.pid] = { cell: msg.data.cell, view: msg.data.view, seq: msg.seq }; needsDraw = true; }
       }
       break;
-    case 'resync':      // host → joiner: drift self-heal / post-undo full snapshot
+    case 'resync':      // host → joiner: drift self-heal full snapshot (e.g. after a solo-path undo)
       if (online && onlineRole === 'join' && msg.pid === hostPid && msg.data && msg.data.code)
         importCode(msg.data.code, () => { needsDraw = true; });
-      break;
-    case 'undo-request':   // a guest asked to undo; the host is authoritative and undoes for everyone
-      if (onlineRole === 'host') undo();
       break;
     case 'bye':
       handlePeerGone('A player left.', msg.pid);
@@ -3818,6 +3878,7 @@ function startNet(impl, role, roomId, onReady, onErr){
 function netClose(){
   if (net) { try { net.send(netEnvelope('bye', {})); } catch (e) {} try { net.close(); } catch (e) {} }
   net = null; online = false; onlineRole = null; coopPeers = {}; hostPid = null; watchPartner = false; pendingRemote = []; joinerBackup = null;
+  clearUndo();   // undo history is per-session/mode — don't carry it across a disconnect
 }
 // user-initiated full disconnect (host or guest)
 function leaveOnline(){
@@ -4308,27 +4369,31 @@ function cellAt(mx, my, v = view){
   return gy * GW + gx;
 }
 
-function cycleZone(zone, p, dir){
+function cycleZone(zone, p, dir, pl = mousePlayer()){
   const n = zone.n;
   pushUndo();
-  let v = zone.entries[p] + dir;
+  const prev = zone.entries[p];
+  let v = prev + dir;
   if (v > n) v = 0;
   if (v < 0) v = n;
   zone.entries[p] = v;
   lastTouchedRegion = zone.region;
   lastCell = (zone.y + ((p / n) | 0)) * GW + zone.x + (p % n);
   checkZone(zone);
+  noteDigit(pl, zone.idx, p, prev, v);   // co-op: record for this player's own undo
   updateHUD(); scheduleSave(); needsDraw = true;
   netEmit({ t: 'zone', z: zone.idx, p, v });
 }
 
-function setZoneDigit(zone, p, v){
+function setZoneDigit(zone, p, v, pl = mousePlayer()){
   if (zone.entries[p] === v) return;
   pushUndo();
+  const prev = zone.entries[p];
   zone.entries[p] = v;
   lastTouchedRegion = zone.region;
   lastCell = (zone.y + ((p / zone.n) | 0)) * GW + zone.x + (p % zone.n);
   checkZone(zone);
+  noteDigit(pl, zone.idx, p, prev, v);   // co-op: record for this player's own undo
   updateHUD(); scheduleSave(); needsDraw = true;
   netEmit({ t: 'zone', z: zone.idx, p, v });
 }
@@ -4377,11 +4442,11 @@ cvs.addEventListener('mousedown', e => {
     const p = (gy - zone.y) * zone.n + (gx - zone.x);
     if (zone.puzzle[p] !== 0) { pl.selZ = -1; pl.selP = -1; needsDraw = true; return; }
     if (e.button === 0) {
-      if (pl.selZ === zi && pl.selP === p) cycleZone(zone, p, +1);
+      if (pl.selZ === zi && pl.selP === p) cycleZone(zone, p, +1, pl);
       else { pl.selZ = zi; pl.selP = p; }
     } else if (e.button === 2) {
       pl.selZ = zi; pl.selP = p;
-      cycleZone(zone, p, -1);
+      cycleZone(zone, p, -1, pl);
     }
     needsDraw = true;
     return;
@@ -4392,10 +4457,12 @@ cvs.addEventListener('mousedown', e => {
   if (!regionDone[regionOf[i]] && !locked[i] && !gameWon) pushUndo();
   if (e.button === 0 || e.button === 2) {
     const c = e.button === 0 ? 1 : 2;          // left → light, right → dark
-    setCell(i, state[i] === c ? 0 : c);        // per-cell toggle: same colour clears, else set colour
+    const prev = state[i], next = state[i] === c ? 0 : c;
+    setCell(i, next);                          // per-cell toggle: same colour clears, else set colour
     // a drag continues that same toggle over every NEW cell it enters (see mousemove);
-    // `touched` keeps each cell to one flip per stroke so sub-cell jitter doesn't re-toggle
-    pl.drag = { mode: 'paint', color: c, touched: new Set([i]) };
+    // `touched` keeps each cell to one flip per stroke so sub-cell jitter doesn't re-toggle;
+    // `edits` records {i,prev,next} for co-op per-player undo (committed on mouseup)
+    pl.drag = { mode: 'paint', color: c, touched: new Set([i]), edits: [{ i, prev, next }] };
   }
 });
 
@@ -4426,12 +4493,14 @@ addEventListener('mousemove', e => {
     const c = pl.drag.color;
     if (c && !pl.drag.touched.has(i)) {   // each cell flips once per stroke — dragging == clicking each cell
       pl.drag.touched.add(i);
-      setCell(i, state[i] === c ? 0 : c); // identical toggle rule to the initial click
+      const prev = state[i], next = state[i] === c ? 0 : c;
+      setCell(i, next);                   // identical toggle rule to the initial click
+      if (pl.drag.edits) pl.drag.edits.push({ i, prev, next });
     }
   }
 });
 
-addEventListener('mouseup', () => { mousePlayer().drag = null; cvs.classList.remove('panning'); });
+addEventListener('mouseup', () => { const pl = mousePlayer(); if (pl.drag && pl.drag.edits) noteStroke(pl, pl.drag.edits); pl.drag = null; cvs.classList.remove('panning'); });
 
 cvs.addEventListener('wheel', e => {
   e.preventDefault();
@@ -4497,7 +4566,7 @@ cvs.addEventListener('touchstart', e => {
     if (!regionDone[zone.region] && zone.entries) {
       const p = (((i / GW) | 0) - zone.y) * zone.n + (i % GW - zone.x);
       if (zone.puzzle[p] === 0) {
-        if (pl.selZ === zi && pl.selP === p) cycleZone(zone, p, +1);
+        if (pl.selZ === zi && pl.selP === p) cycleZone(zone, p, +1, pl);
         else { pl.selZ = zi; pl.selP = p; }
       }
     }
@@ -4508,8 +4577,9 @@ cvs.addEventListener('touchstart', e => {
   if (gameWon) { touchStroke = null; return; }
   if (!regionDone[regionOf[i]] && !locked[i]) pushUndo();   // one undo entry per stroke
   const c = touchBrush;
-  setCell(i, state[i] === c ? 0 : c);            // same per-cell toggle rule as a mouse click
-  touchStroke = { color: c, touched: new Set([i]) };
+  const prev = state[i], next = state[i] === c ? 0 : c;
+  setCell(i, next);                              // same per-cell toggle rule as a mouse click
+  touchStroke = { color: c, touched: new Set([i]), edits: [{ i, prev, next }] };
 }, { passive: false });
 
 cvs.addEventListener('touchmove', e => {
@@ -4538,7 +4608,7 @@ cvs.addEventListener('touchmove', e => {
   if (i < 0 || zoneOf[i] >= 0) return;
   pl.cursor = i; pl.hoverCell = i;
   const c = touchStroke.color;
-  if (c && !touchStroke.touched.has(i)) { touchStroke.touched.add(i); setCell(i, state[i] === c ? 0 : c); }
+  if (c && !touchStroke.touched.has(i)) { touchStroke.touched.add(i); const prev = state[i], next = state[i] === c ? 0 : c; setCell(i, next); if (touchStroke.edits) touchStroke.edits.push({ i, prev, next }); }
 }, { passive: false });
 
 function endTouch(e){
@@ -4552,6 +4622,7 @@ function endTouch(e){
     touchStroke = { pan: true, x: only.x, y: only.y };
     return;
   }
+  if (touchStroke && touchStroke.edits) noteStroke(pl, touchStroke.edits);   // co-op: commit this stroke to the player's own undo
   touchGesture = null; touchStroke = null;       // all fingers up
   pl.hoverCell = -1; needsDraw = true;
 }
@@ -4577,8 +4648,8 @@ addEventListener('keydown', e => {
     const zone = ZONES[pl.selZ];
     if (!regionDone[zone.region]) {
       const v = parseInt(e.key, 10);
-      if (v >= 1 && v <= zone.n) { setZoneDigit(zone, pl.selP, v); return; }
-      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') { setZoneDigit(zone, pl.selP, 0); return; }
+      if (v >= 1 && v <= zone.n) { setZoneDigit(zone, pl.selP, v, pl); return; }
+      if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') { setZoneDigit(zone, pl.selP, 0, pl); return; }
       if (e.key === 'Escape') { pl.selZ = -1; pl.selP = -1; needsDraw = true; return; }
       const n = zone.n, c = pl.selP % n, r = (pl.selP / n) | 0;
       if (e.key === 'ArrowLeft'  && c > 0)     { pl.selP--; needsDraw = true; e.preventDefault(); return; }
@@ -4589,8 +4660,8 @@ addEventListener('keydown', e => {
   }
   if (e.code === 'Space') { pl.spaceHeld = true; e.preventDefault(); }
   else if (e.key === 'h' || e.key === 'H') giveHint(pl);
-  else if ((e.key === 'z' || e.key === 'Z') && pl.hoverCell >= 0 && !solving && zoneOf[pl.hoverCell] < 0) { if (!regionDone[regionOf[pl.hoverCell]] && !locked[pl.hoverCell] && !gameWon) pushUndo(); setCell(pl.hoverCell, state[pl.hoverCell] === 1 ? 0 : 1); }
-  else if ((e.key === 'x' || e.key === 'X') && pl.hoverCell >= 0 && !solving && zoneOf[pl.hoverCell] < 0) { if (!regionDone[regionOf[pl.hoverCell]] && !locked[pl.hoverCell] && !gameWon) pushUndo(); setCell(pl.hoverCell, state[pl.hoverCell] === 2 ? 0 : 2); }
+  else if ((e.key === 'z' || e.key === 'Z') && pl.hoverCell >= 0 && !solving && zoneOf[pl.hoverCell] < 0) { const i2 = pl.hoverCell; if (!regionDone[regionOf[i2]] && !locked[i2] && !gameWon) pushUndo(); const prev = state[i2], next = state[i2] === 1 ? 0 : 1; setCell(i2, next); noteStitch(pl, i2, prev, next); }
+  else if ((e.key === 'x' || e.key === 'X') && pl.hoverCell >= 0 && !solving && zoneOf[pl.hoverCell] < 0) { const i2 = pl.hoverCell; if (!regionDone[regionOf[i2]] && !locked[i2] && !gameWon) pushUndo(); const prev = state[i2], next = state[i2] === 2 ? 0 : 2; setCell(i2, next); noteStitch(pl, i2, prev, next); }
 });
 addEventListener('keyup', e => { if (e.code === 'Space') mousePlayer().spaceHeld = false; });
 

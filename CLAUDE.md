@@ -213,10 +213,14 @@ progress, _pct, _hdr}`.
   `netEnvelope`/`netSend`/`netEmit` (~3217). A `hello`/`hello-ack` handshake requires matching
   **`BOARD_COMPAT`** (bumped only on generation/share/protocol changes — *not* `APP_VERSION`, so UI
   releases don't break co-op). Host owns the canonical save; only the host may push `snapshot`/
-  `resync` (guarded on `hostPid`), and a guest `undo` sends `undo-request` for the host to perform
-  authoritatively. `saveCoopToLocal()` (~3342) lets a guest keep the shared board as their own solo
-  save. Local split-screen co-op uses `players[]`/panes; `coop`/`online` flags distinguish modes.
-- **QoL**: `pushUndo`/`undo`/`clearUndo` (whole-stroke snapshots); `giveHint(pl)` (~2830) points at
+  `resync` (guarded on `hostPid`). **Undo is per-player in co-op**: each player has its own
+  `pl.editStack` of authored edits, and `undoOwn` reverts only that player's tiles/digits (skipping
+  teammate-changed cells and already-completed regions), replaying the reverse through the normal
+  move channel — solo keeps the whole-board snapshot `undoStack`. `saveCoopToLocal()` (~3342) lets a
+  guest keep the shared board as their own solo save. Local split-screen co-op uses `players[]`/
+  panes; `coop`/`online` flags distinguish modes.
+- **QoL**: `pushUndo`/`undo`/`clearUndo` (solo = whole-stroke snapshots; co-op = per-player authored
+  edits, see §7 multiplayer); `giveHint(pl)` (~2830) points at
   a forced move near the cursor; auto-solve via `solving`+`solveQueue` (PIN-gated); mistake handling
   via the `wrong` set + `checkRegion`/`checkWin` + a forgiving modal; the **per-map play timer** and
   **Options/theming** (§10); gamepad support.

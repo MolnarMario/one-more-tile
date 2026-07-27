@@ -31,8 +31,11 @@ shipped to the live site.
   format v5)*
 - **Online co-op no longer breaks on every release.** Compatibility is now gated on a board/format
   key that only changes when generation, the code format or the protocol changes — friends on
-  adjacent UI builds can still play together. The host is now authoritative for board snapshots and
-  undo, so a guest can't accidentally overwrite everyone's board. *(co-op robustness)*
+  adjacent UI builds can still play together. Only the host can push a full board snapshot, so a
+  guest can't accidentally overwrite everyone's board. *(co-op robustness)*
+- **Co-op undo is now per-player.** In both local split-screen and online co-op, your Undo rolls
+  back only the tiles and digits *you* placed — never a teammate's work — and it stops at any region
+  that's already been completed, so finished art never disappears. *(per-player undo)*
 
 ---
 
