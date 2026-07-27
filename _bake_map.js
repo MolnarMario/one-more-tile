@@ -1,6 +1,7 @@
 // Bake a hand-authored map-def (exported by region-editor.html) into index.html
 // as a permanent built-in map: adds IMG_SRC_n, a HAND_LAYOUTS entry, a MAPS
-// entry (layout:<id>) and a MAP_QUOTES entry. Dev tool.
+// entry (layout:<id>), a MAP_META entry + MAP_ADDED_ORDER slot (both required by
+// the home-menu grid) and a MAP_QUOTES entry. Dev tool.
 //   node _bake_map.js <mapfile.json> [--name "🎨 Name"] [--id slug]
 'use strict';
 const fs = require('fs');
@@ -77,6 +78,23 @@ insertAfter('const MAPS = [', '\n' + mapsEntry);
 // 4. MAP_QUOTES entry (skip if empty)
 if (def.quotes && Object.keys(def.quotes).length) {
   insertAfter('const MAP_QUOTES = {', `\n  ${JSON.stringify(id)}: ${JSON.stringify(def.quotes)},`);
+}
+
+// 5. MAP_META entry — the home-menu grid reads region/cell counts + dims from
+//    here (menuRenderCard/menuBuildGrid throw without it). `regions` counts the
+//    organic regions PLUS every plot (sudoku + picross), matching REG_COUNT.
+const metaRegions = def.regPix + def.zones.length + def.picross.length;
+if (html.includes('const MAP_META = {')) {
+  insertAfter('const MAP_META = {', `\n  ${JSON.stringify(id)}: { regions: ${metaRegions}, cells: ${def.gw * def.gh}, gw: ${def.gw}, gh: ${def.gh} },`);
+} else {
+  console.warn('⚠ MAP_META block not found — add its entry by hand or the menu card for this map will error.');
+}
+
+// 6. MAP_ADDED_ORDER — the "newest / oldest added" menu sort. Append as newest.
+if (/const MAP_ADDED_ORDER = \[[^\]]*\]/.test(html)) {
+  html = html.replace(/(const MAP_ADDED_ORDER = \[[^\]]*)\]/, (m, body) => `${body}, '${id}']`);
+} else {
+  console.warn('⚠ MAP_ADDED_ORDER not found — this map may sort oddly under "newest/oldest added".');
 }
 
 fs.writeFileSync('index.html', html);
