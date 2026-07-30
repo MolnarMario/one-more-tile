@@ -343,7 +343,7 @@
       <button id="btnMP" title="Play with others — local split-screen or online">👥 Multiplayer</button>
       <button id="btnWatch" title="Watch your partners' views" style="display:none">⊟ Watch</button>
       <button id="btnHelp" title="How to play">?</button>
-      <button id="btnShare" title="Export your canvas as a code, or import one">⇄ Share</button>
+      <button id="btnShare" title="Save your progress — or share it with a friend">💾</button>
       <button id="btnReset">Reset</button>
     </div>
   </div>
@@ -735,9 +735,9 @@
 
 <div class="overlay" id="shareModal">
   <div class="card" style="max-width:min(600px, calc(100vw - 24px))">
-    <h2>⇄ Share this canvas</h2>
-    <p>The picture is the same on every copy of the game — so a code carries only your difficulty, stitches and digits. Copy yours below, or paste a friend's to load it.</p>
-    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Your code</b> — copy and share it</p>
+    <h2>💾 Save this canvas</h2>
+    <p>Save your progress as a code or file so you can back it up or move it to another device. You can also share it with a friend to hand them your board — but importing it <b>replaces</b> whatever progress they had on this map.</p>
+    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Your code</b> — copy it to save or share</p>
     <textarea id="shareOut" readonly style="width:100%;height:84px;resize:none;background:rgba(255,255,255,.7);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--text);word-break:break-all;margin-bottom:8px"></textarea>
     <div class="btns" style="margin-bottom:18px">
       <button class="primary" id="btnShareCopy">📋 Copy code</button>
@@ -818,7 +818,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.24.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.24.1';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
