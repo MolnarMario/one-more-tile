@@ -5,6 +5,17 @@ shipped to the live site.
 
 ---
 
+## [0.24.1] — 2026-07-30 — Clearer Save button
+
+### Changed
+- The toolbar’s **⇄ Share** button is now a compact **💾** save icon — it reads
+  as “save my progress,” which is what most players use it for.
+- The modal it opens is retitled **Save this canvas** and now explains you can
+  also hand your board to a friend, with a warning that importing it **replaces**
+  their existing progress on that map.
+
+---
+
 ## [0.24.0] — 2026-07-27 — New canvas: Inferno
 
 ### Added
