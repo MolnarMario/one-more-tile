@@ -5,6 +5,41 @@ shipped to the live site.
 
 ---
 
+## [0.25.0] — 2026-07-31 — Personal co-op moments
+
+### Changed
+- **Mistake warnings are now personal in co-op.** The “four mistakes” prompt used
+  to pop for *everyone* whenever the board crossed four wrong tiles. Now it counts
+  each player’s own tiles: only the player who made the mistakes is asked to sweep
+  them, and **Clear my errors** clears just their tiles (never a teammate’s work).
+  - Local split-screen: the prompt appears **inside that player’s pane**.
+  - Online: the mistaken player gets the prompt; teammates get a small,
+    self-dismissing notice (“Player 2 has four mistakes on their side”).
+- **Region quotes go to the people who earned them.** When a finished region has a
+  character quote, only the players who placed a tile in it (or solved an attached
+  sudoku/picross plot) see the quote card.
+  - Local split-screen: the quote shows **in each contributor’s pane**.
+  - Online: contributors get the quote modal; everyone else gets a **“Player X
+    finished a region”** notice with a **View quote** button to read it themselves.
+- **Controllers can work these cards/modals.** A player’s pad now navigates the
+  buttons on their region-quote card and the four-mistakes prompt: the **light
+  stitch** button presses the focused button (closing a quote outright), and the
+  **d-pad / left stick** moves a focus ring between the two mistake buttons. The
+  same focus-ring navigation now applies to the full-screen modals too.
+- Renamed the Options button to **🎮 Controller setup** (dropped the trailing “…”).
+
+### Fixed
+- The co-op **clear-errors** action no longer wipes teammates’ mistakes — over the
+  network it now clears only the sender’s own tiles. (Bumps the online-play
+  compatibility key, so all players should be on 0.25.0+ to play together.)
+- **Header no longer overlaps at some widths.** When the window was a certain
+  width the **🏠 Menu** button could slide over the play timer instead of dropping
+  to a second row. The stats cluster (progress · mistakes · timer) can no longer
+  shrink narrower than its own text, so the toolbar wraps onto two rows cleanly
+  before anything can collide.
+
+---
+
 ## [0.24.1] — 2026-07-30 — Clearer Save button
 
 ### Changed

@@ -47,7 +47,10 @@
   #hud h1 small{display:block;font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:400}
   /* a cluster of related controls — stays on one line; the header wraps between clusters */
   .hud-group{display:flex;align-items:center;gap:7px}
-  .hud-stats{flex:1 1 240px;min-width:0;gap:12px}          /* grows to fill the middle; holds the progress bar */
+  .hud-stats{flex:1 1 240px;gap:12px}                      /* grows to fill the middle; holds the progress bar.
+                                                              min-width defaults to auto (min-content) so this cluster
+                                                              never shrinks past its own text — the controls wrap to a
+                                                              new row *before* the timer and Menu button can overlap. */
   .hud-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
   #progressWrap{flex:1;min-width:70px;max-width:340px;height:10px;border-radius:5px;background:var(--track);overflow:hidden}
   #progressBar{height:100%;width:0%;border-radius:5px;background:var(--grad-bar);transition:width .3s}
@@ -183,6 +186,44 @@
     padding:10px 22px;font-size:14px;font-style:italic;color:var(--text);opacity:0;
     transition:all .35s;z-index:30;pointer-events:none;white-space:nowrap}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* ---------- co-op pane cards (local split-screen) ---------- */
+  /* One shared screen: a good/bad event is confined to the offending or earning
+     player's pane. The container is click-through; individual cards are not. */
+  #paneCards{position:fixed;inset:0;z-index:38;pointer-events:none}
+  .paneCard{position:absolute;display:flex;align-items:center;justify-content:center;
+    padding:16px;pointer-events:auto;background:rgba(20,12,40,.34);backdrop-filter:blur(1.5px);
+    animation:pcFade .25s ease}
+  @keyframes pcFade{from{opacity:0}to{opacity:1}}
+  .pc-box{background:var(--card);border:1px solid var(--panel-border);border-radius:14px;
+    padding:18px 20px;max-width:min(360px,calc(100% - 24px));text-align:center;
+    box-shadow:0 18px 50px rgba(70,48,130,.4)}
+  .pc-box.quote{text-align:left;border-left:5px solid var(--accent)}
+  .pc-box h3{color:var(--accent);font-size:15px;margin-bottom:8px;letter-spacing:.6px}
+  .pc-box p{color:var(--muted);font-size:13px;line-height:1.55;margin-bottom:14px}
+  .pc-box .pc-quote{color:var(--text);font-style:italic;font-size:15px;line-height:1.5;margin-bottom:14px}
+  .pc-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .pc-box.quote .pc-btns{justify-content:flex-end}
+  .pc-btns button{font-family:inherit;font-size:13px;padding:7px 14px;border-radius:9px;cursor:pointer;
+    border:1px solid var(--panel-border);background:var(--panel);color:var(--text)}
+  .pc-btns button.pc-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  /* controller focus ring — used on modal + pane-card buttons when navigating by pad */
+  .pad-focus{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 6px hsl(var(--hue) 70% 55% / .5)}
+
+  /* ---------- co-op corner notices (online) ---------- */
+  #coopNotes{position:fixed;left:14px;bottom:58px;z-index:39;display:flex;flex-direction:column;
+    gap:8px;pointer-events:none;max-width:min(320px,calc(100vw - 28px))}
+  .coopNote{display:flex;align-items:center;gap:10px;pointer-events:auto;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:10px;
+    padding:9px 10px 9px 14px;font-size:13px;color:var(--text);
+    opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s;
+    box-shadow:0 10px 30px rgba(40,28,80,.3)}
+  .coopNote.show{opacity:1;transform:translateY(0)}
+  .coopNote span{flex:1}
+  .coopNote .note-act{font-family:inherit;font-size:12px;padding:5px 10px;border-radius:8px;cursor:pointer;
+    border:none;background:var(--accent);color:#fff;white-space:nowrap}
+  .coopNote .note-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 4px;line-height:1}
+  body.generating #paneCards,body.generating #coopNotes{opacity:0;pointer-events:none}
 
   /* ---------- home menu ---------- */
   /* z-index 35: above the HUD/board (10/11) but below dialog overlays (40) and
@@ -617,7 +658,7 @@
 
     <div class="opt-row">
       <div class="opt-label">Controller</div>
-      <button id="optPad">🎮 Controller setup…</button>
+      <button id="optPad">🎮 Controller setup</button>
     </div>
 
     <div class="btns" style="margin-top:20px;justify-content:center">
@@ -768,6 +809,9 @@
 
 <div id="version"></div>
 <div id="toast"></div>
+<!-- co-op: pane-confined cards (local split-screen) + corner notices (online) -->
+<div id="paneCards"></div>
+<div id="coopNotes"></div>
 
 <script>
 'use strict';
@@ -818,12 +862,13 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.24.1';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.25.0';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
-// still connect. (2 = share format v5, which snapshots ride on.)
-const BOARD_COMPAT = 2;
+// still connect. (2 = share format v5, which snapshots ride on; 3 = the co-op
+// 'clear' move now clears only the SENDER's mistakes, not the whole board.)
+const BOARD_COMPAT = 3;
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
@@ -1244,6 +1289,11 @@ function buildLayout(){
 const sol    = new Uint8Array(MAXN);          // 1 = light, 0 = dark
 const clue   = new Int8Array(MAXN).fill(-1);  // -1 = no clue, else 0..9
 const state  = new Uint8Array(MAXN);          // 0 unknown, 1 light, 2 dark
+// Co-op attribution: who placed the current mark at each cell — 'me' (this
+// machine's local player, or solo), 'L'+playerId (a local split-screen player),
+// or a remote peer's pid. null = cleared/unmarked. Drives who sees a region's
+// quote / a mistake prompt (contributor gets the modal; others get a notice).
+const cellOwner = new Array(MAXN).fill(null);
 const cellCol = new Array(MAXN);              // art color per cell
 const locked = new Uint8Array(MAXN);          // pre-stitched starter tiles — always empty since repairTexture(); kept as the stall fallback's channel
 const edge   = new Uint8Array(MAXN);          // image edge strength (for content-aware borders)
@@ -1251,6 +1301,9 @@ let regionDone = [];
 let regionDoneAt = [];
 let regionPlots = [];   // regionPlots[r] = ids of every sudoku/picross plot touching pixel region r (partially or fully); region r reveals only once they're all solved too
 const wrong = new Set();
+// co-op audience UI state (declared early: resize()→layoutPaneCards runs at boot)
+const paneCardQueue = {};   // playerId -> [ {kind:'quote'|'mistake', …} ] queued cards
+const paneCardEl = {};      // playerId -> the currently-shown pane-card element (or null)
 
 // ---------- canvas / view ----------
 const cvs = document.getElementById('game');
@@ -1330,6 +1383,7 @@ function resize(){
   cvs.width = innerWidth * dpr; cvs.height = innerHeight * dpr;
   cvs.style.width = innerWidth + 'px'; cvs.style.height = innerHeight + 'px';
   needsDraw = true;
+  layoutPaneCards();   // keep any co-op pane cards pinned to their (resized) panes
   // once the window settles, glide the cell you were working on back to centre
   if (!generated) return;
   clearTimeout(resizeTimer);
@@ -2040,10 +2094,11 @@ function loadMap(id){
   if (id === currentMap || !MAPS.some(m => m.id === id) || solving || !generated) return;
   timerPause();   // bank the outgoing map's time before we switch away
   rebuildForMap(id, () => {
-    state.fill(0); wrong.clear();
-    for (const z of ZONES) z.entries = z.puzzle.slice();
+    state.fill(0); wrong.clear(); cellOwner.fill(null);
+    for (const z of ZONES) { z.entries = z.puzzle.slice(); z.owner = null; }
     regionDone.fill(false); regionDoneAt.fill(0);
     gameWon = false; mistakePromptOpen = false; resetSelections();
+    mistakeFlagged.clear(); clearPaneCards(); clearCoopNotes();
     quoteQueue.length = 0; document.getElementById('charModal').classList.remove('show');
     clearUndo();
     loadSave();
@@ -2652,12 +2707,26 @@ if (/[?&]audit=/.test(location.search)) {
 let lastTouchedRegion = -1;
 let lastCell = -1;          // last board/plot cell the player acted on
 
+// ---- co-op edit attribution ----
+// `coopActor` is the local split-screen player whose input is currently running
+// (set at the input-handler entry points); `remoteOwner` is the pid of the peer
+// whose move we're replaying (set in applyRemote). ownerForEdit() turns that into
+// the token stored in cellOwner[] / zone.owner[].
+let coopActor = null;
+let remoteOwner = null;
+function ownerForEdit(){
+  if (applyingRemote) return remoteOwner || 'peer';
+  if (coop) return 'L' + ((coopActor || players[0]).id);
+  return 'me';
+}
+
 function setCell(i, s){
   if (regionDone[regionOf[i]] || gameWon || locked[i] || zoneOf[i] >= 0) return;
   if (timerStart < 0 && !solving) timerStart = Date.now();   // start the session clock on the first genuine user stitch
   lastTouchedRegion = regionOf[i];
   lastCell = i;
   state[i] = s;
+  cellOwner[i] = (s === 0) ? null : ownerForEdit();
   if (s === 0) wrong.delete(i);
   else if ((s === 1) !== (sol[i] === 1)) wrong.add(i);
   else wrong.delete(i);
@@ -2790,11 +2859,131 @@ function maybeShowQuote(){
   for (const rs in q) {
     const r = +rs;
     if (shown.indexOf(r) >= 0 || !homeRegionComplete(r)) continue;
-    shown.push(r); quoteQueue.push(q[r]); added = true;
+    shown.push(r); added = true;
+    dispatchQuote(r, q[r]);
   }
   if (added) saveQuotes();
-  if (quoteQueue.length && !document.getElementById('charModal').classList.contains('show')) showNextQuote();
 }
+// the co-op owner-tokens that placed at least one final tile in region r (its
+// own cells + any attached picross patch's cells + any attached sudoku's digits)
+function regionContributors(r){
+  const set = new Set();
+  const scan = cells => { if (cells) for (const i of cells) { const o = cellOwner[i]; if (o != null) set.add(o); } };
+  scan(regionCells[r]);
+  for (const p of PICROSS) if (p.attached === r) scan(regionCells[p.region]);
+  for (const z of ZONES) if (z.attached === r && z.owner) for (const o of z.owner) if (o != null) set.add(o);
+  return set;
+}
+// route a completed region's quote to whoever earned it. Solo: the usual modal.
+// Local split-screen: a card inside each contributing player's pane. Online:
+// contributors get the modal; teammates get a small "…finished a region" notice
+// with a button to read it themselves.
+function dispatchQuote(r, text){
+  if (coop) {
+    const owners = regionContributors(r);
+    let any = false;
+    for (const pl of players) if (owners.has('L' + pl.id)) { queuePaneCard(pl, { kind: 'quote', text }); any = true; }
+    if (!any) queuePaneCard(players[0], { kind: 'quote', text });   // e.g. auto-solved: fall back to P1
+    return;
+  }
+  if (online) {
+    if (regionContributors(r).has('me')) { quoteQueue.push(text); if (!charModalOpen()) showNextQuote(); }
+    else showRegionNotice(text, peerLabel(remoteOwner));
+    return;
+  }
+  quoteQueue.push(text); if (!charModalOpen()) showNextQuote();   // solo
+}
+function charModalOpen(){ return document.getElementById('charModal').classList.contains('show'); }
+
+// ============================================================
+//  CO-OP AUDIENCE UI — pane cards (local split-screen) + notices (online)
+//  Local split-screen shares one screen, so a good/bad event shows as a card
+//  confined to the relevant player's PANE; teammates simply see it over there.
+//  Online each player has their own screen, so contributors get the usual modal
+//  and everyone else gets a small corner notice (with a button, for quotes).
+// ============================================================
+// paneCardQueue / paneCardEl are declared up with the early game state (they're
+// touched by resize()→layoutPaneCards() during initial boot, before this point).
+function playerTag(pl){ return 'Player ' + (pl.id + 1); }
+function queuePaneCard(pl, card){
+  (paneCardQueue[pl.id] = paneCardQueue[pl.id] || []).push(card);
+  if (!paneCardEl[pl.id]) showPaneCard(pl);
+}
+function showPaneCard(pl){
+  const q = paneCardQueue[pl.id];
+  if (!q || !q.length) return;
+  const card = q[0], host = document.getElementById('paneCards');
+  if (!host) return;
+  const el = document.createElement('div');
+  el.className = 'paneCard';
+  const box = document.createElement('div'); box.className = 'pc-box';
+  const btns = document.createElement('div'); btns.className = 'pc-btns';
+  if (card.kind === 'mistake') {
+    const h = document.createElement('h3'); h.textContent = playerTag(pl) + ' — four mistakes';
+    const p = document.createElement('p'); p.textContent = 'No game over — sweep away your incorrect tiles and carry on?';
+    const clr = document.createElement('button'); clr.className = 'pc-primary'; clr.textContent = 'Clear my errors';
+    clr.onclick = () => { clearErrors(pl.id); dismissPaneCard(pl); };
+    const keep = document.createElement('button'); keep.textContent = 'Keep going';
+    keep.onclick = () => dismissPaneCard(pl);
+    box.append(h, p); btns.append(clr, keep);
+  } else {
+    box.classList.add('quote');
+    const p = document.createElement('p'); p.className = 'pc-quote'; p.textContent = '“' + card.text + '”';
+    const ok = document.createElement('button'); ok.className = 'pc-primary'; ok.textContent = 'Continue ▸';
+    ok.onclick = () => dismissPaneCard(pl);
+    box.append(p); btns.append(ok);
+  }
+  box.append(btns); el.append(box);
+  host.append(el);
+  paneCardEl[pl.id] = el;
+  pl._focusIdx = 0; pl._focusNext = 0;   // controller focus starts on the primary button
+  layoutPaneCards();
+}
+function dismissPaneCard(pl){
+  const el = paneCardEl[pl.id];
+  if (el) el.remove();
+  paneCardEl[pl.id] = null;
+  const q = paneCardQueue[pl.id];
+  if (q) q.shift();
+  if (q && q.length) showPaneCard(pl);
+}
+function layoutPaneCards(){
+  for (const pl of players) {
+    const el = paneCardEl[pl.id];
+    if (!el) continue;
+    const r = localPaneRect(pl);
+    el.style.left = r.x + 'px'; el.style.top = r.y + 'px';
+    el.style.width = r.w + 'px'; el.style.height = r.h + 'px';
+  }
+}
+function clearPaneCards(){
+  const host = document.getElementById('paneCards');
+  if (host) host.innerHTML = '';
+  for (const k in paneCardEl) paneCardEl[k] = null;
+  for (const k in paneCardQueue) paneCardQueue[k] = [];
+}
+
+// online corner notices
+function coopNote(msg, actionLabel, action, autoMs){
+  const host = document.getElementById('coopNotes');
+  if (!host) return;
+  const el = document.createElement('div'); el.className = 'coopNote';
+  const span = document.createElement('span'); span.textContent = msg; el.append(span);
+  if (actionLabel) {
+    const b = document.createElement('button'); b.className = 'note-act'; b.textContent = actionLabel;
+    b.onclick = () => { if (action) action(); el.remove(); };
+    el.append(b);
+  }
+  const x = document.createElement('button'); x.className = 'note-x'; x.textContent = '✕';
+  x.onclick = () => el.remove();
+  el.append(x);
+  host.append(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  if (autoMs) setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, autoMs);
+}
+function showRegionNotice(text, who){ coopNote(who + ' finished a region.', 'View quote', () => showQuoteText(text)); }
+function showMistakeNotice(who){ coopNote(who + ' has four mistakes on their side.', null, null, 5000); }
+function clearCoopNotes(){ const host = document.getElementById('coopNotes'); if (host) host.innerHTML = ''; }
 function showQuoteText(text){
   const nameEl = document.getElementById('charName');
   nameEl.textContent = ''; nameEl.style.display = 'none';   // quotes have no speaker name (yet)
@@ -2827,22 +3016,71 @@ function tryReplayQuote(i){
 }
 
 let mistakePromptOpen = false;
+// how many of the wrong cells belong to a given co-op owner-token
+function ownerWrongCount(owner){ let c = 0; for (const i of wrong) if (cellOwner[i] === owner) c++; return c; }
+// my own mistake count for the full-screen modal (solo counts the whole board;
+// online counts only the tiles I placed)
+function myMistakeCount(){ return online ? ownerWrongCount('me') : wrong.size; }
+const mistakeFlagged = new Set();   // co-op owners currently over the 4-mistake line (so we don't re-nag)
 function maybeMistakePrompt(){
-  if (wrong.size >= 4 && !mistakePromptOpen) {
-    mistakePromptOpen = true;
-    document.getElementById('mistakeModal').classList.add('show');
+  // SOLO — the single shared board, one modal
+  if (!coop && !online) {
+    if (wrong.size >= 4 && !mistakePromptOpen) { mistakePromptOpen = true; document.getElementById('mistakeModal').classList.add('show'); }
+    else if (wrong.size < 4) mistakePromptOpen = false;   // re-arm once back under 4
+    return;
   }
+  // LOCAL split-screen — warn each player, in their own pane, about their own mistakes
+  if (coop) {
+    for (const pl of players) {
+      const key = 'L' + pl.id, n = ownerWrongCount(key);
+      if (n >= 4 && !mistakeFlagged.has(key)) { mistakeFlagged.add(key); queuePaneCard(pl, { kind: 'mistake', pid: pl.id }); }
+      else if (n < 4) mistakeFlagged.delete(key);
+    }
+    return;
+  }
+  // ONLINE — my own 4 → my modal; a teammate's 4 → a small notice
+  if (myMistakeCount() >= 4 && !mistakePromptOpen) { mistakePromptOpen = true; document.getElementById('mistakeModal').classList.add('show'); }
+  else if (myMistakeCount() < 4) mistakePromptOpen = false;   // re-arm once my own mistakes clear
+  const peers = new Set();
+  for (const i of wrong) { const o = cellOwner[i]; if (o && o !== 'me') peers.add(o); }
+  for (const o of peers) if (ownerWrongCount(o) >= 4 && !mistakeFlagged.has(o)) { mistakeFlagged.add(o); showMistakeNotice(peerLabel(o)); }
+  for (const o of Array.from(mistakeFlagged)) if (o !== 'me' && ownerWrongCount(o) < 4) mistakeFlagged.delete(o);
 }
-function clearErrors(){
-  if (!wrong.size) return;
-  pushUndo();
+// sweep the wrong cells matching `pred` back to blank; complete any region that
+// finishing off frees up; record the sweep in `actor`'s per-player undo. Returns
+// the number of tiles cleared.
+function sweepErrors(pred, actor){
   const affected = new Set(), edits = [];
-  for (const i of wrong) { edits.push({ i, prev: state[i], next: 0 }); state[i] = 0; affected.add(regionOf[i]); }
-  wrong.clear();
+  for (const i of Array.from(wrong)) {
+    if (!pred(i)) continue;
+    edits.push({ i, prev: state[i], next: 0 });
+    state[i] = 0; cellOwner[i] = null; wrong.delete(i);
+    affected.add(regionOf[i]);
+  }
+  if (!edits.length) return 0;
   for (const r of affected) checkRegion(r);   // sweeping the bad marks may complete a region → reveal + quote + win
-  noteStroke(mousePlayer(), edits);           // co-op: whoever cleared can undo the sweep (restores those tiles)
+  if (actor) noteStroke(actor, edits);        // co-op: whoever cleared can undo the sweep (restores those tiles)
   updateHUD(); scheduleSave(); needsDraw = true;
-  netEmit({ t: 'clear' });
+  return edits.length;
+}
+// Clear errors, scoped to whoever asked. Local split-screen: just that seat's
+// mistakes. Online: only my own tiles, and tell peers to drop the same ones.
+// Solo: the whole board.
+function clearErrors(seatId){
+  if (!wrong.size) return;
+  if (coop) {
+    const key = 'L' + (seatId != null ? seatId : (coopActor || players[0]).id);
+    const actor = players.find(p => ('L' + p.id) === key) || players[0];
+    if (sweepErrors(i => cellOwner[i] === key, actor)) mistakeFlagged.delete(key);
+    return;
+  }
+  if (online) {
+    if (sweepErrors(i => cellOwner[i] === 'me', players[0])) { mistakePromptOpen = false; netEmit({ t: 'clear' }); }
+    return;
+  }
+  pushUndo();                                 // solo: snapshot then sweep everything
+  sweepErrors(() => true, mousePlayer());
+  mistakePromptOpen = false;
 }
 
 // ---------- undo ----------
@@ -3019,6 +3257,7 @@ function loadSave(){
       for (let i = 0; i < N; i++) {
         if (zoneOf[i] >= 0) continue;
         state[i] = +s[i];
+        cellOwner[i] = state[i] !== 0 ? 'me' : null;   // resumed marks are mine
         if (state[i] !== 0 && (state[i] === 1) !== (sol[i] === 1)) wrong.add(i);
       }
     }
@@ -3038,12 +3277,13 @@ function loadSave(){
 }
 function resetGame(){
   solveQueue.length = 0; solving = false;
-  state.fill(0); wrong.clear();
-  for (const z of ZONES) z.entries = z.puzzle.slice();
+  state.fill(0); wrong.clear(); cellOwner.fill(null);
+  for (const z of ZONES) { z.entries = z.puzzle.slice(); z.owner = null; }
   resetSelections();
   applyGivens();
   regionDone.fill(false); regionDoneAt.fill(0);
   gameWon = false; mistakePromptOpen = false;
+  mistakeFlagged.clear(); clearPaneCards(); clearCoopNotes();
   clearUndo();
   quotesShown[currentMap] = []; saveQuotes(); quoteQueue.length = 0;   // re-arm this map's quotes
   timerBase = 0; timerStart = -1; timerShown = '';                     // and reset the clock
@@ -3195,18 +3435,24 @@ function applyImported(data){
   state.fill(0);
   state.set(data.state);
   wrong.clear();
+  // imported marks belong to nobody local yet ('import' is neither me nor a
+  // specific peer), so a later completion attributes only to whoever adds tiles.
+  cellOwner.fill(null);
   ZONES.forEach((z, k) => {
     const e = data.zones[k];
     if (z.entries && e && e.length === z.n * z.n) z.entries.set(e);
+    z.owner = null;
   });
   // givens stay authoritative; recompute the mistake set on the painting
   for (let i = 0; i < N; i++) {
     if (zoneOf[i] >= 0) continue;
+    if (state[i] !== 0) cellOwner[i] = 'import';
     if (state[i] !== 0 && (state[i] === 1) !== (sol[i] === 1)) wrong.add(i);
   }
   applyGivens();
   regionDone.fill(false); regionDoneAt.fill(0);
   gameWon = false; mistakePromptOpen = false;
+  mistakeFlagged.clear(); clearPaneCards(); clearCoopNotes();
   resetSelections();
   for (let r = 0; r < REG_PIX; r++) checkRegion(r, true);
   for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
@@ -3519,6 +3765,7 @@ function ensureCursorVisible(pl = players[0]){
 }
 
 function padPrimary(pl){
+  coopActor = pl;                          // attribute edits below to this player (co-op)
   const i = pl.cursor;
   if (i < 0 || !generated || solving) return;
   if (tryReplayQuote(i)) return;           // A on a finished region replays its quote
@@ -3539,6 +3786,7 @@ function padPrimary(pl){
 }
 
 function padSecondary(pl){
+  coopActor = pl;                          // attribute edits below to this player (co-op)
   const i = pl.cursor;
   if (i < 0 || !generated || solving || gameWon) return;
   const zi = zoneOf[i];
@@ -3555,6 +3803,25 @@ function padSecondary(pl){
   const prev = state[i], next = state[i] === 2 ? 0 : 2;
   setCell(i, next); noteStitch(pl, i, prev, next);
 }
+
+// ---- controller navigation of modal / pane-card buttons ----
+// Arrows (d-pad ⇄ or left stick) move a focus index among `btns`; the caller
+// "presses" the focused one with the light-stitch button. Debounced repeat via
+// pl._focusNext, so a held direction steps once then waits.
+function padMoveFocus(pl, btns, gp, pressed, now){
+  if (btns.length < 2) return;
+  const left  = (gp.axes[0] || 0) < -0.5 || !!pressed[14];
+  const right = (gp.axes[0] || 0) >  0.5 || !!pressed[15];
+  if ((left || right) && now >= (pl._focusNext || 0)) {
+    const cur = pl._focusIdx || 0;
+    pl._focusIdx = Math.max(0, Math.min(btns.length - 1, cur + (right ? 1 : -1)));
+    pl._focusNext = now + 220;
+    needsDraw = true;
+  } else if (!left && !right) {
+    pl._focusNext = 0;
+  }
+}
+function paintFocus(btns, idx){ btns.forEach((b, k) => b.classList.toggle('pad-focus', k === idx)); }
 
 function pollGamepad(now){
   const gps = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -3609,16 +3876,35 @@ function pollPad(pl, gp, now){
     return;
   }
 
-  // menus: stitch = confirm (primary), mark = cancel (last button)
+  // menus: arrows move a focus ring across the buttons, stitch presses the
+  // focused one, mark = cancel (last button). A fresh modal focuses its primary.
   const open = document.querySelector('.overlay.show');
   if (open) {
-    if (edge(padMap.light)) {
-      const btn = open.querySelector('.btns button.primary') || open.querySelector('.btns button');
-      if (btn) btn.click();
-    } else if (edge(padMap.dark)) {
-      const btns = open.querySelectorAll('.btns button');
-      if (btns.length) btns[btns.length - 1].click();
+    const btns = Array.from(open.querySelectorAll('.btns button'));
+    if (pl._focusFor !== open) {
+      pl._focusFor = open;
+      const pi = btns.findIndex(b => b.classList.contains('primary'));
+      pl._focusIdx = pi >= 0 ? pi : 0;
     }
+    padMoveFocus(pl, btns, gp, pressed, now);
+    const idx = Math.max(0, Math.min(btns.length - 1, pl._focusIdx || 0));
+    if (btns.length) paintFocus(btns, idx);
+    if (edge(padMap.light))     { if (btns[idx]) btns[idx].click(); }
+    else if (edge(padMap.dark)) { if (btns.length) btns[btns.length - 1].click(); }
+    pl.padPrev = pressed;
+    return;
+  }
+  pl._focusFor = null;   // no full-screen modal open — forget its focus
+  // this player's own co-op pane card (local split-screen): their controller
+  // navigates + dismisses it, so a collaborator on a pad is never stuck. Single-
+  // button quote card → stitch closes it; two-button mistake card → arrows pick.
+  const card = paneCardEl[pl.id];
+  if (card) {
+    const btns = Array.from(card.querySelectorAll('.pc-btns button'));
+    padMoveFocus(pl, btns, gp, pressed, now);
+    const idx = Math.max(0, Math.min(btns.length - 1, pl._focusIdx || 0));
+    if (btns.length) paintFocus(btns, idx);
+    if (edge(padMap.light) && btns[idx]) btns[idx].click();
     pl.padPrev = pressed;
     return;
   }
@@ -3728,6 +4014,7 @@ function startCoop(n){
 function exitCoop(){
   coop = false;
   players.length = 1;          // drop the extra players
+  mistakeFlagged.clear(); clearPaneCards();   // pane cards are a split-screen thing only
   clearUndo();                 // back to solo snapshot undo — discard the co-op edit histories
   players[0].device = 'mouse';
   players[0].padIndex = -1;    // solo pollGamepad re-binds the first connected pad
@@ -3760,6 +4047,16 @@ let joinerBackup = null;     // joiner's own solo board, snapshotted at join, re
 
 function peerIds(){ return Object.keys(coopPeers); }
 function peerCount(){ return peerIds().length; }
+// a stable, human name for a peer in notices. There are no player names, so we
+// number peers "Player 2, 3, …" in order of first sighting (this machine's P1 is
+// myself). Assigned lazily so any pid we hear about gets a label.
+let nextPeerNum = 2;
+function peerLabel(pid){
+  if (!pid || pid === 'peer' || pid === 'me') return 'A teammate';
+  const p = coopPeers[pid] || (coopPeers[pid] = { cell: -1, view: null, seq: -1 });
+  if (!p.num) p.num = nextPeerNum++;
+  return 'Player ' + p.num;
+}
 // synthetic, read-only "player" mirroring a remote participant's viewport (watch grid)
 function peerPlayerFor(id, idx){
   const pp = coopPeers[id] || {};
@@ -3774,10 +4071,13 @@ function netSendTo(pid, type, data){ if (net && net.sendTo) net.sendTo(pid, netE
 function netEmit(ev){ if (online && !applyingRemote && net) netSend('move', ev); }
 function netResync(){ if (online && net) netSend('resync', { code: exportCode() }); }
 
-// replay a peer's move locally, WITHOUT re-broadcasting; every field bounds-checked
-function applyRemote(ev){
+// replay a peer's move locally, WITHOUT re-broadcasting; every field bounds-checked.
+// `pid` is the sender, so its edits are attributed to that peer (drives who, on
+// this machine, is a region's contributor vs. gets a notice).
+function applyRemote(ev, pid){
   if (!ev) return;
   applyingRemote = true;
+  remoteOwner = pid || 'peer';
   try {
     if (ev.t === 'cell') {
       const i = ev.i | 0, s = ev.s | 0;
@@ -3789,9 +4089,10 @@ function applyRemote(ev){
         if (p >= 0 && p < NN && val >= 0 && val <= zone.n) setZoneDigit(zone, p, val);
       }
     } else if (ev.t === 'clear') {
-      clearErrors();
+      sweepErrors(i => cellOwner[i] === remoteOwner, null);   // the sender cleared THEIR OWN errors — drop just those
+      mistakeFlagged.delete(remoteOwner);
     }
-  } finally { applyingRemote = false; }
+  } finally { applyingRemote = false; remoteOwner = null; }
   needsDraw = true;
 }
 
@@ -3824,14 +4125,14 @@ function onNetMessage(msg){
         joinerBackup = joinerBackup || exportCode();   // remember our own solo board
         importCode(msg.data.code, () => {
           online = true;
-          pendingRemote.forEach(applyRemote); pendingRemote = [];   // flush moves that arrived mid-import
+          pendingRemote.forEach(x => applyRemote(x.ev, x.pid)); pendingRemote = [];   // flush moves that arrived mid-import
           setOnlineUI(); toast('Joined! You’re on the host’s board now.', true); needsDraw = true;
         });
       }
       break;
     case 'move':
-      if (online) applyRemote(msg.data);
-      else if (net) pendingRemote.push(msg.data);   // buffer until the snapshot import finishes
+      if (online) applyRemote(msg.data, msg.pid);
+      else if (net) pendingRemote.push({ ev: msg.data, pid: msg.pid });   // buffer until the snapshot import finishes
       break;
     case 'cursor':
       if (msg.data && msg.pid) {
@@ -3882,6 +4183,7 @@ function startNet(impl, role, roomId, onReady, onErr){
 function netClose(){
   if (net) { try { net.send(netEnvelope('bye', {})); } catch (e) {} try { net.close(); } catch (e) {} }
   net = null; online = false; onlineRole = null; coopPeers = {}; hostPid = null; watchPartner = false; pendingRemote = []; joinerBackup = null;
+  nextPeerNum = 2; mistakeFlagged.clear(); clearCoopNotes();
   clearUndo();   // undo history is per-session/mode — don't carry it across a disconnect
 }
 // user-initiated full disconnect (host or guest)
@@ -4391,9 +4693,12 @@ function cycleZone(zone, p, dir, pl = mousePlayer()){
 
 function setZoneDigit(zone, p, v, pl = mousePlayer()){
   if (zone.entries[p] === v) return;
+  coopActor = pl;                          // attribute this digit to the acting player (co-op)
   pushUndo();
   const prev = zone.entries[p];
   zone.entries[p] = v;
+  if (!zone.owner) zone.owner = new Array(zone.n * zone.n).fill(null);
+  zone.owner[p] = (v === 0) ? null : ownerForEdit();
   lastTouchedRegion = zone.region;
   lastCell = (zone.y + ((p / zone.n) | 0)) * GW + zone.x + (p % zone.n);
   checkZone(zone);
@@ -4420,6 +4725,7 @@ cvs.addEventListener('mousedown', e => {
   }
   if (!generated) return;
   const pl = mousePlayer();
+  coopActor = pl;             // attribute mouse edits to the mouse player (co-op)
   pl.viewAnim = null;
   // the mouse acts only within its own pane (player 0's)
   const r = localPaneRect(pl);
@@ -4497,6 +4803,7 @@ addEventListener('mousemove', e => {
     const c = pl.drag.color;
     if (c && !pl.drag.touched.has(i)) {   // each cell flips once per stroke — dragging == clicking each cell
       pl.drag.touched.add(i);
+      coopActor = pl;                     // attribute drag-painted cells to the mouse player (co-op)
       const prev = state[i], next = state[i] === c ? 0 : c;
       setCell(i, next);                   // identical toggle rule to the initial click
       if (pl.drag.edits) pl.drag.edits.push({ i, prev, next });
@@ -4641,6 +4948,7 @@ addEventListener('keydown', e => {
   const tag = (e.target && e.target.tagName) || '';
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
   const pl = mousePlayer();   // the keyboard belongs to player 1 (the mouse player)
+  coopActor = pl;             // attribute any edits this keypress makes to that player (co-op)
   // camera controls (zoom / fit) stay live even during the loading animation
   if (e.key === 'f' || e.key === 'F') { fitView(pl); return; }
   if (e.key === '+' || e.key === '=') { zoomCenter(1.25, pl); return; }
@@ -5365,7 +5673,8 @@ document.getElementById('btnClearErrors').onclick = () => {
 };
 document.getElementById('btnKeepGoing').onclick = () => {
   document.getElementById('mistakeModal').classList.remove('show');
-  const watch = setInterval(() => { if (wrong.size < 4) { mistakePromptOpen = false; clearInterval(watch); } }, 800);
+  // re-arm once my own mistakes fall back under 4 (online counts only my tiles)
+  const watch = setInterval(() => { if (myMistakeCount() < 4) { mistakePromptOpen = false; clearInterval(watch); } }, 800);
 };
 document.getElementById('btnAdmire').onclick = () => document.getElementById('winModal').classList.remove('show');
 document.getElementById('btnPlayAgain').onclick = () => {
