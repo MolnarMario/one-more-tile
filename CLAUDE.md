@@ -219,6 +219,19 @@ progress, _pct, _hdr}`.
   move channel — solo keeps the whole-board snapshot `undoStack`. `saveCoopToLocal()` (~3342) lets a
   guest keep the shared board as their own solo save. Local split-screen co-op uses `players[]`/
   panes; `coop`/`online` flags distinguish modes.
+- **Per-contributor co-op events**: every mark records **who placed it** in `cellOwner[i]`
+  (`'me'` = this machine's local player/solo, `'L'+id` = a local split-screen seat, or a peer's
+  **pid**; zones use `zone.owner[]`), set via `ownerForEdit()` off `coopActor` (local input) /
+  `remoteOwner` (set in `applyRemote`). This drives audience routing so events go only to whoever
+  earned them: **mistakes** (`maybeMistakePrompt`) count each owner's own wrong cells — solo/online
+  show the shared `#mistakeModal` for *your* four, local split-screen shows a **pane card**; a
+  teammate's four raises an online **notice**. **Region quotes** (`dispatchQuote` ← `maybeShowQuote`)
+  go to `regionContributors(r)`: contributors get the modal / pane card, online non-contributors get
+  a **"Player X finished a region" notice** with a *View quote* button. `clearErrors(seat?)` sweeps
+  only that owner's tiles, and the co-op `{t:'clear'}` move now means "sender clears **their own**"
+  (⚠ `BOARD_COMPAT` bump). Pane cards live in `#paneCards` (`layoutPaneCards` pins them to
+  `localPaneRect`); online notices in `#coopNotes`. Reset every board-swap path (`cellOwner.fill`,
+  `zone.owner=null`, `mistakeFlagged.clear()`, `clearPaneCards`/`clearCoopNotes`).
 - **QoL**: `pushUndo`/`undo`/`clearUndo` (solo = whole-stroke snapshots; co-op = per-player authored
   edits, see §7 multiplayer); `giveHint(pl)` (~2830) points at
   a forced move near the cursor; auto-solve via `solving`+`solveQueue` (PIN-gated); mistake handling
