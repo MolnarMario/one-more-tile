@@ -5,6 +5,68 @@ shipped to the live site.
 
 ---
 
+## [0.26.0] — 2026-08-02 — Boards you've played open in about a second
+
+### Added
+- **Picross patches now scale with the difficulty.** They never did before: a patch
+  was whatever light/dark pattern the photograph happened to leave behind, so on
+  Castle some patches averaged **0.67 runs per line** — a line that's one solid block
+  or nothing, which solves itself. That was the same on Very Easy and Very Hard alike.
+  Each patch is now shaped to the tier you're playing, measured by how much deduction
+  it actually demands (full row-and-column passes needed to crack it from blank):
+
+  | | Very Easy | Easy | Medium | Hard | Very Hard |
+  |---|---|---|---|---|---|
+  | passes needed | 1.4 | 2 | 3 | 5 | 7.6 |
+  | runs per line | 0.9 | 1.3 | 2.0 | 2.4 | 2.5 |
+
+  Every patch stays **provably solvable by pure line logic at every tier** — harder
+  never means guessing, and still nothing is ever pre-filled for you.
+- **A patch you've already started is left alone.** Change difficulty mid-canvas and
+  any patch you've stitched into keeps the shape you were solving; only the untouched
+  ones are redrawn for the new tier. Nothing you've worked on is ever invalidated —
+  the same courtesy the sudoku plots already got.
+- This doesn't change the finished picture at all. The art you uncover comes from the
+  photograph itself, not from the puzzle layer, and a patch's tiles are invisible to
+  every counting clue on the board (clues never reach across a plot border), so
+  reshaping one can't disturb anything outside it.
+
+### Changed
+- **Coming back to a canvas is now near-instant.** Until now the game rebuilt every
+  board from scratch on every single page load — so closing the tab and reopening it
+  meant sitting through the whole weave again. The finished board is now kept on your
+  own machine and restored instead.
+  - Angels went from **~37 seconds to under a second** of work; Inferno from ~16s;
+    Castle from ~1.8s. The bigger the canvas, the more you save.
+  - A restored board plays a short **“Restoring the canvas…”** beat (about a second)
+    rather than the full weave animation — long enough to see it happen, short enough
+    that you're playing almost immediately.
+  - **Difficulty tiers are remembered separately.** The first time you try a new tier
+    it still has to be woven, but going back to one you've already played is instant.
+    Your stitches are untouched by any of this, exactly as before.
+- Nothing about the puzzles themselves changed. A restored board is byte-for-byte the
+  board you would have got by generating it, and the game checks every restored clue
+  against the solution before trusting it — if anything doesn't line up it quietly
+  throws the copy away and weaves a fresh one.
+- Only boards are stored, never your progress (that already had its own save). Older
+  boards are cleaned up automatically, and the whole thing sits in well under a
+  megabyte. If your browser blocks local storage the game simply works as it did.
+
+### Notes for developers
+- Cache lives in IndexedDB (`proverbs2-boards`), keyed on map · seed · dimensions ·
+  `BOARD_COMPAT`, plus difficulty for clue sets. `?nocache=1` bypasses it; `?audit=1`
+  disables it outright so the audit always exercises real generation.
+- Picross shaping is `shapePicross()` (targets `DIFF[tier].pRuns` / `.pRounds`), always
+  starting from `capturePicBase()`'s canonical interiors so a patch depends only on
+  (map, seed, tier) — never on which tiers you passed through. Which tier each patch
+  sits at is `picTier[]`, persisted per map and carried in **share format v6**, because
+  a recipient (and a co-op guest) regenerates the board locally before replaying
+  progress. **`BOARD_COMPAT` 3 → 4** — 0.26.0 peers cannot play with older builds.
+  v3/v4/v5 codes still import; they carry no tiers, so every patch is shaped at the
+  code's own difficulty.
+
+---
+
 ## [0.25.0] — 2026-07-31 — Personal co-op moments
 
 ### Changed
