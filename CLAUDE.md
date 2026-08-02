@@ -30,6 +30,8 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
   logical solvability; sets `document.title` to `AUDIT PASS`/`AUDIT FAIL` (headless-friendly). This
   is *the* correctness check — run it after touching generation. Entry: `auditGivens()` (~line 2063).
 - **`?nowork=1`**: forces synchronous, worker-free clue generation (headless/debug).
+- **`?nocache=1`**: bypasses the IndexedDB board cache (§7) so you always get a real, cold build.
+  `?audit=1` disables it too — the audit must never validate cached bytes.
 - Syntax check: extract the inline `<script>` and `new vm.Script(src)` it under Node.
 
 ---
@@ -48,12 +50,16 @@ first load, `rebuildForMap` on map switch, and — minus the `sol` stages — `s
 ```
 sampleImage(img)      image → sol[] (light/dark) + cellCol[] (art) + edge[]
 buildLayout()         plots, regions (watershed or hand layout), nbhd[]
-weaveTexture()        cross-stitch texture, THEN repairTexture() → sol[] frozen
-beginGen(kind, done)  starts the loading animation (see §5)
-regenClues(genClueReady)   spawns the clue Worker; genClueReady fires when it returns
+clueCacheProbe(hit)   is this map+tier's clue set already banked? (§7)
+prepareSolution()     restore sol[] from cache, ELSE weaveTexture() → repairTexture() → bank it
+beginGen(kind, done, hit)  starts the loading animation (see §5); `hit` = short "restoring" beat
+regenClues(genClueReady)   cache hit → return at once; else spawn the clue Worker + bank the result
    … the animation plays while the worker thins clues off-thread …
 genComplete() → done()     handoff: finishSetup (load) / callbacks (map, diff)
 ```
+
+The two cache-aware seams are `prepareSolution` and `regenClues`; **`auditGivens()` calls
+`weaveTexture()` / `genRegionClues()` directly and is unaffected.**
 
 `finishSetup()` (~1889): `generated = true`, `loadSave()`, `applyGivens()`, re-check regions, start
 the render `loop()`, then `runPendingAfterGen()`. After this, gameplay is live and `loop()` runs
@@ -129,11 +135,33 @@ the board is ready; every completion path (`finishSetup`, `loadMap`'s rebuild ca
   **`console.warn` fallback** would reveal givens if the solver ever stalled — it should never fire
   in-game (repair prevents it); if it does, that's a regression. `setupPicross` has the analogous
   demoted fallback.
-- **`DIFF`** (~516) fields per tier: `redundancy` (spare clues kept), `passes`, `extremeKeep`,
-  `zGivens` (sudoku givens scale), `zSwaps` (jigsaw irregularity), `basicOnly`
-  (true for Very Easy/Easy/Medium = counting only), `label`. **`pHelp` was removed** (no picross
-  head-starts). Switching tiers re-runs `regenClues` only — `sol` is untouched, so player marks
-  survive.
+- **`DIFF`** (~920) fields per tier: `redundancy` (spare clues kept), `passes`, `extremeKeep`,
+  `zGivens` (sudoku givens scale), `zSwaps` (jigsaw irregularity), `pRuns`/`pRounds` (picross patch
+  shaping, below), `basicOnly` (true for Very Easy/Easy/Medium = counting only), `label`.
+  **`pHelp` was removed** (no picross head-starts). Switching tiers re-runs `regenClues` only —
+  `sol` is untouched **outside the picross patches**, so player marks survive.
+- **Picross difficulty = `shapePicross()`.** A nonogram's clue strips *are* its answer: there is
+  nothing redundant to thin the way `genRegionClues` thins fill-a-pix clues, and pre-filling tiles
+  is barred by the zero-given guarantee. So its difficulty lives in the patch's own run structure,
+  and the patch interior is reshaped per tier toward `pRuns` (average runs per line) and `pRounds`
+  (full row+column propagation sweeps needed from blank — the truer measure; run count and
+  propagation depth pull against each other, so `pRuns` plateaus ~2.5 at the top tiers).
+  This is safe **only** because a patch is an island: `nbhd` is region-clipped and clues never enter
+  a plot, so no clue anywhere reads a patch pixel (assert: 0 clue neighbourhoods touch one), and the
+  revealed art comes from `cellCol`, not `sol`.
+  - The search is a seeded greedy hill-climb over single-pixel flips that **only ever accepts a
+    fully line-solvable grid** — so `?audit=1` still passes at every tier, with `locked` 0.
+  - It always starts from **`capturePicBase()`** (the post-`weaveTexture` interiors), never from
+    whatever the last tier left in `sol` — otherwise a patch would depend on which tiers you passed
+    through and two peers could disagree. Called at every board-build site (`prepareSolution` on both
+    hit and miss, and `auditGivens`).
+  - **`picTier[]`** = which tier each patch currently sits at. Authoritative on entry to
+    `regenClues`; only `setDifficulty` passes `retier` (untouched patches follow the new tier,
+    started ones keep their shape). Set by `loadPicTier()` on a fresh board (from `picKey()`, but
+    only for patches with saved marks) and by `importCode` from the payload. It rides in
+    **`SHARE_VER` 6** because a recipient — including a co-op guest — regenerates locally before
+    replaying progress, so it must rebuild the *sender's* patches or every mark inside one reads as
+    a mistake.
 - **Verification**: `auditGivens()` / `?audit=1` (~2063) rebuilds all maps × tiers and asserts
   `locked` count 0, every region solvable from shipped clues, every picross line-solvable.
 
@@ -145,7 +173,12 @@ Replaces the old progress bar; drawn on the game canvas while the clue worker ru
 otherwise idle). All state is in **`GEN`** (~1924): `{active, t0, clueReadyAt, done, kind, tl,
 progress, _pct, _hdr}`.
 
-- **`beginGen(kind, done)`**: `kind` ∈ `'load' | 'map' | 'diff'`. Computes region centroid ranks
+- **`beginGen(kind, done, cached)`**: `kind` ∈ `'load' | 'map' | 'diff'`. When `cached` is set (this
+  map+tier's clues came from the cache, §7) the timeline is `GTL_CACHED` instead — ~901ms total, or
+  ~461ms on a `'diff'` switch that skips the bloom — with **no `sc` board-size scaling**, so a cached
+  Inferno is no slower than a cached Castle. The shimmer collapses to a flicker because its only job
+  is masking worker time. Every `GTL_CACHED` divisor stays non-zero (`drawGen` divides by `regDur`,
+  `shimIn`, `settle`). Computes region centroid ranks
   (`genPrep`), a **per-run timeline `GEN.tl`** = `GTL_BASE` with the *initial* phases (bloom,
   shimmer ramp) scaled by board size `sc = clamp(N/7680, 1, 2.5)` (bigger map = slower reveal; the
   thinning/settle phases stay fixed since they're gated on real data), fits the camera (except
@@ -205,7 +238,29 @@ progress, _pct, _hdr}`.
   onto it, and `pagehide`/`visibilitychange` flush it so the last stitch survives a fast close.
   *After the zero-given change, an old save may have a few marks that now mismatch a repaired `sol`
   pixel — they surface as mistakes; "Clear my errors" fixes them.*
-- **Share**: `exportCode()` / `importCode()` / `applyImported()` (~2558+); `SHARE_VER = 5` — v5
+- **Board cache** (IndexedDB, `proverbs2-boards`): the *generated board* is persisted so a revisit
+  skips the expensive stages. Measured cost of a cold build: `weaveTexture`+`repairTexture` 0.6–2.1s,
+  and the clue worker 1.1s (Castle/Medium) to **35s** (Angels/Medium) — Very Hard is ~6.5× Medium.
+  Everything else rebuilds in <50ms total, so **only two arrays are cached**:
+  - `sol[]` — keyed by **map** (`sol|<map>|<seed>|<GW>x<GH>|<BOARD_COMPAT>`). Frozen after
+    `repairTexture`, hence identical on every tier. A hit skips `weaveTexture()`.
+  - `clue[]` — keyed by **map + difficulty** (`clue|…|<difficulty>|<BOARD_COMPAT>`). A hit skips the
+    worker. `locked` is restored as all-zero (it must be); picross/sudoku clue cells are *not* taken
+    from the blob — the restore loop is organic-cells-only, mirroring the worker merge.
+
+  `sol` records are never evicted (~125KB for all 8 maps); `clue` is LRU-capped at `BCACHE_CLUE_MAX`
+  (12). Entry points: `prepareSolution()` wraps `weaveTexture` at the two drivers (`startGeneration`,
+  `rebuildForMap`); `regenClues()` consults the cache and falls back to `regenCluesFresh()`.
+  `clueCacheProbe()` decides whether `beginGen` gets the short `GTL_CACHED` beat (§5).
+  Every helper resolves to `null`/no-op on any failure, so blocked storage just means no cache.
+  **`clueMatchesSol()` re-derives every restored clue from the restored `sol` and rejects the whole
+  entry on any mismatch** — that's what makes a forgotten `BOARD_COMPAT` bump self-healing.
+  `?nocache=1` bypasses the cache; `?audit=1` disables it (`BCACHE_OFF`) so the audit always
+  exercises real generation.
+- **Share**: `exportCode()` / `importCode()` / `applyImported()` (~2558+); `SHARE_VER = 6` — v6 adds
+  the per-patch **picross tiers** (`picTier`, §4) after the zone blocks, because the recipient
+  regenerates the board locally before replaying progress. v3/v4/v5 still decode (`pics` = null →
+  shape every patch at the code's own difficulty). Older note: `SHARE_VER = 5` — v5
   encodes the map by **id** (`[2]`=idLen, then ASCII id), so reordering `MAPS` no longer corrupts a
   code. v3/v4 codes still decode via the **frozen** `LEGACY_MAP_IDS` table (the v4 `MAPS` order) —
   never edit it. Exports the whole canvas as a `NPXS…` code or `.npxs` file; import replays progress.
@@ -244,9 +299,13 @@ progress, _pct, _hdr}`.
 
 ## 8. Invariants & gotchas (don't break these)
 
-1. **`sol` is frozen after `weaveTexture()`/`repairTexture()`.** A difficulty switch re-runs
-   `regenClues` only and re-derives everything from `sol`, so player marks persist. Never rebuild
-   `sol` on a difficulty change.
+1. **`sol` is frozen after `weaveTexture()`/`repairTexture()` — except inside picross patches.**
+   A difficulty switch re-runs `regenClues` only and re-derives everything from `sol`, so player
+   marks persist. Never rebuild `sol` on a difficulty change. The one carve-out is `shapePicross()`
+   (§4), which rewrites *patch interiors* per tier; that is safe because no clue can see a patch
+   pixel and the art comes from `cellCol`, and it never touches a patch the player has started.
+   Everything the cache stores is the **pre-shaping** `sol`, so the cached bytes stay
+   tier-independent.
 2. **`nbhd` is region-clipped** — that clipping *is* the clue rule. Changing it changes every clue.
 3. **`locked[]` must stay empty.** The zero-given guarantee comes from `repairTexture`; the given
    loops in `genRegionClues`/`setupPicross` are demoted `console.warn` fallbacks — if they ever fire
@@ -260,11 +319,19 @@ progress, _pct, _hdr}`.
    with any shipped change and keep `CHANGELOG.md` in sync. Online co-op is gated on **`BOARD_COMPAT`**
    (next to it), NOT `APP_VERSION`; bump `BOARD_COMPAT` only when generation, the share/snapshot
    format (`SHARE_VER`), or the net protocol changes, and leave `LEGACY_MAP_IDS` frozen forever.
+   ⚠ **`BOARD_COMPAT` is also the board cache's invalidation key** (§7) — a generation change without
+   a bump would hand players a stale board. `clueMatchesSol()` catches most of that automatically, but
+   it *cannot* catch a clue set thinned by a **stronger** solver than the current code has (i.e. if you
+   weaken the solver). Bump it when generation output changes.
 7. **The dev tools are generated** from `index.html` via string-marker extraction. `_build_editor.js`
    splits on Block A (`'use strict';` → `// ---------- canvas / view ----------`), Block B
    (`function sampleImage(image){` → `function weaveTexture(){`), Block C
    (`function genRegionClues(r){` → `function applyGivens(){`). If you rename those boundary
    functions, update the builders and rerun them.
+   ⚠ The checked-in `region-editor.html` / `region-map.html` are **stale relative to master** (they
+   predate the Inferno map), so rerunning a builder emits a large diff that has nothing to do with
+   your change — mostly `IMG_SRC_8`. Only rebuild when you actually touched a block boundary or the
+   editor's own source, and `git checkout --` them otherwise; refreshing them is its own commit.
 8. **Pages deploys one at a time.** Don't trigger concurrent deployments (empty re-trigger commits /
    forced builds) — the deploy job fails with "Deployment failed, try again later." One clean push;
    re-run the *failed run* if it flakes.
@@ -278,7 +345,9 @@ progress, _pct, _hdr}`.
 | Add a map | `MAPS` array (by hand) or the editor + `node _bake_map.js` |
 | Add/adjust quotes | `MAP_QUOTES[mapId]` keyed by region id |
 | Tune difficulty | the `DIFF` table (`redundancy`/`extremeKeep`/`zGivens`/`zSwaps`/`basicOnly`) |
-| Tune the loading animation | `GTL_BASE` (timeline), the `sc` scale in `beginGen`, `drawGen` |
+| Tune picross difficulty | `DIFF[tier].pRuns`/`.pRounds` + `shapePicross`/`picrossProfile` (§4). Verify with `?audit=1` — the shaping must never make a patch unsolvable |
+| Tune the loading animation | `GTL_BASE` (timeline), the `sc` scale in `beginGen`, `drawGen`; `GTL_CACHED` for the short cache-hit beat (keep every divisor non-zero — `drawGen` divides by `regDur`/`shimIn`/`settle`) |
+| Board caching / eviction | the board-cache block just above `startGeneration` (§7); `BCACHE_CLUE_MAX`, `clueMatchesSol`, `prepareSolution`, `regenCluesFresh` |
 | Change colours / theme | edit `:root` HSL vars (CSS chrome) **and** `buildPalette()` (canvas `C` + `TINTS`) together; both key off `--hue`/`themeHue`. Add/adjust theme swatches in `THEME_PRESETS` (§10) |
 | The home menu / map grid | §10 — `#menuScreen` markup, `showMenu`/`menuShowView`/`menuOpenGrid`/`menuPlay`, sort in `menuSortedIds` |
 | The play timer | §10 — `timerTotal`/`timerPause`/`persistTimer`, `timerKey()` |

@@ -47,12 +47,18 @@ sudoku/picross attached to it, and that character greets you with a line in a di
 source (`MAP_QUOTES`), keyed by region id — add maps and lines freely.
 
 ### Difficulty — nothing pre-filled, guessing never required
-**5 tiers** (Very Easy → Very Hard) scale clue density, free 0/9 moves, sudoku givens, and jigsaw
-irregularity all at once. Switching tiers re-weaves the clues *without losing your progress*.
+**5 tiers** (Very Easy → Very Hard) scale clue density, free 0/9 moves, sudoku givens, jigsaw
+irregularity **and the picross patches** all at once. Switching tiers re-weaves the clues *without
+losing your progress*.
 
 - **Very Easy / Easy / Medium** are solvable by plain neighbour-counting alone.
 - **Hard / Very Hard** add *Advanced Deductions* (comparing overlapping clues) — explained by an
   in-game tutorial the first time you reach them.
+- **The picross patches scale too.** A nonogram's numbers *are* its answer, so there are no clues to
+  hide — instead each patch is redrawn to demand the right amount of deduction, measured in how many
+  full row-and-column passes it takes to crack from blank: **1–2 on Very Easy, around 8 on Very
+  Hard**. Every patch stays solvable by pure line logic at every tier. Start stitching into a patch
+  and it's left alone if you change difficulty — only untouched ones are redrawn.
 - **Every tile is yours to stitch — the board is never pre-filled.** At every tier the puzzle is
   provably solvable by pure logic, achieved by *repairing the texture* rather than revealing
   answers: before any clue is shown, the generator flips a handful of stitch pixels so the board
@@ -66,6 +72,13 @@ random digits, not the true counts) and it runs on the idle main thread while th
 in a background worker, so it's essentially free. A slim **progress bar** in the top card shows the
 real clue-thinning progress, and you can **scroll to zoom** the board while it loads. Bigger maps
 (more to compute) get a slower, more deliberate reveal.
+
+**You only sit through it once.** A finished board is kept on your machine, so coming back to a
+canvas you've played takes about a second — a short **"Restoring the canvas…"** beat instead of the
+full weave. (Angels used to spend ~37 seconds building itself on *every* load.) Difficulty tiers are
+remembered separately: a tier you haven't tried yet still has to be woven, but going back to one
+you've played is instant. The restored board is identical to a freshly generated one — the game
+re-checks every clue against the solution before trusting it — and your stitches are never affected.
 
 ### Quality of life
 - **Play timer** in the header — per canvas, and it *remembers your time*: leave and come back and
@@ -122,7 +135,14 @@ Everything is generated deterministically (per-map seed) at load time:
    a few `sol` pixels to break the ambiguity — until every region falls to basic counting and every
    picross to line logic **with no pre-filled cells**. This is why the board is never seeded with
    answers, on any tier. `sol` is frozen after this step.
-5. **Clues.** Every fill-a-pix number is the light-count of its region-clipped 3×3; every picross
+5. **Shape the picross patches to the tier.** A nonogram has no redundant clues to prune, so
+   `shapePicross()` instead redraws each patch's interior — a seeded hill-climb toward that tier's
+   target run structure and solving depth, accepting only grids that stay fully line-solvable. It
+   works from the patch's post-repair interior every time, so a patch depends only on
+   (map, seed, tier). This is the one place `sol` changes after step 4, and it's safe because a
+   patch is an island: no fill-a-pix clue can reach into a plot, and the revealed art comes from
+   `cellCol`, not `sol`.
+6. **Clues.** Every fill-a-pix number is the light-count of its region-clipped 3×3; every picross
    run is read off the painting; sudoku grids come from the seed. The clue pruner then removes as
    many clues as its own logic-solver can still finish without (fewer = harder tier).
 
@@ -166,6 +186,8 @@ This inserts the image, a `HAND_LAYOUTS` partition, a `MAPS` entry and any quote
 - **`?audit=1`** — run the solvability audit across all maps × tiers (see above); skips normal boot.
 - **`?nowork=1`** — force clue generation to run synchronously on the main thread instead of in the
   Web Worker (handy for headless testing / debugging).
+- **`?nocache=1`** — bypass the stored-board cache and force a real, cold build. (`?audit=1` disables
+  the cache too, so the audit always exercises genuine generation.)
 
 ## Dev tools (not shipped)
 
