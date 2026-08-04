@@ -5,6 +5,18 @@ shipped to the live site.
 
 ---
 
+## [0.26.3] — 2026-08-05 — Controller icon polish: hollow triangle, lighter labels
+
+### Changed
+- **PlayStation's Triangle symbol is now a hollow outline**, matching Circle and
+  Square instead of being the only filled shape.
+- **Non-face button labels (LB/RB/L1/R1/…) are less heavy** — chip text dropped
+  from `font-weight:800` to `600` so they read as labels, not shouting.
+- **The PlayStation header column now reads "PlayStation" instead of "PS", and is
+  centered** rather than right-aligned.
+
+---
+
 ## [0.26.2] — 2026-08-05 — Controller buttons drawn to scale, in their real colors
 
 ### Changed
