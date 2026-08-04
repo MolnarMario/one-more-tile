@@ -4084,8 +4084,14 @@ function padBtnName(b){
   return names[b] || ('Button ' + b);
 }
 
+// the □ glyph (U+25A1) is missing from many default fonts and renders as a
+// tofu/placeholder box, which is confusingly close to what we're trying to
+// avoid — draw the square with CSS instead of relying on the character.
+const PAD_SQUARE_ICON = '<span style="display:inline-block;width:0.68em;height:0.68em;' +
+  'border:1.5px solid currentColor;vertical-align:-0.05em"></span>';
+
 function padBtnNamePS(b){
-  const names = ['✕', '○', '□', '△', 'L1', 'R1', 'L2', 'R2', 'Share', 'Options', 'L3', 'R3'];
+  const names = ['✕', '○', PAD_SQUARE_ICON, '△', 'L1', 'R1', 'L2', 'R2', 'Share', 'Options', 'L3', 'R3'];
   return names[b] || ('Button ' + b);
 }
 
