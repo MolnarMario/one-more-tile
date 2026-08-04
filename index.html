@@ -619,6 +619,12 @@
   <div class="card">
     <h2>🎮 Controller</h2>
     <p id="padStatus">No controller detected — connect one and press any button.</p>
+    <div style="display:flex;justify-content:flex-end;gap:24px;padding:0 2px;font-size:11px;color:var(--muted)">
+      <span style="display:flex;gap:14px">
+        <span style="min-width:44px;text-align:right">Xbox</span>
+        <span style="min-width:44px;text-align:right">PS</span>
+      </span>
+    </div>
     <div id="padList" style="margin-bottom:8px"></div>
     <p style="font-size:12px;margin-bottom:14px">
       Move the cursor with the <b>left stick / d-pad</b> · pan with the <b>right stick</b> ·
@@ -862,7 +868,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.26.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.26.1';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -4078,16 +4084,26 @@ function padBtnName(b){
   return names[b] || ('Button ' + b);
 }
 
+function padBtnNamePS(b){
+  const names = ['✕', '○', '□', '△', 'L1', 'R1', 'L2', 'R2', 'Share', 'Options', 'L3', 'R3'];
+  return names[b] || ('Button ' + b);
+}
+
 function renderPadList(){
   const el = document.getElementById('padList');
   el.innerHTML = '';
   PAD_ACTIONS.forEach((a, k) => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;justify-content:space-between;gap:24px;padding:4px 2px;font-size:13px;color:var(--muted)';
-    const right = padCaptureIdx === k
-      ? '<b style="color:' + themed(0, 88, 66) + '">press a button…</b>'
-      : `<b style="color:var(--text)">${padBtnName(padMap[a.key])}</b>`;
-    row.innerHTML = `<span>${a.label}</span>${right}`;
+    if (padCaptureIdx === k) {
+      row.innerHTML = `<span>${a.label}</span><b style="color:${themed(0, 88, 66)}">press a button…</b>`;
+    } else {
+      row.innerHTML = `<span>${a.label}</span>` +
+        `<span style="display:flex;gap:14px">` +
+        `<b style="color:var(--text);min-width:44px;text-align:right" title="Xbox">${padBtnName(padMap[a.key])}</b>` +
+        `<b style="color:var(--text);min-width:44px;text-align:right" title="PlayStation">${padBtnNamePS(padMap[a.key])}</b>` +
+        `</span>`;
+    }
     el.appendChild(row);
   });
 }
