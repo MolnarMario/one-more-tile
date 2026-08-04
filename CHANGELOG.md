@@ -5,6 +5,20 @@ shipped to the live site.
 
 ---
 
+## [0.26.2] — 2026-08-05 — Controller buttons drawn to scale, in their real colors
+
+### Changed
+- **Controller setup's button chips are now CSS-drawn icons, not text.** Xbox face
+  buttons render as solid-colored round caps in their real colors (A green, B red,
+  X blue, Y yellow) with the letter in white/black; PlayStation face buttons render
+  as a neutral dark cap with the correct colored outline symbol (✕ blue, ○ red,
+  □ pink, △ green) — matching how the actual hardware looks, where the color lives
+  in the symbol, not the cap. Bumpers, triggers, select/start/share/options, and
+  stick clicks aren't color-coded on real controllers, so they share one neutral
+  chip per shape (flat bar, tapered trigger, pill, circle) instead.
+
+---
+
 ## [0.26.1] — 2026-08-05 — Controller setup shows PlayStation buttons too
 
 ### Changed

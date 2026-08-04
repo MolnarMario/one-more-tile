@@ -210,6 +210,30 @@
   /* controller focus ring — used on modal + pane-card buttons when navigating by pad */
   .pad-focus{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 6px hsl(var(--hue) 70% 55% / .5)}
 
+  /* ---------- controller-setup button chips ----------
+     Fixed brand colors, not --hue-derived — same convention as the gold/teal/red
+     semantic colors above (.mini.gold/.mini.teal/b.bad). */
+  .pad-chip{display:inline-flex;align-items:center;justify-content:center;flex:none;
+    font-weight:800;line-height:1;font-family:inherit;box-sizing:border-box}
+  .pad-chip.round{border-radius:50%;width:22px;height:22px;color:#fff;font-size:11px}
+  .pad-chip.round.dark-glyph{color:#000}
+  .pad-chip.cap{border-radius:50%;width:22px;height:22px;background:#2e2e33}
+  .pad-chip.bar{border-radius:5px;width:30px;height:16px;background:#2e2e33;color:#fff;font-size:9px}
+  .pad-chip.trigger{clip-path:polygon(20% 0,80% 0,100% 100%,0 100%);
+    width:26px;height:18px;background:#2e2e33;color:#fff;font-size:8px}
+  .pad-chip.pill{border-radius:999px;width:34px;height:16px;background:#2e2e33;color:#fff;font-size:8px}
+  .pad-chip.stick{border-radius:50%;width:20px;height:20px;background:#2e2e33;color:#fff;font-size:8px}
+  .pad-chip .sym{width:11px;height:11px}
+  .pad-chip .sym.tri{width:0;height:0;background:none!important;
+    border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid currentColor}
+  .pad-chip .sym.circ{border:2px solid currentColor;border-radius:50%;background:transparent}
+  .pad-chip .sym.sq{border:2px solid currentColor;background:transparent}
+  .pad-chip .sym.cross{position:relative}
+  .pad-chip .sym.cross:before,.pad-chip .sym.cross:after{content:'';position:absolute;
+    top:50%;left:50%;width:12px;height:2px;background:currentColor}
+  .pad-chip .sym.cross:before{transform:translate(-50%,-50%) rotate(45deg)}
+  .pad-chip .sym.cross:after{transform:translate(-50%,-50%) rotate(-45deg)}
+
   /* ---------- co-op corner notices (online) ---------- */
   #coopNotes{position:fixed;left:14px;bottom:58px;z-index:39;display:flex;flex-direction:column;
     gap:8px;pointer-events:none;max-width:min(320px,calc(100vw - 28px))}
@@ -868,7 +892,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.26.1';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.26.2';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -4079,20 +4103,50 @@ try { const m = JSON.parse(localStorage.getItem(PAD_KEY) || 'null'); if (m) padM
 // padMoveNext/padMoving). Remap capture is global — one pad configured at a time.
 let padCaptureIdx = -1, padCapturePlayer = null;
 
-function padBtnName(b){
-  const names = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'Select', 'Start', 'L3', 'R3'];
-  return names[b] || ('Button ' + b);
+// Real-hardware reference: Xbox face buttons are solid-colored caps with a
+// white/black letter; PlayStation face buttons are neutral dark caps with a
+// colored OUTLINE symbol (the color lives in the symbol, not the cap). Neither
+// company publishes an official hex spec — these are the standard approximations
+// used across icon packs, matching the buttons' well-documented real colors.
+// Non-face buttons aren't color-coded on either controller (black/dark plastic),
+// so they share one neutral chip style per shape (bar/trigger/pill/stick).
+const XBOX_FACE = [
+  { label: 'A', color: '#43A047' },
+  { label: 'B', color: '#E53935' },
+  { label: 'X', color: '#1E88E5' },
+  { label: 'Y', color: '#FDD835', dark: true },
+];
+const PS_FACE = [
+  { sym: 'cross', color: '#2F7FE0' },
+  { sym: 'circ',  color: '#D62B2B' },
+  { sym: 'sq',    color: '#E066B0' },
+  { sym: 'tri',   color: '#3DAE72' },
+];
+const PAD_OTHER = {
+  4:  { shape: 'bar',     xbox: 'LB', ps: 'L1' },
+  5:  { shape: 'bar',     xbox: 'RB', ps: 'R1' },
+  6:  { shape: 'trigger', xbox: 'LT', ps: 'L2' },
+  7:  { shape: 'trigger', xbox: 'RT', ps: 'R2' },
+  8:  { shape: 'pill',    xbox: 'Select', ps: 'Share' },
+  9:  { shape: 'pill',    xbox: 'Start',  ps: 'Options' },
+  10: { shape: 'stick',   xbox: 'L3', ps: 'L3' },
+  11: { shape: 'stick',   xbox: 'R3', ps: 'R3' },
+};
+
+function padChipXbox(b){
+  const f = XBOX_FACE[b];
+  if (f) return `<span class="pad-chip round${f.dark ? ' dark-glyph' : ''}" style="background:${f.color}">${f.label}</span>`;
+  const o = PAD_OTHER[b];
+  if (o) return `<span class="pad-chip ${o.shape}">${o.xbox}</span>`;
+  return `<span class="pad-chip bar" style="width:auto;padding:0 6px">Button ${b}</span>`;
 }
 
-// the □ glyph (U+25A1) is missing from many default fonts and renders as a
-// tofu/placeholder box, which is confusingly close to what we're trying to
-// avoid — draw the square with CSS instead of relying on the character.
-const PAD_SQUARE_ICON = '<span style="display:inline-block;width:0.68em;height:0.68em;' +
-  'border:1.5px solid currentColor;vertical-align:-0.05em"></span>';
-
-function padBtnNamePS(b){
-  const names = ['✕', '○', PAD_SQUARE_ICON, '△', 'L1', 'R1', 'L2', 'R2', 'Share', 'Options', 'L3', 'R3'];
-  return names[b] || ('Button ' + b);
+function padChipPS(b){
+  const f = PS_FACE[b];
+  if (f) return `<span class="pad-chip cap"><span class="sym ${f.sym}" style="color:${f.color}"></span></span>`;
+  const o = PAD_OTHER[b];
+  if (o) return `<span class="pad-chip ${o.shape}">${o.ps}</span>`;
+  return `<span class="pad-chip bar" style="width:auto;padding:0 6px">Button ${b}</span>`;
 }
 
 function renderPadList(){
@@ -4100,14 +4154,15 @@ function renderPadList(){
   el.innerHTML = '';
   PAD_ACTIONS.forEach((a, k) => {
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;gap:24px;padding:4px 2px;font-size:13px;color:var(--muted)';
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:24px;padding:4px 2px;font-size:13px;color:var(--muted)';
     if (padCaptureIdx === k) {
       row.innerHTML = `<span>${a.label}</span><b style="color:${themed(0, 88, 66)}">press a button…</b>`;
     } else {
+      const b = padMap[a.key];
       row.innerHTML = `<span>${a.label}</span>` +
         `<span style="display:flex;gap:14px">` +
-        `<b style="color:var(--text);min-width:44px;text-align:right" title="Xbox">${padBtnName(padMap[a.key])}</b>` +
-        `<b style="color:var(--text);min-width:44px;text-align:right" title="PlayStation">${padBtnNamePS(padMap[a.key])}</b>` +
+        `<span style="width:40px;display:inline-flex;justify-content:center" title="Xbox">${padChipXbox(b)}</span>` +
+        `<span style="width:40px;display:inline-flex;justify-content:center" title="PlayStation">${padChipPS(b)}</span>` +
         `</span>`;
     }
     el.appendChild(row);
