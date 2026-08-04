@@ -5,6 +5,16 @@ shipped to the live site.
 
 ---
 
+## [0.26.1] — 2026-08-05 — Controller setup shows PlayStation buttons too
+
+### Changed
+- **Controller setup (⚙ Options → 🎮 Controller setup) now lists PlayStation button
+  names alongside Xbox.** The keybinding list was Xbox-labelled only (A/B/X/Y/LB/RB/…)
+  even though any standard gamepad works; it now shows both (✕/○/□/△/L1/R1/L2/R2/…)
+  side by side per action.
+
+---
+
 ## [0.26.0] — 2026-08-02 — Boards you've played open in about a second
 
 ### Added
