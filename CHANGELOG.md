@@ -5,6 +5,15 @@ shipped to the live site.
 
 ---
 
+## [0.26.5] — 2026-08-05 — Bold column headers in Controller setup
+
+### Changed
+- **The "Xbox"/"PlayStation" column headers are now bold** and use the regular
+  text color instead of the muted one, so they read clearly as column headers
+  above the button chips.
+
+---
+
 ## [0.26.4] — 2026-08-05 — Controller icons: centered columns, bigger chips
 
 ### Changed
