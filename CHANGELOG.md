@@ -10,7 +10,7 @@ shipped to the live site.
 ### Changed
 - **The "Xbox"/"PlayStation" column headers are now bold** and use the regular
   text color instead of the muted one, so they read clearly as column headers
-  above the button chips.
+  above the button chips, with a bit more breathing room before the first row.
 
 ---
 
