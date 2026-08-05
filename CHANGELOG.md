@@ -5,6 +5,20 @@ shipped to the live site.
 
 ---
 
+## [0.26.4] — 2026-08-05 — Controller icons: centered columns, bigger chips
+
+### Changed
+- **Xbox/PlayStation button chips are now center-aligned under their column
+  headers.** The header cells and the chip cells were sized/aligned
+  inconsistently (44px right-aligned vs. 40px centered for Xbox, 74px centered
+  vs. 40px centered for PlayStation), so the icons didn't sit under their labels.
+  Both now share the same column width and centering.
+- **Chips are larger** for visibility: face buttons 22px → 26px, bumpers/
+  triggers/pills/stick-clicks scaled up proportionally, symbol strokes sized to
+  match.
+
+---
+
 ## [0.26.3] — 2026-08-05 — Controller icon polish: hollow triangle, lighter labels
 
 ### Changed
