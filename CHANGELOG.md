@@ -5,6 +5,14 @@ shipped to the live site.
 
 ---
 
+## [0.27.0] — 2026-08-07 — New map: Portal 🌀
+
+### Added
+- **New map "Portal 🌀"** (237×158, 25 regions, 8 sudoku plots, 8 picross plots,
+  15 region quotes), hand-laid out and baked in via `_bake_map.js`.
+
+---
+
 ## [0.26.5] — 2026-08-05 — Bold column headers in Controller setup
 
 ### Changed
