@@ -408,6 +408,11 @@
   .mapCardBody{padding:10px 12px 12px}
   .mapCardTitle{font-size:15px;font-weight:600;color:var(--text)}
   .mapCardMeta{font-size:12px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+  /* per-card progress: same bar as the Continue card, shown only when the map has a save */
+  .mapCardProg{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .mapCardBar{flex:1;height:5px;border-radius:3px;background:hsl(calc(var(--hue) + 2) 41% 44% / .16);overflow:hidden;display:block}
+  .mapCardBarFill{display:block;height:100%;width:0%;background:var(--grad-bar)}
+  .mapCardStat{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
   /* the Continue card: raised + accent-bordered, spans 2 columns, always first */
   .continueCard{grid-column:span 2;overflow:hidden;border-radius:14px;background:var(--card);
     border:1px solid var(--accent);box-shadow:0 16px 40px hsl(var(--hue) 46% 35% / .26);
@@ -1118,7 +1123,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.28.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.29.0';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -1143,6 +1148,9 @@ function timerKey(id){ return stateKey(id) + '-time'; }   // accumulated active 
 function picKey(id){ return stateKey(id) + '-pic'; }      // per-patch picross tier (see picTier / shapePicross)
 function progressKey(id){ return stateKey(id) + '-pct'; } // last-known completion % (see boardPercent) — lets
                                                             // the menu show live progress without regenerating the board
+function doneKey(id){ return stateKey(id) + '-done'; }    // one '0'/'1' per region id (regionDone), REG_COUNT chars —
+                                                            // lets the menu grid show which regions are unlocked
+                                                            // without regenerating the board (see menuRenderCard)
 const DIFF_KEY = 'proverbs2-diff';
 
 // Per-map preview metadata (regions/squares) shown on the menu map cards.
@@ -1235,12 +1243,15 @@ const picrossOf = new Int8Array(MAXN).fill(-1);
 // seeded rejection-placement of the plot kit into the current GW×GH board:
 // 1-cell gaps between plots, and picross clue-strips (ceil(n/2) cells up & left)
 // kept on-canvas. Larger/strip-needy patches go first.
-function placePlots(seed){
+// gw/gh default to the live board dims; the menu passes a map's baked dims so it
+// can resolve that map's plot rects without switching boards (see menuPlotRects)
+function placePlots(seed, gw, gh){
+  gw = gw || GW; gh = gh || GH;
   const rng = mulberry32((seed ^ 0x9e3779b9) >>> 0);
   const placed = [];
   const hit = (x, y, w, h) => placed.some(r => !(x + w + 1 <= r.x || r.x + r.w + 1 <= x || y + h + 1 <= r.y || r.y + r.h + 1 <= y));
   function place(w, h, mL, mT){
-    const xMax = GW - w, yMax = GH - h;
+    const xMax = gw - w, yMax = gh - h;
     if (xMax < mL || yMax < mT) return null;
     for (let t = 0; t < 3000; t++) {
       const x = mL + ((rng() * (xMax - mL + 1)) | 0);
@@ -2631,6 +2642,7 @@ function loadMap(id){
     for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
     for (const z of ZONES) checkZone(z, true);
     updateHUD();
+    persistMenuSummary();   // refresh this map's grid card (%, unlocked regions)
     fitView();
     runPendingAfterGen();   // menu-queued action (start co-op / host / join)
   });
@@ -2948,6 +2960,7 @@ function finishSetup(){
   for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
   for (const z of ZONES) checkZone(z, true);
   updateHUD();
+  persistMenuSummary();   // refresh this map's grid card (%, unlocked regions)
   fitView();
   document.getElementById('loader').classList.add('done');
   startLoop();
@@ -3831,6 +3844,15 @@ function updateTimer(){
 
 // ---------- persistence ----------
 let saveTimer = null;
+// regionDone as a compact '0'/'1' string, one char per region id (REG_COUNT long).
+// This is the whole "which regions has this player unlocked" record — the menu grid
+// reads it back per map (doneKey) to paint the revealed art on a card thumbnail
+// without generating that map's board.
+function doneMaskStr(){
+  let s = '';
+  for (let r = 0; r < REG_COUNT; r++) s += regionDone[r] ? '1' : '0';
+  return s;
+}
 // write state + zone entries + timer for the current map immediately. Same guards
 // as scheduleSave: online joiners never own the save, and we never persist mid-
 // switch (state[] can still hold the old map's paint) or before a board exists.
@@ -3842,9 +3864,22 @@ function saveNow(){
     localStorage.setItem(zonesKey(), JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
     localStorage.setItem(timerKey(), String(timerTotal()));
     localStorage.setItem(progressKey(), String(boardPercent()));
+    localStorage.setItem(doneKey(), doneMaskStr());
     // which tier each picross patch is shaped at, so a reload rebuilds the exact
     // patches these saved marks were made against
     localStorage.setItem(picKey(), Array.from(picTier.subarray(0, PICROSS.length)).join(''));
+  } catch (e) {}
+}
+// backfill just the menu's summaries (%, unlocked regions) for a board that has
+// just been restored from a save. Saves written before doneKey existed carry no
+// mask, and regionDone can only be derived here — with the board live. Never
+// creates keys for a map that has no save, so an untouched map stays untouched.
+function persistMenuSummary(){
+  if (net && onlineRole === 'join') return;
+  try {
+    if (localStorage.getItem(stateKey()) === null) return;
+    localStorage.setItem(progressKey(), String(boardPercent()));
+    localStorage.setItem(doneKey(), doneMaskStr());
   } catch (e) {}
 }
 function scheduleSave(){
@@ -3893,7 +3928,10 @@ function resetGame(){
   clearUndo();
   quotesShown[currentMap] = []; saveQuotes(); quoteQueue.length = 0;   // re-arm this map's quotes
   timerBase = 0; timerStart = -1; timerShown = '';                     // and reset the clock
-  try { localStorage.removeItem(stateKey()); localStorage.removeItem(zonesKey()); localStorage.removeItem(timerKey()); localStorage.removeItem(picKey()); } catch (e) {}
+  clearTimeout(saveTimer);   // drop any debounced save still in flight, or it lands right after and re-creates the keys
+  // clear every per-map key, including the menu's summaries (%, unlocked regions) —
+  // otherwise a reset map keeps showing its old progress on the map grid
+  try { localStorage.removeItem(stateKey()); localStorage.removeItem(zonesKey()); localStorage.removeItem(timerKey()); localStorage.removeItem(picKey()); localStorage.removeItem(progressKey()); localStorage.removeItem(doneKey()); } catch (e) {}
   updateHUD(); fitView(); needsDraw = true;
 }
 
@@ -4889,6 +4927,8 @@ function saveCoopToLocal(){
     localStorage.setItem(stateKey(), Array.from(state.subarray(0, N)).join(''));
     localStorage.setItem(zonesKey(), JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
     localStorage.setItem(picKey(), Array.from(picTier.subarray(0, PICROSS.length)).join(''));   // the host's patch shapes, so a reload matches these marks
+    localStorage.setItem(progressKey(), String(boardPercent()));   // so the map grid shows this board's
+    localStorage.setItem(doneKey(), doneMaskStr());                // progress + unlocked regions right away
   } catch (e) {}
   joinerBackup = exportCode();
   toast('Saved. This co-op board is now your own progress for this map.', true);
@@ -6043,7 +6083,11 @@ function menuApplySort(){
   for (const c of grid.querySelectorAll('.mapCard')) byId[c.dataset.id] = c;
   for (const id of menuSortedIds()) if (byId[id]) grid.appendChild(byId[id]);   // appendChild moves in place
 }
-const _menuCardCache = {};   // keyed by `id@hue` so a theme change re-renders
+// keyed by `id@hue@doneMask` so a theme change OR newly-unlocked regions re-render;
+// only one entry per map is kept (see the sweep in menuRenderCard)
+const _menuCardCache = {};
+const _menuArtCache = {};   // id -> per-cell RGBA of the map's artwork (see menuArtCols)
+const _menuImg = {};        // id -> Image, the menu's own decodes (never touches mapImgCache's onload)
 
 // region run-length for a map: hand maps carry it in HAND_LAYOUTS, watershed
 // maps (castle/crew/fighters) use the baked PREVIEW_RLE
@@ -6053,19 +6097,90 @@ function menuMapRLE(id){
   return (typeof PREVIEW_RLE !== 'undefined' && PREVIEW_RLE[id]) || null;
 }
 
-// render a small region-tint + gold-border thumbnail for one map, in the current
-// theme (cached per id+hue so switching themes re-renders but revisits are cheap)
-function menuRenderCard(id){
-  const key = id + '@' + themeHue;
-  if (_menuCardCache[key]) return _menuCardCache[key];
+// ---------- unlocked-region previews ----------
+// A card shows the map's REAL artwork inside every region the player has already
+// finished, and flat region tint everywhere else — the same thing the board does on
+// a reveal, just at thumbnail scale. Nothing here generates a board: the region
+// partition comes from the baked RLE, the plot rects from the same tables
+// choosePlots() reads, the unlocked set from localStorage (doneKey), and the colours
+// straight off the map image. So it costs one image decode + one O(cells) paint.
+
+// this map's saved unlocked-region mask ('0'/'1' per region id), '' if never played
+function menuDoneMask(id){
+  try { return localStorage.getItem(doneKey(id)) || ''; } catch (e) { return ''; }
+}
+// the decoded image for a map, or null if it isn't ready yet. Prefers the board
+// loader's copy when it has already decoded one.
+function menuImg(id){
+  const c = mapImgCache[id];
+  if (c && c.complete && c.naturalWidth) return c;
+  const m = _menuImg[id];
+  return (m && m.complete && m.naturalWidth) ? m : null;
+}
+// decode a map's image for the menu, then run cb. Deliberately keeps its own Image
+// rather than reusing a half-loaded mapImgCache entry, whose onload belongs to the
+// board loader (rebuildForMap) and must not be reassigned.
+function menuLoadImg(id, cb){
+  if (menuImg(id)) { cb(); return; }
+  if (_menuImg[id]) { _menuImg[id].addEventListener('load', cb, { once: true }); return; }
+  const im = new Image();
+  _menuImg[id] = im;
+  im.addEventListener('load', cb, { once: true });
+  im.src = mapDef(id).src;
+}
+// per-cell artwork colours for a map, sampled exactly the way sampleImage() fills
+// cellCol (nearest-neighbour into a gw×gh offscreen), so a revealed region on a card
+// matches the revealed region on the board. Null until the image has decoded.
+function menuArtCols(id){
+  if (_menuArtCache[id]) return _menuArtCache[id];
+  const im = menuImg(id), meta = MAP_META[id];
+  if (!im || !meta) return null;
+  try {
+    const off = document.createElement('canvas');
+    off.width = meta.gw; off.height = meta.gh;
+    const octx = off.getContext('2d', { willReadFrequently: true });
+    octx.imageSmoothingEnabled = false;
+    octx.drawImage(im, 0, 0, meta.gw, meta.gh);
+    _menuArtCache[id] = octx.getImageData(0, 0, meta.gw, meta.gh).data;
+  } catch (e) { return null; }
+  return _menuArtCache[id];
+}
+// a map's plot rects + their region ids, resolved the way choosePlots()/attachPlots()
+// number them (REG_PIX + zone idx, then REG_PIX + zones + patch idx) but WITHOUT
+// touching the board: hand maps carry the plots verbatim, castle has its pinned pair,
+// the rest re-place from the map's own seed and baked dims. Returns null if the
+// numbering doesn't reconcile with MAP_META, so a bad assumption just costs the art.
+function menuPlotRects(id, regPix){
   const meta = MAP_META[id];
+  const L = (typeof HAND_LAYOUTS !== 'undefined') && HAND_LAYOUTS[id];
+  let zones, pics;
+  if (L && L.zones) { zones = L.zones; pics = L.picross; }
+  else if (mapDef(id).hand) { zones = CASTLE_ZONES; pics = CASTLE_PICROSS; }
+  else { const pl = placePlots(mapDef(id).seed, meta.gw, meta.gh); zones = pl.zones; pics = pl.picross; }
+  if (!zones || !pics || regPix + zones.length + pics.length !== meta.regions) return null;
+  const out = [];
+  zones.forEach((z, k) => out.push({ region: regPix + k, x: z.x, y: z.y, n: z.n }));
+  pics.forEach((p, k) => out.push({ region: regPix + zones.length + k, x: p.x, y: p.y, n: p.n }));
+  return out;
+}
+
+// render a small thumbnail for one map in the current theme: region tint + gold
+// borders, with the real artwork painted into every region this player has already
+// unlocked. Cached per id+hue+unlocked-set, so revisits are free and finishing a
+// region re-renders exactly one card.
+function menuRenderCard(id){
+  const meta = MAP_META[id];
+  const mask = menuDoneMask(id);
+  const art = mask.indexOf('1') >= 0 ? menuArtCols(id) : null;   // no art needed until something is unlocked
+  const key = id + '@' + themeHue + '@' + (art ? mask : '');
+  if (_menuCardCache[key]) return _menuCardCache[key];
   const gw = meta.gw, gh = meta.gh, n = gw * gh;
   const rle = menuMapRLE(id);
   const CELL = Math.max(2, Math.min(6, Math.round(360 / Math.max(gw, gh))) || 3);
   const cv = document.createElement('canvas');
   cv.width = gw * CELL; cv.height = gh * CELL;
   const cx = cv.getContext('2d');
-  const reg = new Int16Array(n);
+  const reg = new Int16Array(n);   // drives tint + borders: organic id, -2 for plot cells
   if (rle) {
     let i = 0;
     for (let k = 0; k < rle.length && i < n; k += 2) {
@@ -6073,10 +6188,30 @@ function menuRenderCard(id){
       for (let m = 0; m < len && i < n; m++) reg[i++] = v;
     }
   } else { reg.fill(0); }
+  // region id per cell for the unlocked lookup. The two RLE bakes differ: the
+  // watershed maps' PREVIEW_RLE already carries final ids (plots included), while a
+  // hand layout's regionRLE marks plot cells -2, so those need their plot region ids
+  // stamped in. If the numbering doesn't reconcile we just leave the plots out —
+  // organic regions still reveal correctly.
+  let rid = reg, regPix = 0, hasPlotHoles = false;
+  for (let i = 0; i < n; i++) { if (reg[i] >= regPix) regPix = reg[i] + 1; else if (reg[i] < 0) hasPlotHoles = true; }
+  if (art && hasPlotHoles) {
+    const rects = menuPlotRects(id, regPix);
+    if (rects) {
+      rid = Int16Array.from(reg);
+      for (const pr of rects)
+        for (let dy = 0; dy < pr.n; dy++) for (let dx = 0; dx < pr.n; dx++) {
+          const i = (pr.y + dy) * gw + (pr.x + dx);
+          if (i >= 0 && i < n) rid[i] = pr.region;
+        }
+    }
+  }
   const empty = themed(2, 45, 89);   // matches --mapart
   for (let i = 0; i < n; i++) {
     const r = reg[i], x = i % gw, y = (i / gw) | 0;
-    cx.fillStyle = r < 0 ? empty : TINTS[r % TINTS.length];
+    const d = art && rid[i] >= 0 && mask.charCodeAt(rid[i]) === 49;   // 49 = '1'
+    cx.fillStyle = d ? 'rgb(' + art[i * 4] + ',' + art[i * 4 + 1] + ',' + art[i * 4 + 2] + ')'
+                     : (r < 0 ? empty : TINTS[r % TINTS.length]);
     cx.fillRect(x * CELL, y * CELL, CELL + 0.6, CELL + 0.6);
   }
   cx.strokeStyle = C.regionBorder; cx.lineWidth = Math.max(1, CELL * 0.3); cx.beginPath();
@@ -6086,7 +6221,18 @@ function menuRenderCard(id){
     if (y < gh - 1 && reg[i] !== reg[i + gw]) { cx.moveTo(x * CELL,       (y + 1) * CELL); cx.lineTo((x + 1) * CELL, (y + 1) * CELL); }
   }
   cx.stroke();
+  for (const k in _menuCardCache) if (k.indexOf(id + '@') === 0) delete _menuCardCache[k];   // one entry per map
   _menuCardCache[key] = cv;
+  return cv;
+}
+// a thumbnail node to put in the DOM. menuRenderCard hands back the CACHED canvas,
+// and one element can only live in one place — the resume map appears both on its own
+// card and on the Continue card — so every insertion gets its own copy.
+function menuCardNode(id){
+  const src = menuRenderCard(id);
+  const cv = document.createElement('canvas');
+  cv.width = src.width; cv.height = src.height;
+  cv.getContext('2d').drawImage(src, 0, 0);
   return cv;
 }
 
@@ -6115,10 +6261,13 @@ function menuBuildGrid(){
     const card = document.createElement('button');
     card.className = 'mapCard'; card.dataset.id = m.id;
     const art = document.createElement('div'); art.className = 'mapCardArt';
-    art.appendChild(menuRenderCard(m.id));
+    art.appendChild(menuCardNode(m.id));
     const body = document.createElement('div'); body.className = 'mapCardBody';
     body.innerHTML = '<div class="mapCardTitle">' + m.name + '</div>' +
-      '<div class="mapCardMeta">' + meta.regions + ' regions · ' + meta.cells.toLocaleString() + ' squares</div>';
+      '<div class="mapCardMeta">' + meta.regions + ' regions · ' + meta.cells.toLocaleString() + ' squares</div>' +
+      // progress bar + "NN% · unlocked/total"; hidden until this map has a save
+      '<div class="mapCardProg" style="display:none"><span class="mapCardBar"><span class="mapCardBarFill"></span></span>' +
+      '<span class="mapCardStat"></span></div>';
     card.appendChild(art); card.appendChild(body);
     card.onclick = () => menuPlay(m.id);
     grid.appendChild(card);
@@ -6130,11 +6279,61 @@ function menuPaintCards(){
   if (!_menuGridBuilt) return;
   for (const art of document.querySelectorAll('#mapGrid .mapCard .mapCardArt')) {
     const id = art.parentElement.dataset.id;
-    art.replaceChildren(menuRenderCard(id));
+    art.replaceChildren(menuCardNode(id));
   }
   const cc = document.getElementById('gridContinueCard');
   const soloId = menuLastSolo();
-  if (cc && cc.style.display !== 'none' && soloId) cc.querySelector('.continueArt').replaceChildren(menuRenderCard(soloId));
+  if (cc && cc.style.display !== 'none' && soloId) cc.querySelector('.continueArt').replaceChildren(menuCardNode(soloId));
+}
+// While the player sits on the home screen, warm the thumbnails for the maps they've
+// actually played: decode the artwork and render the card off the saved unlocked-set,
+// one map per idle slot so the menu never janks. By the time Single Player is pressed
+// the grid is already painted. Maps with no save cost nothing — their plain-tint
+// thumbnail is built lazily by menuBuildGrid as before.
+function menuPreloadCards(){
+  let queue;
+  try { queue = MAPS.map(m => m.id).filter(id => menuDoneMask(id).indexOf('1') >= 0); } catch (e) { return; }
+  const resume = menuLastSolo();
+  if (resume && queue.indexOf(resume) > 0) queue.unshift(queue.splice(queue.indexOf(resume), 1)[0]);   // the map they'll most likely resume, first
+  const idle = window.requestIdleCallback || (fn => setTimeout(fn, 60));
+  const step = () => {
+    const id = queue.shift();
+    if (!id) return;
+    menuLoadImg(id, () => idle(() => { menuRenderCard(id); menuRepaintCard(id); step(); }, { timeout: 3000 }));
+  };
+  idle(step, { timeout: 3000 });
+}
+// repaint one map's thumbnail in place (both its own card and, if it's the resume
+// map, the Continue card) — used when a map's artwork finishes decoding
+function menuRepaintCard(id){
+  if (!_menuGridBuilt) return;
+  const card = document.querySelector('#mapGrid .mapCard[data-id="' + id + '"]');
+  if (card) card.querySelector('.mapCardArt').replaceChildren(menuCardNode(id));
+  const cc = document.getElementById('gridContinueCard');
+  if (cc && cc.style.display !== 'none' && menuLastSolo() === id) cc.querySelector('.continueArt').replaceChildren(menuCardNode(id));
+}
+// refresh every card's progress row from the saved summaries, and make sure any map
+// with unlocked regions has its artwork decoded so the thumbnail can show them (the
+// first paint falls back to plain tint, then repaints the moment the image lands)
+function menuRefreshCards(){
+  if (!_menuGridBuilt) return;
+  for (const card of document.querySelectorAll('#mapGrid .mapCard')) {
+    const id = card.dataset.id, meta = MAP_META[id];
+    const mask = menuDoneMask(id);
+    let done = 0;
+    for (let k = 0; k < mask.length; k++) if (mask.charCodeAt(k) === 49) done++;
+    // thumbnail first, so a map that was just reset drops back to plain tint
+    if (done && !menuArtCols(id)) menuLoadImg(id, () => menuRepaintCard(id));   // art still decoding
+    else card.querySelector('.mapCardArt').replaceChildren(menuCardNode(id));
+    const row = card.querySelector('.mapCardProg');
+    let played = false, pct = 0;
+    try { played = localStorage.getItem(stateKey(id)) !== null; } catch (e) {}
+    try { pct = Math.max(0, Math.min(100, parseInt(localStorage.getItem(progressKey(id)), 10) || 0)); } catch (e) {}
+    if (!played) { row.style.display = 'none'; card.querySelector('.mapCardStat').textContent = ''; continue; }
+    row.style.display = '';
+    card.querySelector('.mapCardBarFill').style.width = pct + '%';
+    card.querySelector('.mapCardStat').textContent = pct + '% · ' + done + '/' + (meta ? meta.regions : mask.length);
+  }
 }
 // fill in (or hide) the grid's Continue card from the last solo map's saved progress
 function menuRefreshGridContinue(){
@@ -6149,7 +6348,8 @@ function menuRefreshGridContinue(){
   cc.querySelector('.continueName').textContent = mapDef(id).name;
   cc.querySelector('.continueBarFill').style.width = pct + '%';
   cc.querySelector('.continueStat').textContent = pct + '% · ' + fmtTime(ms);
-  cc.querySelector('.continueArt').replaceChildren(menuRenderCard(id));
+  cc.querySelector('.continueArt').replaceChildren(menuCardNode(id));
+  if (menuDoneMask(id).indexOf('1') >= 0 && !menuArtCols(id)) menuLoadImg(id, () => menuRepaintCard(id));
 }
 // highlight the mode pill matching the grid's current mode ('solo'/'local'/'host')
 function updateModeRow(){
@@ -6192,6 +6392,7 @@ function menuContinue(){
 
 // open the map grid configured for a given mode ('solo' | 'local' | 'host')
 function menuOpenGrid(mode){
+  if (generated && !GEN.active) saveNow();   // flush the debounced save so the cards show the region you JUST finished
   MENU.mode = mode;
   const step = document.getElementById('menuPlayerStep');
   if (mode === 'local') {
@@ -6209,6 +6410,7 @@ function menuOpenGrid(mode){
   document.getElementById('mapSort').value = mapSort;
   menuBuildGrid();
   menuApplySort();
+  menuRefreshCards();          // progress rows + unlocked-region artwork, from the saved summaries
   menuRefreshGridContinue();
   updateModeRow();
   menuShowView('grid');
@@ -6533,6 +6735,7 @@ if (!AUDIT_MODE) {
     if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 2000 });
     else setTimeout(initBgm, 150);
   }
+  menuPreloadCards();
 }
 </script>
 </body>

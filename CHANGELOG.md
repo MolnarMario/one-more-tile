@@ -5,6 +5,42 @@ shipped to the live site.
 
 ---
 
+## [0.29.0] — 2026-08-10 — Canvas grid shows the regions you've unlocked
+
+### Added
+- **Map cards now reveal your progress as picture, not just a number.** Every
+  region you've finished on a canvas is painted with that canvas's *real
+  artwork* on its card in the Single Player grid — exactly what the board shows
+  when a region is revealed — while unfinished regions stay flat region tint.
+  The Continue card gets the same treatment. Nothing is spoiled: a card can only
+  ever show what you already earned.
+- **A progress bar on each map card**: `NN% · unlocked/total regions`, in the
+  same style as the Continue card. Cards for canvases you haven't started are
+  unchanged.
+- **Thumbnails are pre-warmed at the home screen.** While you're on the landing
+  menu, the played canvases' artwork is decoded and their cards rendered during
+  idle time (one canvas per idle slot, resume canvas first), so the grid is
+  already painted the moment you press Single Player.
+
+### Changed
+- `saveNow()` now also records which regions are finished, as a compact
+  `0`/`1`-per-region string under `proverbs2-<map>-v3-done`. This is what lets
+  the menu draw the unlocked set without regenerating a board. It is refreshed
+  whenever a board is opened, so existing saves fill theirs in on first visit.
+
+### Fixed
+- **Resetting a canvas now clears its menu summaries too.** `resetGame()` left
+  the stored completion `%` behind (and a debounced save could land *after* the
+  reset and re-create every key), so a reset canvas kept showing stale progress
+  in the grid.
+- **A canvas shown in two places no longer loses its thumbnail.** Rendered
+  thumbnails are cached as canvas elements, and one element can only live in one
+  spot in the page — so when the resume canvas appeared both on its own card and
+  on the Continue card, the second one stole the picture and left the first
+  blank. Each slot now gets its own copy.
+
+---
+
 ## [0.28.0] — 2026-08-10 — UI polish pass: HUD, menus, loading, Options
 
 ### Changed
