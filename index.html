@@ -329,7 +329,7 @@
   .menuChoice:hover{background:var(--panel);transform:translateY(-3px);box-shadow:0 18px 44px rgba(70,48,130,.24);border-color:var(--accent)}
   .menuChoice .mc-ico{font-size:34px;line-height:1}
   .menuChoice .mc-t{font-size:18px;font-weight:700;color:var(--text);letter-spacing:.5px}
-  .menuChoice .mc-s{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.4}
+  .menuChoice .mc-s{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.4;padding:0 10px}
   /* vertical stacked main-menu buttons (same size, one under another) */
   .menuStack{display:flex;flex-direction:column;gap:14px;width:100%;max-width:360px;margin-top:2px}
   .menuStackBtn{width:100%;padding:16px 20px;border-radius:14px;border:none;cursor:pointer;
@@ -479,14 +479,14 @@
     <span id="progressTxt">0%</span>
     <span id="hudMapName"></span>
     <span class="hud-sep">·</span>
-    <span id="timer" title="Total time spent on this canvas — pauses when you leave, resumes when you return">⏱ 00:00</span>
+    <span id="timer" title="Total time spent on this canvas. Pauses when you leave, resumes when you return">⏱ 00:00</span>
     <span class="hud-sep" id="hudMistakeSep" style="display:none">·</span>
     <span id="mistakes" style="display:none"></span>
   </div>
 
   <div class="hud-controls">
-    <button id="btnMenu" title="Home menu — switch canvas, difficulty or mode">🏠 Menu</button>
-    <select id="selDiff" title="Difficulty — clues are rewoven, your stitches stay"></select>
+    <button id="btnMenu" title="Home menu: switch canvas, difficulty or mode">🏠 Menu</button>
+    <select id="selDiff" title="Difficulty: clues are rewoven, your stitches stay"></select>
     <button id="btnUndo" class="icon" title="Undo (Ctrl+Z)">↶</button>
     <button id="btnHint" class="primary" title="Hint (H)">💡 Hint</button>
     <div class="zoomSeg">
@@ -505,13 +505,13 @@
     <button id="btnMusic" aria-label="Play or pause background music">▶</button>
     <input id="musicVol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Music volume" title="Music volume">
   </div>
-  <button class="ov-item" id="btnBrush" title="Touch brush — what a tap or drag places (tap to flip)" style="display:none"><span class="ov-ico">💡</span>Light</button>
+  <button class="ov-item" id="btnBrush" title="Touch brush: what a tap or drag places (tap to flip)" style="display:none"><span class="ov-ico">💡</span>Light</button>
   <button class="ov-item" id="btnClearMistakes" title="Sweep away every incorrect tile" disabled><span class="ov-ico">🧹</span>Clear errors</button>
   <button class="ov-item" id="btnSolve"><span class="ov-ico">✓</span>Solve</button>
-  <button class="ov-item" id="btnMP" title="Play with others — local split-screen or online"><span class="ov-ico">👥</span>Multiplayer</button>
+  <button class="ov-item" id="btnMP" title="Play with others: local split-screen or online"><span class="ov-ico">👥</span>Multiplayer</button>
   <button class="ov-item" id="btnWatch" title="Watch your partners' views" style="display:none"><span class="ov-ico">⊟</span>Watch</button>
-  <button class="ov-item" id="btnShare" title="Save your progress — or share it with a friend"><span class="ov-ico">💾</span>Save or share</button>
-  <button class="ov-item" id="btnOptions" title="Options — interface colour, music, difficulty, controller"><span class="ov-ico">⚙</span>Options</button>
+  <button class="ov-item" id="btnShare" title="Save your progress, or share it with a friend"><span class="ov-ico">💾</span>Save or share</button>
+  <button class="ov-item" id="btnOptions" title="Options: interface colour, music, difficulty, controller"><span class="ov-ico">⚙</span>Options</button>
   <button class="ov-item" id="btnHelp" title="How to play"><span class="ov-ico">📖</span>How to play</button>
   <button class="ov-item ov-danger" id="btnReset"><span class="ov-ico">↺</span>Reset this canvas</button>
 </div>
@@ -544,10 +544,10 @@
       <h2 class="menuH2">Credits</h2>
       <div class="credits">
         <p class="cr-title">One More Tile: The Emergent Canvas</p>
-        <p>A stitch-by-numbers canvas — fill-a-pix counting woven together with sudoku plots and picross patches, slowly revealing a hidden painting.</p>
+        <p>A stitch-by-numbers canvas: fill-a-pix counting woven together with sudoku plots and picross patches, slowly revealing a hidden painting.</p>
         <p><b>Created by</b><br>Mario Molnar</p>
-        <p><b>Built with</b><br>Vanilla JavaScript, HTML &amp; CSS — no libraries, a single file.</p>
-        <p><b>Music</b><br>“Chill” — a gentle one-hour loop.</p>
+        <p><b>Built with</b><br>Vanilla JavaScript, HTML &amp; CSS, no libraries, a single file.</p>
+        <p><b>Music</b><br>“Chill,” a gentle one-hour loop.</p>
         <p class="cr-thanks">Thanks for playing 💜</p>
       </div>
     </div>
@@ -566,7 +566,7 @@
       <h2 class="menuH2">🌐 Online co-op</h2>
       <div class="menuBig">
         <button class="menuChoice" id="menuHostPick"><span class="mc-ico">📡</span><span class="mc-t">Host a game</span><span class="mc-s">Pick a canvas, get a code to share</span></button>
-        <button class="menuChoice" id="menuJoinPick"><span class="mc-ico">🔑</span><span class="mc-t">Join a game</span><span class="mc-s">Enter a friend's code — you'll play their board</span></button>
+        <button class="menuChoice" id="menuJoinPick"><span class="mc-ico">🔑</span><span class="mc-t">Join a game</span><span class="mc-s">Enter a friend's code, you'll play their board</span></button>
       </div>
     </div>
 
@@ -627,7 +627,7 @@
 <div class="overlay" id="mistakeModal">
   <div class="card">
     <h2>Four mistakes on the board</h2>
-    <p>No game over here — would you like me to sweep away the incorrect tiles so you can carry on?</p>
+    <p>No game over here: would you like me to sweep away the incorrect tiles so you can carry on?</p>
     <div class="btns">
       <button class="primary" id="btnClearErrors">Clear my errors</button>
       <button id="btnKeepGoing">Keep going</button>
@@ -646,7 +646,7 @@
         <div class="c drk"></div><div class="c lit k">5</div><div class="c lit"></div>
         <div class="c lit"></div><div class="c drk"></div><div class="c drk"></div>
       </div>
-      <p class="tut-txt">Count the neighbours. This <b>5</b> means five of its 3×3 block are light — the five pale tiles, <i>itself included</i>.</p>
+      <p class="tut-txt">Count the neighbours. This <b>5</b> means five of its 3×3 block are light: the five pale tiles, <i>itself included</i>.</p>
     </div>
 
     <div class="tut">
@@ -675,7 +675,7 @@
         <div class="c t2"></div><div class="c t2"></div><div class="c t2"></div>
         <div class="c t2"></div><div class="c t2"></div><div class="c t2"></div>
       </div>
-      <p class="tut-txt">Thick <b class="gold">gold borders</b> split the canvas into <b>maps</b>. A clue only ever counts tiles inside its own map — never across a border.</p>
+      <p class="tut-txt">Thick <b class="gold">gold borders</b> split the canvas into <b>maps</b>. A clue only ever counts tiles inside its own map, never across a border.</p>
     </div>
 
     <div class="tut">
@@ -689,10 +689,10 @@
         <div class="c drk"></div><div class="c lit"></div><div class="c lit"></div>
         <div class="c lit"></div><div class="c drk"></div><div class="c drk"></div>
       </div>
-      <p class="tut-txt"><b class="gold">Gold plots</b> are sudoku — type a digit so each row, column and shape has every number once. <b class="teal">Teal patches</b> are picross — hover to see run-clues (lengths of light runs).</p>
+      <p class="tut-txt"><b class="gold">Gold plots</b> are sudoku: type a digit so each row, column and shape has every number once. <b class="teal">Teal patches</b> are picross: hover to see run-clues (lengths of light runs).</p>
     </div>
 
-    <p class="tut-note">Numbers fade once satisfied and turn <b class="bad">red</b> if contradicted. Place <i>every</i> tile — light and dark — and the hidden painting is revealed. Stuck? Press <b>H</b> for a hint — <b>guessing is never needed</b>.</p>
+    <p class="tut-note">Numbers fade once satisfied and turn <b class="bad">red</b> if contradicted. Place <i>every</i> tile, light and dark, and the hidden painting is revealed. Stuck? Press <b>H</b> for a hint. <b>Guessing is never needed</b>.</p>
 
     <div class="btns" style="margin-top:18px">
       <button id="btnShowAdvanced">Advanced deductions ↗</button>
@@ -704,14 +704,14 @@
 <div class="overlay" id="advancedModal">
   <div class="card">
     <h2>Advanced Deductions</h2>
-    <p>On <b>Hard</b> and up you'll meet spots where no single clue alone fixes a tile. Compare two <b>adjacent clues</b> instead — especially ones <b>3 apart in value</b>.</p>
+    <p>On <b>Hard</b> and up you'll meet spots where no single clue alone fixes a tile. Compare two <b>adjacent clues</b> instead, especially ones <b>3 apart in value</b>.</p>
     <div class="dgrid">
       <div class="drk"></div><div class="unk"></div><div class="unk"></div><div class="lit"></div>
       <div class="drk"></div><div class="clue">3</div><div class="clue">6</div><div class="lit"></div>
       <div class="drk"></div><div class="unk"></div><div class="unk"></div><div class="lit"></div>
     </div>
     <p class="dlegend"><b class="d">■</b> forced dark &nbsp;·&nbsp; <b class="l">■</b> forced light &nbsp;·&nbsp; the four middle tiles are shared by both clues</p>
-    <p>The <b>6</b> and <b>3</b> overlap on the middle tiles. The 6 needs <b>three</b> more lights than the 3, and there are exactly <b>three</b> tiles only the 6 can see — so those <b style="color:#3a9d7e">must all be light</b>, and the three only the 3 sees <b style="color:#c44a6a">must all be dark</b>. Forced — never a guess. Counting takes over again from there.</p>
+    <p>The <b>6</b> and <b>3</b> overlap on the middle tiles. The 6 needs <b>three</b> more lights than the 3, and there are exactly <b>three</b> tiles only the 6 can see, so those <b style="color:#3a9d7e">must all be light</b>, and the three only the 3 sees <b style="color:#c44a6a">must all be dark</b>. Forced, never a guess. Counting takes over again from there.</p>
     <p style="font-size:13px"><b>If in doubt, use a hint (H).</b> Guessing is <b>never</b> required.</p>
     <div class="btns"><button class="primary" id="btnCloseAdvanced">Got it</button></div>
   </div>
@@ -721,7 +721,7 @@
   <div class="card">
     <img id="winImg" alt="The finished canvas">
     <p class="proverb">“A smooth sea never made a skilled sailor.”</p>
-    <p>The canvas is complete — 7,680 stitches, every one in its place.</p>
+    <p>The canvas is complete: 7,680 stitches, every one in its place.</p>
     <div class="btns">
       <button id="btnAdmire">Admire the canvas</button>
       <button class="primary" id="btnPlayAgain">Stitch it again</button>
@@ -747,7 +747,7 @@
 <div class="overlay" id="solveModal">
   <div class="card">
     <h2>Let the needle work itself?</h2>
-    <p>“This region” is the one you last stitched or typed on — solved together with any sudoku or picross it touches. The whole canvas solves region by region, skipping anything already done. The 🐞 option solves that same region but stops one square short in each puzzle — handy for testing the final-move completion.</p>
+    <p>“This region” is the one you last stitched or typed on, solved together with any sudoku or picross it touches. The whole canvas solves region by region, skipping anything already done. The 🐞 option solves that same region but stops one square short in each puzzle, handy for testing the final-move completion.</p>
     <div class="btns">
       <button class="primary" id="btnSolveRegion">Solve this region</button>
       <button id="btnSolveRegionDebug">🐞 …but leave one square in each</button>
@@ -771,7 +771,7 @@
     <div class="opt-pane">
       <div class="opt-pane-section" id="optPaneColour">
         <div class="opt-pane-h">Interface colour</div>
-        <p class="opt-pane-copy">Recolours the whole game from one hue — chrome, region tints and clue ink. Gold sudoku, teal picross and error red stay where they are.</p>
+        <p class="opt-pane-copy">Recolours the whole game from one hue: chrome, region tints and clue ink. Gold sudoku, teal picross and error red stay where they are.</p>
         <div class="swatches" id="themeSwatches"></div>
         <div class="opt-hue-label">Or pick any hue</div>
         <div class="opt-hue-track">
@@ -816,12 +816,12 @@
       <div class="opt-pane-section" id="optPaneDifficulty" style="display:none">
         <div class="opt-pane-h">Default difficulty</div>
         <select id="optDiff"></select>
-        <p class="opt-sub">New canvases start at this tier. You can still change it any time from the toolbar — your stitches always survive.</p>
+        <p class="opt-sub">New canvases start at this tier. You can still change it any time from the toolbar, your stitches always survive.</p>
       </div>
 
       <div class="opt-pane-section" id="optPaneController" style="display:none">
         <div class="opt-pane-h">🎮 Controller</div>
-        <p id="padStatus" class="opt-pane-copy" style="margin-bottom:14px">No controller detected — connect one and press any button.</p>
+        <p id="padStatus" class="opt-pane-copy" style="margin-bottom:14px">No controller detected. Connect one and press any button.</p>
         <div style="display:flex;justify-content:flex-end;gap:24px;padding:0 2px;margin-bottom:8px;font-size:11px;color:var(--text);font-weight:700">
           <span style="display:flex;gap:14px">
             <span style="width:44px;text-align:center">Xbox</span>
@@ -884,7 +884,7 @@
 <div class="overlay" id="coopModal">
   <div class="card">
     <h2>👥 Local co-op</h2>
-    <p>Pick how many can play on this screen. <b>Player 1 keeps the mouse &amp; keyboard</b>; everyone else presses any button on a controller to claim a spot — they can join now or partway through. Each gets their own cursor, pan and zoom on a split screen.</p>
+    <p>Pick how many can play on this screen. <b>Player 1 keeps the mouse &amp; keyboard</b>; everyone else presses any button on a controller to claim a spot, and they can join now or partway through. Each gets their own cursor, pan and zoom on a split screen.</p>
     <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin:10px 0 16px">
       <span style="font-size:13px;color:var(--muted)">Up to</span>
       <button id="btnCoopMinus" style="width:38px">−</button>
@@ -902,9 +902,9 @@
 <div class="overlay" id="onlineModal">
   <div class="card" style="max-width:min(560px, calc(100vw - 24px))">
     <h2>🌐 Online co-op</h2>
-    <p>Play this exact board with a friend over the internet — share the code, hop on Discord, and solve together. Their edits and cursor show up live; press <b>⊟ Watch</b> any time to peek at their view.</p>
+    <p>Play this exact board with a friend over the internet: share the code, hop on Discord, and solve together. Their edits and cursor show up live; press <b>⊟ Watch</b> any time to peek at their view.</p>
     <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin:4px 0 12px">
-      <span style="font-size:13px;color:var(--muted)">Host — allow up to</span>
+      <span style="font-size:13px;color:var(--muted)">Host, allow up to</span>
       <button id="btnGuestMinus" style="width:34px">−</button>
       <b id="guestCount" style="font-size:18px;min-width:1.2em;text-align:center">1</b>
       <button id="btnGuestPlus" style="width:34px">+</button>
@@ -917,7 +917,7 @@
     </div>
     <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px"><input type="checkbox" id="onlineLoopback" style="vertical-align:middle"> Test in tabs of this browser (no internet)</label>
     <div id="onlineHost" style="display:none;text-align:left">
-      <p style="font-size:13px;margin-bottom:6px"><b>Your code</b> — send it to your friend</p>
+      <p style="font-size:13px;margin-bottom:6px"><b>Your code</b>, send it to your friend</p>
       <div style="display:flex;gap:8px;margin-bottom:6px">
         <input id="onlineCode" readonly style="flex:1;background:rgba(255,255,255,.7);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--text)">
         <button id="btnCopyCode">📋</button>
@@ -925,7 +925,7 @@
       <p id="onlineHostStatus" style="font-size:12px;color:var(--muted)"></p>
     </div>
     <div id="onlineJoin" style="display:none;text-align:left">
-      <p style="font-size:13px;margin-bottom:6px"><b>Enter your friend's code</b> — you'll play on their board; your own progress here comes back when you disconnect</p>
+      <p style="font-size:13px;margin-bottom:6px"><b>Enter your friend's code</b>: you'll play on their board; your own progress here comes back when you disconnect</p>
       <div style="display:flex;gap:8px;margin-bottom:6px">
         <input id="joinCode" placeholder="paste code…" style="flex:1;background:rgba(255,255,255,.7);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--text)">
         <button class="primary" id="btnJoinGo">Connect</button>
@@ -952,14 +952,14 @@
 <div class="overlay" id="shareModal">
   <div class="card" style="max-width:min(600px, calc(100vw - 24px))">
     <h2>💾 Save this canvas</h2>
-    <p>Save your progress as a code or file so you can back it up or move it to another device. You can also share it with a friend to hand them your board — but importing it <b>replaces</b> whatever progress they had on this map.</p>
-    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Your code</b> — copy it to save or share</p>
+    <p>Save your progress as a code or file so you can back it up or move it to another device. You can also share it with a friend to hand them your board, but importing it <b>replaces</b> whatever progress they had on this map.</p>
+    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Your code</b>, copy it to save or share</p>
     <textarea id="shareOut" readonly style="width:100%;height:84px;resize:none;background:rgba(255,255,255,.7);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--text);word-break:break-all;margin-bottom:8px"></textarea>
     <div class="btns" style="margin-bottom:18px">
       <button class="primary" id="btnShareCopy">📋 Copy code</button>
       <button id="btnShareDownload">💾 Save as file</button>
     </div>
-    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Load a code</b> — paste one in, or open a saved file</p>
+    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Load a code</b>, paste one in, or open a saved file</p>
     <textarea id="shareIn" placeholder="Paste a shared code here…" style="width:100%;height:60px;resize:none;background:rgba(255,255,255,.7);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--text);word-break:break-all;margin-bottom:8px"></textarea>
     <input type="file" id="shareFile" accept=".npxs,.txt,text/plain" style="display:none">
     <div class="btns">
@@ -2677,7 +2677,7 @@ function setDifficulty(d){
       clearUndo();                     // clues changed; old snapshots no longer valid
       updateHUD();
       needsDraw = true;
-      toast('Difficulty: ' + DIFF[d].label.replace(/^\S+ /, '') + ' — the clues have been rewoven. Your stitches are safe.', true);
+      toast('Difficulty: ' + DIFF[d].label.replace(/^\S+ /, '') + '. The clues have been rewoven. Your stitches are safe.', true);
       runPendingAfterGen();   // menu-queued action, if a same-map difficulty change triggered this
       setTimeout(maybeShowAdvanced, 520);
     }, hit);
@@ -3273,7 +3273,7 @@ function checkRegion(r, silent){
   if (!silent) {
     if (!solving) {
       const pp = picrossByRegion.get(r);
-      if (pp) toast(`${pp.name} is mended — its picture joins the canvas.`, true);
+      if (pp) toast(`${pp.name} is mended, its picture joins the canvas.`, true);
       else toast(PROVERBS[(Math.random() * PROVERBS.length) | 0]);
     }
     maybeShowQuote();    // region+attached plots done -> quote (also during auto-solve)
@@ -3295,7 +3295,7 @@ function checkZone(zone, silent){
   regionDoneAt[zone.region] = performance.now();
   for (const pl of players) if (pl.selZ === zone.idx) { pl.selZ = -1; pl.selP = -1; }
   if (!silent) {
-    if (!solving) toast(`${zone.name} is solved — its piece joins the canvas.`, true);
+    if (!solving) toast(`${zone.name} is solved, its piece joins the canvas.`, true);
     maybeShowQuote();    // region+attached plots done -> quote (also during auto-solve)
     checkWin();
   } else regionDoneAt[zone.region] = -1e9;
@@ -3322,11 +3322,11 @@ function checkWin(){
 //  to leave it silent.
 // ============================================================
 const MAP_QUOTES = {
-  "portal": {"0":"We do what we must because we can 🎶","4":"That thing has all the charm and social grace of a hyena","5":"Despite your violent behavior, the only thing you've managed to break so far is my heart","7":"*silence*","8":"Oh, good. My slow-clap processor made it into this thing","9":"Cake... and grief counseling... will be available at the conclusion of the test","10":"*wub*","12":"The Excursion Funnel will gently convey you to your destination","13":"The Hard Light Bridge can safely carry you over dangerous hazards","14":"Are you still there?","15":"You euthanized your faithful Companion Cube more quickly than any test subject on record","17":"Fatty. Adopted fatty. Fatty fatty no parents","18":"LaDOS: \"You are simply machines. You were built for testing.\"","19":"\"One of you is doing very, very well. The other... isn't.\"","23":"\"Black Mesa can eat my bankrupt—"},
+  "portal": {"0":"We do what we must because we can 🎶","4":"That thing has all the charm and social grace of a hyena","5":"Despite your violent behavior, the only thing you've managed to break so far is my heart","7":"*silence*","8":"Oh, good. My slow-clap processor made it into this thing","9":"Cake... and grief counseling... will be available at the conclusion of the test","10":"*wub*","12":"The Excursion Funnel will gently convey you to your destination","13":"The Hard Light Bridge can safely carry you over dangerous hazards","14":"Are you still there?","15":"You euthanized your faithful Companion Cube more quickly than any test subject on record","17":"Fatty. Adopted fatty. Fatty fatty no parents","18":"LaDOS: \"You are simply machines. You were built for testing.\"","19":"\"One of you is doing very, very well. The other... isn't.\"","23":"\"Black Mesa can eat my bankrupt…"},
   "angels": {"0":"Anywhere can be paradise as long as you have the will to live.","1":"Man fears the darkness, and so he scrapes away at the edges of it with fire.","2":"Pain is something man must endure in his heart","3":"Humans can only truly understand each other through pain","4":"The only person who can sympathize with you and understand you is you.","5":"Reality is merely an illusion framed by your expectations.","6":"People cannot live without hurting one another.","7":"As long as you have the will to live, anywhere can be heaven.","8":"Dreams are one reality. Reality is another","9":"The fate of destruction is also the joy of rebirth.","10":"Humans forget their foolishness and repeat their mistakes.","11":"The fear of pain is greater than pain itself.","12":"The closer you get to someone, the deeper the hurt can become.","13":"Any new position from which you view your reality will change your perception of its nature","14":"People create their own reality","15":"If you know pain and hardship, it is easier to be kind to others.","16":"Mankind's greatest fear is mankind itself.","17":"One who truly hates himself cannot love or trust others.","18":"The instrumentality of mankind is the hope that people can become one.","19":"How disgusting."},
   "amigos": {"0":"Will you bear my child?","1":"Hiraikotsu!","2":"You overestimate your abilities","3":"Lord Sesshomaru is the greatest being in all the world!","4":"Wind Scar!","5":"Human hearts are so weak, hatred easily arises in them","6":"I can sense the Shikon Jewel shards.","7":"My soul is incomplete","8":"Just wait until I'm a great fox demon!","9":"Nyaa!"},
   "blinding-lights": {"0":"Ad Astra (2019)","1":"All in all the only things I consider a little good in it are the Wheatfield, the Mountain, the Orchard, the Olive trees with the blue hills and the Portrait and the Entrance to the quarry, and the rest says nothing to m","2":"In the name of the Moon, I'll punish you!","3":"Sin City's cold and empty","4":"Thick thigh save lives","5":"Nyaa"},
-  "zenitsu": {"0":"Hiding Won’t Make The Sadness Go away","1":"Gramps did smack me around a bit too much, but he never abandoned me","4":"I Wanted To Fight You As An Equal","6":"Your Family Is Waiting For You Two To Return","8":"Don't ever give up. Even if it's painful, even if it's agonizing, don't try to take the easy way out","9":"One form. I only ever learned one — and I'll make it the sharpest thing you've ever seen","11":"We Are Pathetic Successors"},
+  "zenitsu": {"0":"Hiding Won’t Make The Sadness Go away","1":"Gramps did smack me around a bit too much, but he never abandoned me","4":"I Wanted To Fight You As An Equal","6":"Your Family Is Waiting For You Two To Return","8":"Don't ever give up. Even if it's painful, even if it's agonizing, don't try to take the easy way out","9":"One form. I only ever learned one, and I'll make it the sharpest thing you've ever seen","11":"We Are Pathetic Successors"},
   crew: {
     0: "Phenomenal.",
     1: "The sky is so clear today, even my excuses are visible.",
@@ -3344,7 +3344,7 @@ const MAP_QUOTES = {
     1:  "Patience. The picture reveals itself to the one who stops forcing it and starts reading it.",          // Piccolo
     4:  "Three eyes, and I still watch only one thing: the next move. Focus is the entire technique.",          // Tien
     6:  "Aw man, this is fun! A couple more regions and then we eat, okay? I'm starving over here.",            // Goku
-    7:  "Bald, no tail, first one knocked out every single time — and I still show up. That's gotta count.",     // Krillin
+    7:  "Bald, no tail, first one knocked out every single time, and I still show up. That's gotta count.",     // Krillin
     10: "Where I come from, there are no second tries. So get this one right the first time.",                  // Trunks
     11: "Place every tile like it's better than the one before it. It's the only way I do anything.",           // Vegeta
   },
@@ -3432,8 +3432,8 @@ function showPaneCard(pl){
   const box = document.createElement('div'); box.className = 'pc-box';
   const btns = document.createElement('div'); btns.className = 'pc-btns';
   if (card.kind === 'mistake') {
-    const h = document.createElement('h3'); h.textContent = playerTag(pl) + ' — four mistakes';
-    const p = document.createElement('p'); p.textContent = 'No game over — sweep away your incorrect tiles and carry on?';
+    const h = document.createElement('h3'); h.textContent = playerTag(pl) + ': four mistakes';
+    const p = document.createElement('p'); p.textContent = 'No game over, sweep away your incorrect tiles and carry on?';
     const clr = document.createElement('button'); clr.className = 'pc-primary'; clr.textContent = 'Clear my errors';
     clr.onclick = () => { clearErrors(pl.id); dismissPaneCard(pl); };
     const keep = document.createElement('button'); keep.textContent = 'Keep going';
@@ -3979,7 +3979,7 @@ function decodeCode(code){
 // derived state, and persist — mirrors loadSave + finishSetup. Assumes the
 // clues already match `data.diff`.
 function applyImported(data){
-  if (data.state.length !== N) { toast('That code is for a different board size — could not apply.', true); return; }
+  if (data.state.length !== N) { toast('That code is for a different board size, could not apply.', true); return; }
   state.fill(0);
   state.set(data.state);
   wrong.clear();
@@ -4014,13 +4014,13 @@ function applyImported(data){
 // top-level entry: validate, then apply (re-weaving clues first if the code's
 // difficulty differs from the current one — same path setDifficulty uses)
 function importCode(code, onDone, silent){
-  if (!generated || solving) { toast('One moment — the canvas is still busy.', true); return false; }
+  if (!generated || solving) { toast('One moment, the canvas is still busy.', true); return false; }
   const data = decodeCode(code);
-  if (!data) { toast('Hmm — I could not read that code. Check you copied all of it.', true); return false; }
+  if (!data) { toast('Hmm, I could not read that code. Check you copied all of it.', true); return false; }
   const finish = () => {
     applyImported(data);
     if (typeof onDone === 'function') onDone();
-    if (!silent) toast('Canvas imported — your friend’s progress is on the loom.', true);
+    if (!silent) toast('Canvas imported. Your friend’s progress is on the loom.', true);
   };
   // a code can carry both a difficulty and a map; note the diff change first,
   // then sync it so rebuild/reweave use the right tier
@@ -4223,7 +4223,7 @@ function giveHint(pl = mousePlayer()){
     }
   }
   if (!cands.length) {
-    toast('No clear deduction in sight — perhaps a stitch is out of place…', true);
+    toast('No clear deduction in sight. Perhaps a stitch is out of place…', true);
     return;
   }
   // keep hints useful: stay in the map you're working on, and of those pick
@@ -4244,9 +4244,9 @@ function giveHint(pl = mousePlayer()){
   const gx = i % GW + 0.5, gy = (i / GW | 0) + 0.5;
   const ts = Math.max(pl.view.s, 30);
   animateView(paneW(pl) / 2 - gx * ts, paneH(pl) / 2 - gy * ts + 14, ts, pl);
-  toast(best.type === 'dark'  ? 'Hint: this clue already sees all its light tiles — every unstitched tile in the ring is dark.'
+  toast(best.type === 'dark'  ? 'Hint: this clue already sees all its light tiles. Every unstitched tile in the ring is dark.'
       : best.type === 'light' ? 'Hint: every unstitched tile in the highlighted ring must be light.'
-      : 'Hint: compare this clue with an overlapping neighbour — together they force tiles in the ring.', true);
+      : 'Hint: compare this clue with an overlapping neighbour. Together they force tiles in the ring.', true);
 }
 
 function animateView(tx, ty, ts, pl = players[0]){
@@ -4359,7 +4359,7 @@ function updatePadStatus(){
   for (const g of gps) if (g && g.connected) { gp = g; break; }
   document.getElementById('padStatus').textContent = gp
     ? 'Connected: ' + gp.id.slice(0, 44)
-    : 'No controller detected — connect one and press any button.';
+    : 'No controller detected. Connect one and press any button.';
 }
 
 function ensureCursorVisible(pl = players[0]){
@@ -4573,7 +4573,7 @@ function pollPad(pl, gp, now){
 
 addEventListener('gamepadconnected', () => {
   updatePadStatus();
-  toast('Controller connected — A stitches, B marks. Click 🎮 to remap.', true);
+  toast('Controller connected. A stitches, B marks. Click 🎮 to remap.', true);
 });
 addEventListener('gamepaddisconnected', () => updatePadStatus());
 
@@ -4615,7 +4615,7 @@ function startCoop(n){
   players[0].padIndex = -1;    // P1 is mouse + keyboard; controllers claim the other spots
   fitView(players[0]);
   setOnlineUI();
-  toast('Local co-op — up to ' + maxPlayers + '. Others: press a controller button to join.', true);
+  toast('Local co-op, up to ' + maxPlayers + '. Others: press a controller button to join.', true);
   needsDraw = true;
 }
 
@@ -4714,7 +4714,7 @@ function onNetMessage(msg){
       hostPid = msg.pid;   // remember the host so we know whose leaving ends the session
       if (msg.compat !== BOARD_COMPAT) {   // board/format/protocol compat, not release version
         netSend('hello-ack', { ok: false, reason: 'version' });
-        toast('Version mismatch — host is on v' + msg.app + ', you are on v' + APP_VERSION + '. Update to play together.', true);
+        toast('Version mismatch: host is on v' + msg.app + ', you are on v' + APP_VERSION + '. Update to play together.', true);
         leaveOnline();
       } else netSend('hello-ack', { ok: true });   // then wait for the snapshot
       break;
@@ -4812,7 +4812,7 @@ function saveCoopToLocal(){
     localStorage.setItem(picKey(), Array.from(picTier.subarray(0, PICROSS.length)).join(''));   // the host's patch shapes, so a reload matches these marks
   } catch (e) {}
   joinerBackup = exportCode();
-  toast('Saved — this co-op board is now your own progress for this map.', true);
+  toast('Saved. This co-op board is now your own progress for this map.', true);
 }
 // a remote participant dropped: the host just loses that one (keeps hosting); a
 // guest losing the host falls back to solo and gets its own board back
@@ -5884,8 +5884,8 @@ document.getElementById('btnHost').onclick = () => {
   document.getElementById('onlineCode').value = '';
   document.getElementById('onlineHostStatus').textContent = 'Starting…';
   startNet(chosenTransport(), 'host', null,
-    info => { document.getElementById('onlineCode').value = (info && info.roomId) || ''; document.getElementById('onlineHostStatus').textContent = 'Share this code with up to ' + maxGuests + ' friend' + (maxGuests === 1 ? '' : 's') + ' — they can join any time.'; setOnlineUI(); },
-    () => { document.getElementById('onlineHostStatus').textContent = 'Could not start — try again.'; setOnlineUI(); });
+    info => { document.getElementById('onlineCode').value = (info && info.roomId) || ''; document.getElementById('onlineHostStatus').textContent = 'Share this code with up to ' + maxGuests + ' friend' + (maxGuests === 1 ? '' : 's') + '. They can join any time.'; setOnlineUI(); },
+    () => { document.getElementById('onlineHostStatus').textContent = 'Could not start. Try again.'; setOnlineUI(); });
   setOnlineUI();
 };
 document.getElementById('btnJoinShow').onclick = () => {
@@ -5898,8 +5898,8 @@ document.getElementById('btnJoinGo').onclick = () => {
   if (!code) return;
   document.getElementById('onlineJoinStatus').textContent = 'Connecting…';
   startNet(chosenTransport(), 'join', code,
-    () => { document.getElementById('onlineJoinStatus').textContent = 'Connected — receiving the board…'; setOnlineUI(); },
-    () => { document.getElementById('onlineJoinStatus').textContent = 'Could not connect — check the code.'; setOnlineUI(); });
+    () => { document.getElementById('onlineJoinStatus').textContent = 'Connected, receiving the board…'; setOnlineUI(); },
+    () => { document.getElementById('onlineJoinStatus').textContent = 'Could not connect. Check the code.'; setOnlineUI(); });
   setOnlineUI();
 };
 document.getElementById('btnCopyCode').onclick = () => {
@@ -6300,11 +6300,11 @@ document.getElementById('btnCharClose').onclick = () => {
 };
 document.getElementById('btnShareCopy').onclick = () => {
   const ta = document.getElementById('shareOut');
-  const done = () => toast('Code copied — paste it to a friend.', true);
+  const done = () => toast('Code copied. Paste it to a friend.', true);
   const fallback = () => {
     ta.focus(); ta.select();
     try { document.execCommand('copy'); done(); }
-    catch (e) { toast('Copy failed — select the code and copy it manually.', true); }
+    catch (e) { toast('Copy failed. Select the code and copy it manually.', true); }
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(ta.value).then(done, fallback);
@@ -6323,7 +6323,7 @@ document.getElementById('btnShareDownload').onclick = () => {
   a.href = url; a.download = 'one-more-tile-canvas.npxs';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  toast('Saved one-more-tile-canvas.npxs — send the file to a friend.', true);
+  toast('Saved one-more-tile-canvas.npxs. Send the file to a friend.', true);
 };
 document.getElementById('btnShareUpload').onclick = () => document.getElementById('shareFile').click();
 document.getElementById('shareFile').onchange = e => {
