@@ -228,10 +228,16 @@ progress, _pct, _hdr}`.
 ## 7. State, sharing, multiplayer, QoL
 
 - **Save** (per map, autosave): `stateKey()` = `proverbs2-<map>-v3`, `zonesKey()` = `…-plots`,
-  `timerKey()` = `…-time` (accumulated play-time, see §10). `scheduleSave()` (debounced; bails when
+  `timerKey()` = `…-time` (accumulated play-time, see §10), `picKey()` = `…-pic` (per-patch picross
+  tier), plus two **menu summaries** the grid reads without building a board: `progressKey()` =
+  `…-pct` (`boardPercent()`) and `doneKey()` = `…-done` (`regionDone` as one `'0'/'1'` per region id,
+  `REG_COUNT` chars — see §10). `scheduleSave()` (debounced; bails when
   an online *joiner* or during `GEN.active`) writes `state` + zone entries + the timer to
   `localStorage`; `loadSave()` restores them (and `timerBase`) and recomputes the `wrong` set against
-  the current `sol`. Other keys: `MAP_KEY` (`proverbs2-map`, last map), `DIFF_KEY` (default tier),
+  the current `sol`. The summaries are also refreshed by `persistMenuSummary()` at the end of
+  `finishSetup`/`loadMap` (so pre-`doneKey` saves backfill on first open) and never written for a map
+  that has no save. `resetGame()` clears **all six** per-map keys and cancels any in-flight debounced
+  save. Other keys: `MAP_KEY` (`proverbs2-map`, last map), `DIFF_KEY` (default tier),
   `THEME_KEY` (`proverbs2-hue`), `MAP_SORT_KEY`, `LAST_SOLO_KEY` (Continue target), `MUSIC_VOL_KEY`,
   `MUSIC_ON_KEY` (`proverbs2-musicon`, persisted on/off), `PAD_KEY`, `proverbs2-quotes`,
   `proverbs2-advseen`. `saveNow()` is the immediate (non-debounced) write; `scheduleSave` debounces
@@ -350,6 +356,7 @@ progress, _pct, _hdr}`.
 | Board caching / eviction | the board-cache block just above `startGeneration` (§7); `BCACHE_CLUE_MAX`, `clueMatchesSol`, `prepareSolution`, `regenCluesFresh` |
 | Change colours / theme | edit `:root` HSL vars (CSS chrome) **and** `buildPalette()` (canvas `C` + `TINTS`) together; both key off `--hue`/`themeHue`. Add/adjust theme swatches in `THEME_PRESETS` (§10) |
 | The home menu / map grid | §10 — `#menuScreen` markup, `showMenu`/`menuShowView`/`menuOpenGrid`/`menuPlay`, sort in `menuSortedIds` |
+| Map-card thumbnails / unlocked-region previews | §10 — `menuRenderCard`/`menuCardNode`/`menuArtCols`/`menuPlotRects`/`menuRefreshCards`, warmed by `menuPreloadCards`; the unlocked set is `doneKey()` (§7) |
 | The play timer | §10 — `timerTotal`/`timerPause`/`persistTimer`, `timerKey()` |
 | Change the clue rule | `nbhd` construction in `buildLayout` (⚠ affects everything) |
 | Solvability logic | `repairTexture`/`repairRegion`/`repairPicross` and the `genRegionClues` solver |
@@ -369,10 +376,29 @@ Everything here is chrome around the generation core — none of it touches `sol
   toggles the `.menuView` divs (`home`/`credits`/`coopMode`/`onlineChoice`/`grid`).
 - **Map grid**: `menuOpenGrid(mode)` (`'solo'|'local'|'host'`) configures the title + player/guest
   stepper and shows cards built once by `menuBuildGrid()`. Each card's thumbnail is drawn by
-  `menuRenderCard(id)` (region tint fill + gold borders, cached per `id@hue`); `menuPaintCards()`
-  repaints them on a theme change. Card **counts** come from `MAP_META[id]` (`regions`/`cells`), baked
-  once from the deterministic pipeline (watershed maps also bake `PREVIEW_RLE`; hand maps reuse
-  `HAND_LAYOUTS[id].regionRLE`).
+  `menuRenderCard(id)` (region tint fill + gold borders, cached per `id@hue@doneMask`);
+  `menuPaintCards()` repaints them on a theme change. Card **counts** come from `MAP_META[id]`
+  (`regions`/`cells`), baked once from the deterministic pipeline (watershed maps also bake
+  `PREVIEW_RLE`; hand maps reuse `HAND_LAYOUTS[id].regionRLE`).
+  ⚠ `menuRenderCard` returns the **cached canvas element**, and one element can only sit in one place
+  in the DOM — the resume map appears on both its own card and the Continue card. Always insert via
+  **`menuCardNode(id)`**, which hands out a copy.
+- **Unlocked-region previews**: a card paints the map's *real artwork* into every region the player has
+  finished (flat region tint elsewhere), mirroring the in-game reveal. Nothing is generated — the
+  partition comes from the baked RLE, the unlocked set from `doneKey(id)` (§7), and the colours from
+  `menuArtCols(id)`, which samples the map image into a `gw×gh` offscreen exactly the way
+  `sampleImage()` fills `cellCol`. `menuRefreshCards()` (called by `menuOpenGrid`) drives this and the
+  per-card progress row (`.mapCardProg`, `NN% · unlocked/total`), which is hidden for maps with no save.
+  ⚠ The two RLE bakes differ: `PREVIEW_RLE` (watershed maps) already carries **final** region ids
+  including plots, while a hand layout's `regionRLE` marks plot cells `-2` — those get their plot region
+  ids stamped in by `menuPlotRects(id, regPix)`, which reads the same tables `choosePlots()` does
+  (`HAND_LAYOUTS[id].zones/.picross`, `CASTLE_ZONES`/`CASTLE_PICROSS`, or `placePlots(seed, gw, gh)`)
+  and returns `null` if the numbering doesn't reconcile with `MAP_META[id].regions`, so a bad
+  assumption just costs the art rather than mis-colouring regions. Verified identical to the live
+  `regionOf` on both bake styles.
+- **Idle preload**: `menuPreloadCards()` runs at boot (after the music idle task) and, during idle
+  slots, decodes + renders the cards for maps that have unlocked regions — resume map first, one per
+  slot — so the grid is already painted when Single Player is pressed. Maps with no save cost nothing.
 - **Sort**: `#mapSort` → `menuSortedIds()` (A–Z/Z–A via `name.localeCompare` — map names now end with
   their emoji so this sorts naturally; newest/oldest via `MAP_ADDED_ORDER`; most/fewest via
   `MAP_META.cells`), reordered in the DOM by `menuApplySort()`, persisted to `MAP_SORT_KEY`.

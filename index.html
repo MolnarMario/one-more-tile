@@ -108,9 +108,11 @@
   #hudLegend{position:fixed;left:14px;bottom:12px;display:flex;align-items:center;gap:8px;
     background:var(--panel);border:1px solid var(--panel-border);border-radius:20px;padding:7px 14px;
     font-size:12px;color:var(--muted);backdrop-filter:blur(8px);z-index:10}
-  #hudLegend b{color:var(--text);font-weight:600}
-  #hudLegend b.gold{color:#b07a1a}
-  #hudLegend b.teal{color:#1f9c84}
+  #hudLegend .hud-legend-btn{background:none;border:none;padding:0;margin:0;font:inherit;
+    font-weight:600;color:var(--text);cursor:pointer}
+  #hudLegend .hud-legend-btn:hover,#hudLegend .hud-legend-btn:focus-visible{text-decoration:underline}
+  #hudLegend .hud-legend-btn.gold{color:#b07a1a}
+  #hudLegend .hud-legend-btn.teal{color:#1f9c84}
   #version{position:fixed;bottom:14px;right:14px;z-index:11;pointer-events:none;
     font-size:11px;color:var(--muted);opacity:.7;font-variant-numeric:tabular-nums}
 
@@ -198,6 +200,16 @@
   .mini.teal{background:hsl(168 45% 90%);box-shadow:inset 0 0 0 3px #2fb39a}
   .tut .wall{flex:0 0 auto;width:6px;min-height:102px;border-radius:3px;background:#e0a24a}
   b.gold{color:#b07a1a}b.teal{color:#1f9c84}b.bad{color:#d23c4e}
+  /* picross (nonogram) demo grid, used in the picross how-to modal */
+  .picDemo{display:flex;justify-content:center;margin:14px 0}
+  .picGrid{display:grid;grid-template-columns:34px repeat(3,30px);grid-auto-rows:30px;gap:3px;align-items:center;
+    background:hsl(168 45% 90%);box-shadow:inset 0 0 0 3px #2fb39a;border-radius:9px;padding:8px 10px}
+  .picGrid .pg-colclue{font-size:12px;font-weight:700;color:#1f9c84;align-self:end;
+    line-height:1.15;text-align:center}
+  .picGrid .pg-rowclue{font-size:12px;font-weight:700;color:#1f9c84;justify-self:end;padding-right:2px}
+  .picGrid .pg-cell{width:30px;height:30px;border-radius:5px}
+  .picGrid .pg-cell.lit{background:#fdfcff}
+  .picGrid .pg-cell.drk{background:hsl(var(--hue) 38% 34%)}
   /* character dialogue box */
   .card.dialogue{text-align:left;border-left:5px solid var(--accent);max-width:480px}
   .card.dialogue .dlg-name{color:var(--accent);font-weight:700;letter-spacing:.5px;font-size:15px;margin-bottom:10px}
@@ -329,7 +341,7 @@
   .menuChoice:hover{background:var(--panel);transform:translateY(-3px);box-shadow:0 18px 44px rgba(70,48,130,.24);border-color:var(--accent)}
   .menuChoice .mc-ico{font-size:34px;line-height:1}
   .menuChoice .mc-t{font-size:18px;font-weight:700;color:var(--text);letter-spacing:.5px}
-  .menuChoice .mc-s{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.4}
+  .menuChoice .mc-s{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.4;padding:0 10px}
   /* vertical stacked main-menu buttons (same size, one under another) */
   .menuStack{display:flex;flex-direction:column;gap:14px;width:100%;max-width:360px;margin-top:2px}
   .menuStackBtn{width:100%;padding:16px 20px;border-radius:14px;border:none;cursor:pointer;
@@ -382,9 +394,10 @@
   .menuSpacer{flex:1}
   #mapSort{border-radius:20px;padding:8px 30px 8px 14px;font-size:13px;background-color:rgba(255,255,255,.6)}
   .menuOptLbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-right:8px}
-  .menuStep{display:flex;align-items:center;gap:10px;margin-top:14px}
-  .menuStep b{font-size:18px;min-width:1.4em;text-align:center;color:var(--text)}
-  .menuStep button{width:34px}
+  .menuStep{display:flex;align-items:center;gap:10px;padding:6px 14px 6px 18px;border-radius:22px;
+    background:rgba(255,255,255,.6);border:1px solid var(--panel-border)}
+  .menuStep b{font-size:15px;min-width:1.2em;text-align:center;color:var(--text)}
+  .menuStep button{width:28px;padding:4px 0;border-radius:14px}
   .mapGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px;width:100%;margin-top:24px}
   .mapCard{padding:0;overflow:hidden;border-radius:14px;background:var(--panel);border:1px solid var(--panel-border);
     cursor:pointer;position:relative;text-align:left;box-shadow:0 8px 24px hsl(var(--hue) 46% 35% / .12);
@@ -395,6 +408,11 @@
   .mapCardBody{padding:10px 12px 12px}
   .mapCardTitle{font-size:15px;font-weight:600;color:var(--text)}
   .mapCardMeta{font-size:12px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+  /* per-card progress: same bar as the Continue card, shown only when the map has a save */
+  .mapCardProg{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .mapCardBar{flex:1;height:5px;border-radius:3px;background:hsl(calc(var(--hue) + 2) 41% 44% / .16);overflow:hidden;display:block}
+  .mapCardBarFill{display:block;height:100%;width:0%;background:var(--grad-bar)}
+  .mapCardStat{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
   /* the Continue card: raised + accent-bordered, spans 2 columns, always first */
   .continueCard{grid-column:span 2;overflow:hidden;border-radius:14px;background:var(--card);
     border:1px solid var(--accent);box-shadow:0 16px 40px hsl(var(--hue) 46% 35% / .26);
@@ -478,14 +496,14 @@
     <span id="progressTxt">0%</span>
     <span id="hudMapName"></span>
     <span class="hud-sep">·</span>
-    <span id="timer" title="Total time spent on this canvas — pauses when you leave, resumes when you return">⏱ 00:00</span>
+    <span id="timer" title="Total time spent on this canvas. Pauses when you leave, resumes when you return">⏱ 00:00</span>
     <span class="hud-sep" id="hudMistakeSep" style="display:none">·</span>
     <span id="mistakes" style="display:none"></span>
   </div>
 
   <div class="hud-controls">
-    <button id="btnMenu" title="Home menu — switch canvas, difficulty or mode">🏠 Menu</button>
-    <select id="selDiff" title="Difficulty — clues are rewoven, your stitches stay"></select>
+    <button id="btnMenu" title="Home menu: switch canvas, difficulty or mode">🏠 Menu</button>
+    <select id="selDiff" title="Difficulty: clues are rewoven, your stitches stay"></select>
     <button id="btnUndo" class="icon" title="Undo (Ctrl+Z)">↶</button>
     <button id="btnHint" class="primary" title="Hint (H)">💡 Hint</button>
     <div class="zoomSeg">
@@ -504,19 +522,18 @@
     <button id="btnMusic" aria-label="Play or pause background music">▶</button>
     <input id="musicVol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Music volume" title="Music volume">
   </div>
-  <button class="ov-item" id="btnBrush" title="Touch brush — what a tap or drag places (tap to flip)" style="display:none"><span class="ov-ico">💡</span>Light</button>
+  <button class="ov-item" id="btnBrush" title="Touch brush: what a tap or drag places (tap to flip)" style="display:none"><span class="ov-ico">💡</span>Light</button>
   <button class="ov-item" id="btnClearMistakes" title="Sweep away every incorrect tile" disabled><span class="ov-ico">🧹</span>Clear errors</button>
   <button class="ov-item" id="btnSolve"><span class="ov-ico">✓</span>Solve</button>
-  <button class="ov-item" id="btnMP" title="Play with others — local split-screen or online"><span class="ov-ico">👥</span>Multiplayer</button>
+  <button class="ov-item" id="btnMP" title="Play with others: local split-screen or online"><span class="ov-ico">👥</span>Multiplayer</button>
   <button class="ov-item" id="btnWatch" title="Watch your partners' views" style="display:none"><span class="ov-ico">⊟</span>Watch</button>
-  <button class="ov-item" id="btnShare" title="Save your progress — or share it with a friend"><span class="ov-ico">💾</span>Save or share</button>
-  <button class="ov-item" id="btnOptions" title="Options — interface colour, music, difficulty, controller"><span class="ov-ico">⚙</span>Options</button>
-  <button class="ov-item" id="btnHelp" title="How to play"><span class="ov-ico">📖</span>How to play</button>
+  <button class="ov-item" id="btnShare" title="Save your progress, or share it with a friend"><span class="ov-ico">💾</span>Save or share</button>
+  <button class="ov-item" id="btnOptions" title="Options: interface colour, music, difficulty, controller"><span class="ov-ico">⚙</span>Options</button>
   <button class="ov-item ov-danger" id="btnReset"><span class="ov-ico">↺</span>Reset this canvas</button>
 </div>
 
 <div id="hudLegend">
-  <b>⌨ Controls</b><span class="hud-sep">·</span><b class="gold">gold</b> sudoku<span class="hud-sep">·</span><b class="teal">teal</b> picross
+  <button class="hud-legend-btn" id="btnHelpLegend" title="How to play">📖 How to play</button><span class="hud-sep">·</span><button class="hud-legend-btn gold" id="btnSudokuHelp" title="What is sudoku?">gold: sudoku</button><span class="hud-sep">·</span><button class="hud-legend-btn teal" id="btnPicrossHelp" title="What is picross?">teal: picross</button>
 </div>
 
 <div id="menuScreen">
@@ -543,10 +560,10 @@
       <h2 class="menuH2">Credits</h2>
       <div class="credits">
         <p class="cr-title">One More Tile: The Emergent Canvas</p>
-        <p>A stitch-by-numbers canvas — fill-a-pix counting woven together with sudoku plots and picross patches, slowly revealing a hidden painting.</p>
+        <p>A stitch-by-numbers canvas: fill-a-pix counting woven together with sudoku plots and picross patches, slowly revealing a hidden painting.</p>
         <p><b>Created by</b><br>Mario Molnar</p>
-        <p><b>Built with</b><br>Vanilla JavaScript, HTML &amp; CSS — no libraries, a single file.</p>
-        <p><b>Music</b><br>“Chill” — a gentle one-hour loop.</p>
+        <p><b>Built with</b><br>Vanilla JavaScript, HTML &amp; CSS, no libraries, a single file.</p>
+        <p><b>Music</b><br>“Chill,” a gentle one-hour loop.</p>
         <p class="cr-thanks">Thanks for playing 💜</p>
       </div>
     </div>
@@ -561,11 +578,11 @@
     </div>
 
     <div class="menuView" id="menuOnlineChoice" style="display:none">
-      <button class="menuBack" data-back="coopMode">← Back</button>
+      <button class="menuBack" data-back="onlineAuto">← Back</button>
       <h2 class="menuH2">🌐 Online co-op</h2>
       <div class="menuBig">
         <button class="menuChoice" id="menuHostPick"><span class="mc-ico">📡</span><span class="mc-t">Host a game</span><span class="mc-s">Pick a canvas, get a code to share</span></button>
-        <button class="menuChoice" id="menuJoinPick"><span class="mc-ico">🔑</span><span class="mc-t">Join a game</span><span class="mc-s">Enter a friend's code — you'll play their board</span></button>
+        <button class="menuChoice" id="menuJoinPick"><span class="mc-ico">🔑</span><span class="mc-t">Join a game</span><span class="mc-s">Enter a friend's code, you'll play their board</span></button>
       </div>
     </div>
 
@@ -582,6 +599,12 @@
         <button class="modePill" data-mode="solo">Single player</button>
         <button class="modePill" data-mode="local">🖥 Local co-op</button>
         <button class="modePill" data-mode="online">🌐 Online co-op</button>
+        <div class="menuStep" id="menuPlayerStep" style="display:none">
+          <span class="menuOptLbl" id="menuStepLbl">Players</span>
+          <button id="menuStepMinus">−</button>
+          <b id="menuStepVal">2</b>
+          <button id="menuStepPlus">+</button>
+        </div>
         <span class="menuSpacer"></span>
         <select id="mapSort">
           <option value="az">Name A → Z</option>
@@ -591,12 +614,6 @@
           <option value="most">Most squares</option>
           <option value="least">Fewest squares</option>
         </select>
-      </div>
-      <div class="menuStep" id="menuPlayerStep" style="display:none">
-        <span class="menuOptLbl" id="menuStepLbl">Players</span>
-        <button id="menuStepMinus">−</button>
-        <b id="menuStepVal">2</b>
-        <button id="menuStepPlus">+</button>
       </div>
       <div class="mapGrid" id="mapGrid"></div>
     </div>
@@ -626,7 +643,7 @@
 <div class="overlay" id="mistakeModal">
   <div class="card">
     <h2>Four mistakes on the board</h2>
-    <p>No game over here — would you like me to sweep away the incorrect tiles so you can carry on?</p>
+    <p>No game over here: would you like me to sweep away the incorrect tiles so you can carry on?</p>
     <div class="btns">
       <button class="primary" id="btnClearErrors">Clear my errors</button>
       <button id="btnKeepGoing">Keep going</button>
@@ -645,7 +662,7 @@
         <div class="c drk"></div><div class="c lit k">5</div><div class="c lit"></div>
         <div class="c lit"></div><div class="c drk"></div><div class="c drk"></div>
       </div>
-      <p class="tut-txt">Count the neighbours. This <b>5</b> means five of its 3×3 block are light — the five pale tiles, <i>itself included</i>.</p>
+      <p class="tut-txt">Count the neighbours. This <b>5</b> means five of its 3×3 block are light: the five pale tiles, <i>itself included</i>.</p>
     </div>
 
     <div class="tut">
@@ -674,7 +691,7 @@
         <div class="c t2"></div><div class="c t2"></div><div class="c t2"></div>
         <div class="c t2"></div><div class="c t2"></div><div class="c t2"></div>
       </div>
-      <p class="tut-txt">Thick <b class="gold">gold borders</b> split the canvas into <b>maps</b>. A clue only ever counts tiles inside its own map — never across a border.</p>
+      <p class="tut-txt">Thick <b class="gold">gold borders</b> split the canvas into <b>maps</b>. A clue only ever counts tiles inside its own map, never across a border.</p>
     </div>
 
     <div class="tut">
@@ -688,10 +705,10 @@
         <div class="c drk"></div><div class="c lit"></div><div class="c lit"></div>
         <div class="c lit"></div><div class="c drk"></div><div class="c drk"></div>
       </div>
-      <p class="tut-txt"><b class="gold">Gold plots</b> are sudoku — type a digit so each row, column and shape has every number once. <b class="teal">Teal patches</b> are picross — hover to see run-clues (lengths of light runs).</p>
+      <p class="tut-txt"><b class="gold">Gold plots</b> are sudoku: type a digit so each row, column and shape has every number once. <b class="teal">Teal patches</b> are picross: hover to see run-clues (lengths of light runs).</p>
     </div>
 
-    <p class="tut-note">Numbers fade once satisfied and turn <b class="bad">red</b> if contradicted. Place <i>every</i> tile — light and dark — and the hidden painting is revealed. Stuck? Press <b>H</b> for a hint — <b>guessing is never needed</b>.</p>
+    <p class="tut-note">Numbers fade once satisfied and turn <b class="bad">red</b> if contradicted. Place <i>every</i> tile, light and dark, and the hidden painting is revealed. Stuck? Press <b>H</b> for a hint. <b>Guessing is never needed</b>.</p>
 
     <div class="btns" style="margin-top:18px">
       <button id="btnShowAdvanced">Advanced deductions ↗</button>
@@ -703,16 +720,84 @@
 <div class="overlay" id="advancedModal">
   <div class="card">
     <h2>Advanced Deductions</h2>
-    <p>On <b>Hard</b> and up you'll meet spots where no single clue alone fixes a tile. Compare two <b>adjacent clues</b> instead — especially ones <b>3 apart in value</b>.</p>
+    <p>On <b>Hard</b> and up you'll meet spots where no single clue alone fixes a tile. Compare two <b>adjacent clues</b> instead, especially ones <b>3 apart in value</b>.</p>
     <div class="dgrid">
       <div class="drk"></div><div class="unk"></div><div class="unk"></div><div class="lit"></div>
       <div class="drk"></div><div class="clue">3</div><div class="clue">6</div><div class="lit"></div>
       <div class="drk"></div><div class="unk"></div><div class="unk"></div><div class="lit"></div>
     </div>
     <p class="dlegend"><b class="d">■</b> forced dark &nbsp;·&nbsp; <b class="l">■</b> forced light &nbsp;·&nbsp; the four middle tiles are shared by both clues</p>
-    <p>The <b>6</b> and <b>3</b> overlap on the middle tiles. The 6 needs <b>three</b> more lights than the 3, and there are exactly <b>three</b> tiles only the 6 can see — so those <b style="color:#3a9d7e">must all be light</b>, and the three only the 3 sees <b style="color:#c44a6a">must all be dark</b>. Forced — never a guess. Counting takes over again from there.</p>
+    <p>The <b>6</b> and <b>3</b> overlap on the middle tiles. The 6 needs <b>three</b> more lights than the 3, and there are exactly <b>three</b> tiles only the 6 can see, so those <b style="color:#3a9d7e">must all be light</b>, and the three only the 3 sees <b style="color:#c44a6a">must all be dark</b>. Forced, never a guess. Counting takes over again from there.</p>
     <p style="font-size:13px"><b>If in doubt, use a hint (H).</b> Guessing is <b>never</b> required.</p>
     <div class="btns"><button class="primary" id="btnCloseAdvanced">Got it</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="sudokuHelpModal">
+  <div class="card" style="max-width:min(520px, calc(100vw - 24px))">
+    <h2>Sudoku, in brief</h2>
+    <p class="tut-intro"><b class="gold">Gold-bordered plots</b> on the canvas are sudoku: fill every empty cell with a number so nothing repeats.</p>
+
+    <div class="tut">
+      <div class="mini m3 plot gold">
+        <div class="c lit">1</div><div class="c lit">2</div><div class="c lit">3</div>
+        <div class="c lit">2</div><div class="c lit">3</div><div class="c lit">1</div>
+        <div class="c lit">3</div><div class="c lit">1</div><div class="c lit">2</div>
+      </div>
+      <p class="tut-txt">Every <b>row</b> and every <b>column</b> must contain each number <b>exactly once</b> — no repeats, no gaps.</p>
+    </div>
+
+    <div class="tut">
+      <div class="mini m3 plot gold">
+        <div class="c lit t2">1</div><div class="c lit t2">2</div><div class="c lit">3</div>
+        <div class="c lit">2</div><div class="c lit t2">3</div><div class="c lit">1</div>
+        <div class="c lit">3</div><div class="c lit">1</div><div class="c lit">2</div>
+      </div>
+      <p class="tut-txt">The plot is also carved into smaller <b>shapes</b> (shaded here) — not always square. Each shape follows the same rule: every number appears once inside it too.</p>
+    </div>
+
+    <p class="tut-note">Click a cell, then type a digit to fill it (<b>Backspace</b> or <b>0</b> clears it); arrow keys move between cells. Every placement follows from the rule above — no guessing needed.</p>
+
+    <div class="btns" style="margin-top:18px">
+      <button class="primary" id="btnCloseSudokuHelp">Got it</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="picrossHelpModal">
+  <div class="card" style="max-width:min(520px, calc(100vw - 24px))">
+    <h2>Picross, in brief</h2>
+    <p class="tut-intro"><b class="teal">Teal patches</b> on the canvas are picross (nonogram): fill cells so each row and column matches its clue, and a hidden picture emerges.</p>
+
+    <div class="picDemo">
+      <div class="picGrid">
+        <div></div>
+        <div class="pg-colclue">1<br>1</div>
+        <div class="pg-colclue">1</div>
+        <div class="pg-colclue">1<br>1</div>
+
+        <div class="pg-rowclue">1 1</div>
+        <div class="pg-cell lit"></div>
+        <div class="pg-cell drk"></div>
+        <div class="pg-cell lit"></div>
+
+        <div class="pg-rowclue">1</div>
+        <div class="pg-cell drk"></div>
+        <div class="pg-cell lit"></div>
+        <div class="pg-cell drk"></div>
+
+        <div class="pg-rowclue">1 1</div>
+        <div class="pg-cell lit"></div>
+        <div class="pg-cell drk"></div>
+        <div class="pg-cell lit"></div>
+      </div>
+    </div>
+
+    <p class="tut-note">Each clue lists <b>run lengths</b> — groups of consecutive filled cells — in order along that line, with at least one empty cell between groups. A clue of <b>3</b> means three filled cells in a row somewhere on that line; <b>1 1</b> means two separate single cells. Hover a patch in-game to see its clues, and cross-check rows against columns until every cell is certain — no guessing needed.</p>
+
+    <div class="btns" style="margin-top:18px">
+      <button class="primary" id="btnClosePicrossHelp">Got it</button>
+    </div>
   </div>
 </div>
 
@@ -720,7 +805,7 @@
   <div class="card">
     <img id="winImg" alt="The finished canvas">
     <p class="proverb">“A smooth sea never made a skilled sailor.”</p>
-    <p>The canvas is complete — 7,680 stitches, every one in its place.</p>
+    <p>The canvas is complete: 7,680 stitches, every one in its place.</p>
     <div class="btns">
       <button id="btnAdmire">Admire the canvas</button>
       <button class="primary" id="btnPlayAgain">Stitch it again</button>
@@ -746,7 +831,7 @@
 <div class="overlay" id="solveModal">
   <div class="card">
     <h2>Let the needle work itself?</h2>
-    <p>“This region” is the one you last stitched or typed on — solved together with any sudoku or picross it touches. The whole canvas solves region by region, skipping anything already done. The 🐞 option solves that same region but stops one square short in each puzzle — handy for testing the final-move completion.</p>
+    <p>“This region” is the one you last stitched or typed on, solved together with any sudoku or picross it touches. The whole canvas solves region by region, skipping anything already done. The 🐞 option solves that same region but stops one square short in each puzzle, handy for testing the final-move completion.</p>
     <div class="btns">
       <button class="primary" id="btnSolveRegion">Solve this region</button>
       <button id="btnSolveRegionDebug">🐞 …but leave one square in each</button>
@@ -770,7 +855,7 @@
     <div class="opt-pane">
       <div class="opt-pane-section" id="optPaneColour">
         <div class="opt-pane-h">Interface colour</div>
-        <p class="opt-pane-copy">Recolours the whole game from one hue — chrome, region tints and clue ink. Gold sudoku, teal picross and error red stay where they are.</p>
+        <p class="opt-pane-copy">Recolours the whole game from one hue: chrome, region tints and clue ink. Gold sudoku, teal picross and error red stay where they are.</p>
         <div class="swatches" id="themeSwatches"></div>
         <div class="opt-hue-label">Or pick any hue</div>
         <div class="opt-hue-track">
@@ -815,12 +900,12 @@
       <div class="opt-pane-section" id="optPaneDifficulty" style="display:none">
         <div class="opt-pane-h">Default difficulty</div>
         <select id="optDiff"></select>
-        <p class="opt-sub">New canvases start at this tier. You can still change it any time from the toolbar — your stitches always survive.</p>
+        <p class="opt-sub">New canvases start at this tier. You can still change it any time from the toolbar, your stitches always survive.</p>
       </div>
 
       <div class="opt-pane-section" id="optPaneController" style="display:none">
         <div class="opt-pane-h">🎮 Controller</div>
-        <p id="padStatus" class="opt-pane-copy" style="margin-bottom:14px">No controller detected — connect one and press any button.</p>
+        <p id="padStatus" class="opt-pane-copy" style="margin-bottom:14px">No controller detected. Connect one and press any button.</p>
         <div style="display:flex;justify-content:flex-end;gap:24px;padding:0 2px;margin-bottom:8px;font-size:11px;color:var(--text);font-weight:700">
           <span style="display:flex;gap:14px">
             <span style="width:44px;text-align:center">Xbox</span>
@@ -883,7 +968,7 @@
 <div class="overlay" id="coopModal">
   <div class="card">
     <h2>👥 Local co-op</h2>
-    <p>Pick how many can play on this screen. <b>Player 1 keeps the mouse &amp; keyboard</b>; everyone else presses any button on a controller to claim a spot — they can join now or partway through. Each gets their own cursor, pan and zoom on a split screen.</p>
+    <p>Pick how many can play on this screen. <b>Player 1 keeps the mouse &amp; keyboard</b>; everyone else presses any button on a controller to claim a spot, and they can join now or partway through. Each gets their own cursor, pan and zoom on a split screen.</p>
     <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin:10px 0 16px">
       <span style="font-size:13px;color:var(--muted)">Up to</span>
       <button id="btnCoopMinus" style="width:38px">−</button>
@@ -901,9 +986,9 @@
 <div class="overlay" id="onlineModal">
   <div class="card" style="max-width:min(560px, calc(100vw - 24px))">
     <h2>🌐 Online co-op</h2>
-    <p>Play this exact board with a friend over the internet — share the code, hop on Discord, and solve together. Their edits and cursor show up live; press <b>⊟ Watch</b> any time to peek at their view.</p>
+    <p>Play this exact board with a friend over the internet: share the code, hop on Discord, and solve together. Their edits and cursor show up live; press <b>⊟ Watch</b> any time to peek at their view.</p>
     <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin:4px 0 12px">
-      <span style="font-size:13px;color:var(--muted)">Host — allow up to</span>
+      <span style="font-size:13px;color:var(--muted)">Host, allow up to</span>
       <button id="btnGuestMinus" style="width:34px">−</button>
       <b id="guestCount" style="font-size:18px;min-width:1.2em;text-align:center">1</b>
       <button id="btnGuestPlus" style="width:34px">+</button>
@@ -916,7 +1001,7 @@
     </div>
     <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:10px"><input type="checkbox" id="onlineLoopback" style="vertical-align:middle"> Test in tabs of this browser (no internet)</label>
     <div id="onlineHost" style="display:none;text-align:left">
-      <p style="font-size:13px;margin-bottom:6px"><b>Your code</b> — send it to your friend</p>
+      <p style="font-size:13px;margin-bottom:6px"><b>Your code</b>, send it to your friend</p>
       <div style="display:flex;gap:8px;margin-bottom:6px">
         <input id="onlineCode" readonly style="flex:1;background:rgba(255,255,255,.7);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--text)">
         <button id="btnCopyCode">📋</button>
@@ -924,7 +1009,7 @@
       <p id="onlineHostStatus" style="font-size:12px;color:var(--muted)"></p>
     </div>
     <div id="onlineJoin" style="display:none;text-align:left">
-      <p style="font-size:13px;margin-bottom:6px"><b>Enter your friend's code</b> — you'll play on their board; your own progress here comes back when you disconnect</p>
+      <p style="font-size:13px;margin-bottom:6px"><b>Enter your friend's code</b>: you'll play on their board; your own progress here comes back when you disconnect</p>
       <div style="display:flex;gap:8px;margin-bottom:6px">
         <input id="joinCode" placeholder="paste code…" style="flex:1;background:rgba(255,255,255,.7);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--text)">
         <button class="primary" id="btnJoinGo">Connect</button>
@@ -951,14 +1036,14 @@
 <div class="overlay" id="shareModal">
   <div class="card" style="max-width:min(600px, calc(100vw - 24px))">
     <h2>💾 Save this canvas</h2>
-    <p>Save your progress as a code or file so you can back it up or move it to another device. You can also share it with a friend to hand them your board — but importing it <b>replaces</b> whatever progress they had on this map.</p>
-    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Your code</b> — copy it to save or share</p>
+    <p>Save your progress as a code or file so you can back it up or move it to another device. You can also share it with a friend to hand them your board, but importing it <b>replaces</b> whatever progress they had on this map.</p>
+    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Your code</b>, copy it to save or share</p>
     <textarea id="shareOut" readonly style="width:100%;height:84px;resize:none;background:rgba(255,255,255,.7);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--text);word-break:break-all;margin-bottom:8px"></textarea>
     <div class="btns" style="margin-bottom:18px">
       <button class="primary" id="btnShareCopy">📋 Copy code</button>
       <button id="btnShareDownload">💾 Save as file</button>
     </div>
-    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Load a code</b> — paste one in, or open a saved file</p>
+    <p style="margin-bottom:6px;text-align:left;font-size:13px;color:var(--text)"><b>Load a code</b>, paste one in, or open a saved file</p>
     <textarea id="shareIn" placeholder="Paste a shared code here…" style="width:100%;height:60px;resize:none;background:rgba(255,255,255,.7);border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--text);word-break:break-all;margin-bottom:8px"></textarea>
     <input type="file" id="shareFile" accept=".npxs,.txt,text/plain" style="display:none">
     <div class="btns">
@@ -1038,7 +1123,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.28.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.29.0';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -1063,6 +1148,9 @@ function timerKey(id){ return stateKey(id) + '-time'; }   // accumulated active 
 function picKey(id){ return stateKey(id) + '-pic'; }      // per-patch picross tier (see picTier / shapePicross)
 function progressKey(id){ return stateKey(id) + '-pct'; } // last-known completion % (see boardPercent) — lets
                                                             // the menu show live progress without regenerating the board
+function doneKey(id){ return stateKey(id) + '-done'; }    // one '0'/'1' per region id (regionDone), REG_COUNT chars —
+                                                            // lets the menu grid show which regions are unlocked
+                                                            // without regenerating the board (see menuRenderCard)
 const DIFF_KEY = 'proverbs2-diff';
 
 // Per-map preview metadata (regions/squares) shown on the menu map cards.
@@ -1155,12 +1243,15 @@ const picrossOf = new Int8Array(MAXN).fill(-1);
 // seeded rejection-placement of the plot kit into the current GW×GH board:
 // 1-cell gaps between plots, and picross clue-strips (ceil(n/2) cells up & left)
 // kept on-canvas. Larger/strip-needy patches go first.
-function placePlots(seed){
+// gw/gh default to the live board dims; the menu passes a map's baked dims so it
+// can resolve that map's plot rects without switching boards (see menuPlotRects)
+function placePlots(seed, gw, gh){
+  gw = gw || GW; gh = gh || GH;
   const rng = mulberry32((seed ^ 0x9e3779b9) >>> 0);
   const placed = [];
   const hit = (x, y, w, h) => placed.some(r => !(x + w + 1 <= r.x || r.x + r.w + 1 <= x || y + h + 1 <= r.y || r.y + r.h + 1 <= y));
   function place(w, h, mL, mT){
-    const xMax = GW - w, yMax = GH - h;
+    const xMax = gw - w, yMax = gh - h;
     if (xMax < mL || yMax < mT) return null;
     for (let t = 0; t < 3000; t++) {
       const x = mL + ((rng() * (xMax - mL + 1)) | 0);
@@ -2551,6 +2642,7 @@ function loadMap(id){
     for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
     for (const z of ZONES) checkZone(z, true);
     updateHUD();
+    persistMenuSummary();   // refresh this map's grid card (%, unlocked regions)
     fitView();
     runPendingAfterGen();   // menu-queued action (start co-op / host / join)
   });
@@ -2676,7 +2768,7 @@ function setDifficulty(d){
       clearUndo();                     // clues changed; old snapshots no longer valid
       updateHUD();
       needsDraw = true;
-      toast('Difficulty: ' + DIFF[d].label.replace(/^\S+ /, '') + ' — the clues have been rewoven. Your stitches are safe.', true);
+      toast('Difficulty: ' + DIFF[d].label.replace(/^\S+ /, '') + '. The clues have been rewoven. Your stitches are safe.', true);
       runPendingAfterGen();   // menu-queued action, if a same-map difficulty change triggered this
       setTimeout(maybeShowAdvanced, 520);
     }, hit);
@@ -2868,6 +2960,7 @@ function finishSetup(){
   for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
   for (const z of ZONES) checkZone(z, true);
   updateHUD();
+  persistMenuSummary();   // refresh this map's grid card (%, unlocked regions)
   fitView();
   document.getElementById('loader').classList.add('done');
   startLoop();
@@ -3272,7 +3365,7 @@ function checkRegion(r, silent){
   if (!silent) {
     if (!solving) {
       const pp = picrossByRegion.get(r);
-      if (pp) toast(`${pp.name} is mended — its picture joins the canvas.`, true);
+      if (pp) toast(`${pp.name} is mended, its picture joins the canvas.`, true);
       else toast(PROVERBS[(Math.random() * PROVERBS.length) | 0]);
     }
     maybeShowQuote();    // region+attached plots done -> quote (also during auto-solve)
@@ -3294,7 +3387,7 @@ function checkZone(zone, silent){
   regionDoneAt[zone.region] = performance.now();
   for (const pl of players) if (pl.selZ === zone.idx) { pl.selZ = -1; pl.selP = -1; }
   if (!silent) {
-    if (!solving) toast(`${zone.name} is solved — its piece joins the canvas.`, true);
+    if (!solving) toast(`${zone.name} is solved, its piece joins the canvas.`, true);
     maybeShowQuote();    // region+attached plots done -> quote (also during auto-solve)
     checkWin();
   } else regionDoneAt[zone.region] = -1e9;
@@ -3321,11 +3414,11 @@ function checkWin(){
 //  to leave it silent.
 // ============================================================
 const MAP_QUOTES = {
-  "portal": {"0":"We do what we must because we can 🎶","4":"That thing has all the charm and social grace of a hyena","5":"Despite your violent behavior, the only thing you've managed to break so far is my heart","7":"*silence*","8":"Oh, good. My slow-clap processor made it into this thing","9":"Cake... and grief counseling... will be available at the conclusion of the test","10":"*wub*","12":"The Excursion Funnel will gently convey you to your destination","13":"The Hard Light Bridge can safely carry you over dangerous hazards","14":"Are you still there?","15":"You euthanized your faithful Companion Cube more quickly than any test subject on record","17":"Fatty. Adopted fatty. Fatty fatty no parents","18":"LaDOS: \"You are simply machines. You were built for testing.\"","19":"\"One of you is doing very, very well. The other... isn't.\"","23":"\"Black Mesa can eat my bankrupt—"},
+  "portal": {"0":"We do what we must because we can 🎶","4":"That thing has all the charm and social grace of a hyena","5":"Despite your violent behavior, the only thing you've managed to break so far is my heart","7":"*silence*","8":"Oh, good. My slow-clap processor made it into this thing","9":"Cake... and grief counseling... will be available at the conclusion of the test","10":"*wub*","12":"The Excursion Funnel will gently convey you to your destination","13":"The Hard Light Bridge can safely carry you over dangerous hazards","14":"Are you still there?","15":"You euthanized your faithful Companion Cube more quickly than any test subject on record","17":"Fatty. Adopted fatty. Fatty fatty no parents","18":"LaDOS: \"You are simply machines. You were built for testing.\"","19":"\"One of you is doing very, very well. The other... isn't.\"","23":"\"Black Mesa can eat my bankrupt…"},
   "angels": {"0":"Anywhere can be paradise as long as you have the will to live.","1":"Man fears the darkness, and so he scrapes away at the edges of it with fire.","2":"Pain is something man must endure in his heart","3":"Humans can only truly understand each other through pain","4":"The only person who can sympathize with you and understand you is you.","5":"Reality is merely an illusion framed by your expectations.","6":"People cannot live without hurting one another.","7":"As long as you have the will to live, anywhere can be heaven.","8":"Dreams are one reality. Reality is another","9":"The fate of destruction is also the joy of rebirth.","10":"Humans forget their foolishness and repeat their mistakes.","11":"The fear of pain is greater than pain itself.","12":"The closer you get to someone, the deeper the hurt can become.","13":"Any new position from which you view your reality will change your perception of its nature","14":"People create their own reality","15":"If you know pain and hardship, it is easier to be kind to others.","16":"Mankind's greatest fear is mankind itself.","17":"One who truly hates himself cannot love or trust others.","18":"The instrumentality of mankind is the hope that people can become one.","19":"How disgusting."},
   "amigos": {"0":"Will you bear my child?","1":"Hiraikotsu!","2":"You overestimate your abilities","3":"Lord Sesshomaru is the greatest being in all the world!","4":"Wind Scar!","5":"Human hearts are so weak, hatred easily arises in them","6":"I can sense the Shikon Jewel shards.","7":"My soul is incomplete","8":"Just wait until I'm a great fox demon!","9":"Nyaa!"},
   "blinding-lights": {"0":"Ad Astra (2019)","1":"All in all the only things I consider a little good in it are the Wheatfield, the Mountain, the Orchard, the Olive trees with the blue hills and the Portrait and the Entrance to the quarry, and the rest says nothing to m","2":"In the name of the Moon, I'll punish you!","3":"Sin City's cold and empty","4":"Thick thigh save lives","5":"Nyaa"},
-  "zenitsu": {"0":"Hiding Won’t Make The Sadness Go away","1":"Gramps did smack me around a bit too much, but he never abandoned me","4":"I Wanted To Fight You As An Equal","6":"Your Family Is Waiting For You Two To Return","8":"Don't ever give up. Even if it's painful, even if it's agonizing, don't try to take the easy way out","9":"One form. I only ever learned one — and I'll make it the sharpest thing you've ever seen","11":"We Are Pathetic Successors"},
+  "zenitsu": {"0":"Hiding Won’t Make The Sadness Go away","1":"Gramps did smack me around a bit too much, but he never abandoned me","4":"I Wanted To Fight You As An Equal","6":"Your Family Is Waiting For You Two To Return","8":"Don't ever give up. Even if it's painful, even if it's agonizing, don't try to take the easy way out","9":"One form. I only ever learned one, and I'll make it the sharpest thing you've ever seen","11":"We Are Pathetic Successors"},
   crew: {
     0: "Phenomenal.",
     1: "The sky is so clear today, even my excuses are visible.",
@@ -3343,7 +3436,7 @@ const MAP_QUOTES = {
     1:  "Patience. The picture reveals itself to the one who stops forcing it and starts reading it.",          // Piccolo
     4:  "Three eyes, and I still watch only one thing: the next move. Focus is the entire technique.",          // Tien
     6:  "Aw man, this is fun! A couple more regions and then we eat, okay? I'm starving over here.",            // Goku
-    7:  "Bald, no tail, first one knocked out every single time — and I still show up. That's gotta count.",     // Krillin
+    7:  "Bald, no tail, first one knocked out every single time, and I still show up. That's gotta count.",     // Krillin
     10: "Where I come from, there are no second tries. So get this one right the first time.",                  // Trunks
     11: "Place every tile like it's better than the one before it. It's the only way I do anything.",           // Vegeta
   },
@@ -3431,8 +3524,8 @@ function showPaneCard(pl){
   const box = document.createElement('div'); box.className = 'pc-box';
   const btns = document.createElement('div'); btns.className = 'pc-btns';
   if (card.kind === 'mistake') {
-    const h = document.createElement('h3'); h.textContent = playerTag(pl) + ' — four mistakes';
-    const p = document.createElement('p'); p.textContent = 'No game over — sweep away your incorrect tiles and carry on?';
+    const h = document.createElement('h3'); h.textContent = playerTag(pl) + ': four mistakes';
+    const p = document.createElement('p'); p.textContent = 'No game over, sweep away your incorrect tiles and carry on?';
     const clr = document.createElement('button'); clr.className = 'pc-primary'; clr.textContent = 'Clear my errors';
     clr.onclick = () => { clearErrors(pl.id); dismissPaneCard(pl); };
     const keep = document.createElement('button'); keep.textContent = 'Keep going';
@@ -3751,6 +3844,15 @@ function updateTimer(){
 
 // ---------- persistence ----------
 let saveTimer = null;
+// regionDone as a compact '0'/'1' string, one char per region id (REG_COUNT long).
+// This is the whole "which regions has this player unlocked" record — the menu grid
+// reads it back per map (doneKey) to paint the revealed art on a card thumbnail
+// without generating that map's board.
+function doneMaskStr(){
+  let s = '';
+  for (let r = 0; r < REG_COUNT; r++) s += regionDone[r] ? '1' : '0';
+  return s;
+}
 // write state + zone entries + timer for the current map immediately. Same guards
 // as scheduleSave: online joiners never own the save, and we never persist mid-
 // switch (state[] can still hold the old map's paint) or before a board exists.
@@ -3762,9 +3864,22 @@ function saveNow(){
     localStorage.setItem(zonesKey(), JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
     localStorage.setItem(timerKey(), String(timerTotal()));
     localStorage.setItem(progressKey(), String(boardPercent()));
+    localStorage.setItem(doneKey(), doneMaskStr());
     // which tier each picross patch is shaped at, so a reload rebuilds the exact
     // patches these saved marks were made against
     localStorage.setItem(picKey(), Array.from(picTier.subarray(0, PICROSS.length)).join(''));
+  } catch (e) {}
+}
+// backfill just the menu's summaries (%, unlocked regions) for a board that has
+// just been restored from a save. Saves written before doneKey existed carry no
+// mask, and regionDone can only be derived here — with the board live. Never
+// creates keys for a map that has no save, so an untouched map stays untouched.
+function persistMenuSummary(){
+  if (net && onlineRole === 'join') return;
+  try {
+    if (localStorage.getItem(stateKey()) === null) return;
+    localStorage.setItem(progressKey(), String(boardPercent()));
+    localStorage.setItem(doneKey(), doneMaskStr());
   } catch (e) {}
 }
 function scheduleSave(){
@@ -3813,7 +3928,10 @@ function resetGame(){
   clearUndo();
   quotesShown[currentMap] = []; saveQuotes(); quoteQueue.length = 0;   // re-arm this map's quotes
   timerBase = 0; timerStart = -1; timerShown = '';                     // and reset the clock
-  try { localStorage.removeItem(stateKey()); localStorage.removeItem(zonesKey()); localStorage.removeItem(timerKey()); localStorage.removeItem(picKey()); } catch (e) {}
+  clearTimeout(saveTimer);   // drop any debounced save still in flight, or it lands right after and re-creates the keys
+  // clear every per-map key, including the menu's summaries (%, unlocked regions) —
+  // otherwise a reset map keeps showing its old progress on the map grid
+  try { localStorage.removeItem(stateKey()); localStorage.removeItem(zonesKey()); localStorage.removeItem(timerKey()); localStorage.removeItem(picKey()); localStorage.removeItem(progressKey()); localStorage.removeItem(doneKey()); } catch (e) {}
   updateHUD(); fitView(); needsDraw = true;
 }
 
@@ -3978,7 +4096,7 @@ function decodeCode(code){
 // derived state, and persist — mirrors loadSave + finishSetup. Assumes the
 // clues already match `data.diff`.
 function applyImported(data){
-  if (data.state.length !== N) { toast('That code is for a different board size — could not apply.', true); return; }
+  if (data.state.length !== N) { toast('That code is for a different board size, could not apply.', true); return; }
   state.fill(0);
   state.set(data.state);
   wrong.clear();
@@ -4013,13 +4131,13 @@ function applyImported(data){
 // top-level entry: validate, then apply (re-weaving clues first if the code's
 // difficulty differs from the current one — same path setDifficulty uses)
 function importCode(code, onDone, silent){
-  if (!generated || solving) { toast('One moment — the canvas is still busy.', true); return false; }
+  if (!generated || solving) { toast('One moment, the canvas is still busy.', true); return false; }
   const data = decodeCode(code);
-  if (!data) { toast('Hmm — I could not read that code. Check you copied all of it.', true); return false; }
+  if (!data) { toast('Hmm, I could not read that code. Check you copied all of it.', true); return false; }
   const finish = () => {
     applyImported(data);
     if (typeof onDone === 'function') onDone();
-    if (!silent) toast('Canvas imported — your friend’s progress is on the loom.', true);
+    if (!silent) toast('Canvas imported. Your friend’s progress is on the loom.', true);
   };
   // a code can carry both a difficulty and a map; note the diff change first,
   // then sync it so rebuild/reweave use the right tier
@@ -4222,7 +4340,7 @@ function giveHint(pl = mousePlayer()){
     }
   }
   if (!cands.length) {
-    toast('No clear deduction in sight — perhaps a stitch is out of place…', true);
+    toast('No clear deduction in sight. Perhaps a stitch is out of place…', true);
     return;
   }
   // keep hints useful: stay in the map you're working on, and of those pick
@@ -4243,9 +4361,9 @@ function giveHint(pl = mousePlayer()){
   const gx = i % GW + 0.5, gy = (i / GW | 0) + 0.5;
   const ts = Math.max(pl.view.s, 30);
   animateView(paneW(pl) / 2 - gx * ts, paneH(pl) / 2 - gy * ts + 14, ts, pl);
-  toast(best.type === 'dark'  ? 'Hint: this clue already sees all its light tiles — every unstitched tile in the ring is dark.'
+  toast(best.type === 'dark'  ? 'Hint: this clue already sees all its light tiles. Every unstitched tile in the ring is dark.'
       : best.type === 'light' ? 'Hint: every unstitched tile in the highlighted ring must be light.'
-      : 'Hint: compare this clue with an overlapping neighbour — together they force tiles in the ring.', true);
+      : 'Hint: compare this clue with an overlapping neighbour. Together they force tiles in the ring.', true);
 }
 
 function animateView(tx, ty, ts, pl = players[0]){
@@ -4358,7 +4476,7 @@ function updatePadStatus(){
   for (const g of gps) if (g && g.connected) { gp = g; break; }
   document.getElementById('padStatus').textContent = gp
     ? 'Connected: ' + gp.id.slice(0, 44)
-    : 'No controller detected — connect one and press any button.';
+    : 'No controller detected. Connect one and press any button.';
 }
 
 function ensureCursorVisible(pl = players[0]){
@@ -4572,7 +4690,7 @@ function pollPad(pl, gp, now){
 
 addEventListener('gamepadconnected', () => {
   updatePadStatus();
-  toast('Controller connected — A stitches, B marks. Click 🎮 to remap.', true);
+  toast('Controller connected. A stitches, B marks. Click 🎮 to remap.', true);
 });
 addEventListener('gamepaddisconnected', () => updatePadStatus());
 
@@ -4614,7 +4732,7 @@ function startCoop(n){
   players[0].padIndex = -1;    // P1 is mouse + keyboard; controllers claim the other spots
   fitView(players[0]);
   setOnlineUI();
-  toast('Local co-op — up to ' + maxPlayers + '. Others: press a controller button to join.', true);
+  toast('Local co-op, up to ' + maxPlayers + '. Others: press a controller button to join.', true);
   needsDraw = true;
 }
 
@@ -4713,7 +4831,7 @@ function onNetMessage(msg){
       hostPid = msg.pid;   // remember the host so we know whose leaving ends the session
       if (msg.compat !== BOARD_COMPAT) {   // board/format/protocol compat, not release version
         netSend('hello-ack', { ok: false, reason: 'version' });
-        toast('Version mismatch — host is on v' + msg.app + ', you are on v' + APP_VERSION + '. Update to play together.', true);
+        toast('Version mismatch: host is on v' + msg.app + ', you are on v' + APP_VERSION + '. Update to play together.', true);
         leaveOnline();
       } else netSend('hello-ack', { ok: true });   // then wait for the snapshot
       break;
@@ -4809,9 +4927,11 @@ function saveCoopToLocal(){
     localStorage.setItem(stateKey(), Array.from(state.subarray(0, N)).join(''));
     localStorage.setItem(zonesKey(), JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
     localStorage.setItem(picKey(), Array.from(picTier.subarray(0, PICROSS.length)).join(''));   // the host's patch shapes, so a reload matches these marks
+    localStorage.setItem(progressKey(), String(boardPercent()));   // so the map grid shows this board's
+    localStorage.setItem(doneKey(), doneMaskStr());                // progress + unlocked regions right away
   } catch (e) {}
   joinerBackup = exportCode();
-  toast('Saved — this co-op board is now your own progress for this map.', true);
+  toast('Saved. This co-op board is now your own progress for this map.', true);
 }
 // a remote participant dropped: the host just loses that one (keeps hosting); a
 // guest losing the host falls back to solo and gets its own board back
@@ -5594,7 +5714,8 @@ const MODAL_CLOSE = {
   pinModal: 'btnPinCancel', charModal: 'btnCharClose', resetModal: 'btnCancelReset',
   solveModal: 'btnCancelSolve', mpModal: 'btnCloseMP', coopModal: 'btnCoopCancel',
   onlineModal: 'btnCloseOnline', shareModal: 'btnCloseShare',
-  optionsModal: 'btnCloseOptions',
+  optionsModal: 'btnCloseOptions', sudokuHelpModal: 'btnCloseSudokuHelp',
+  picrossHelpModal: 'btnClosePicrossHelp',
 };
 // close an overlay via its mapped button (falls back to the last button / hiding)
 function closeOverlay(open){
@@ -5609,7 +5730,7 @@ addEventListener('keydown', e => {
   const open = shown[shown.length - 1];
   if (!open) return;
   closeOverlay(open);
-  e.preventDefault(); e.stopPropagation();
+  e.preventDefault(); e.stopImmediatePropagation();
 }, true);
 // clicking the scrim outside a modal's card closes it, exactly like its Close/Done button
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
@@ -5635,7 +5756,7 @@ document.addEventListener('click', e => {
 document.querySelectorAll('#overflowMenu .ov-item').forEach(b => b.addEventListener('click', closeOverflowMenu));
 addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('overflowMenu').classList.contains('show')) {
-    closeOverflowMenu(); e.stopPropagation();
+    closeOverflowMenu(); e.stopImmediatePropagation();
   }
 }, true);
 
@@ -5883,8 +6004,8 @@ document.getElementById('btnHost').onclick = () => {
   document.getElementById('onlineCode').value = '';
   document.getElementById('onlineHostStatus').textContent = 'Starting…';
   startNet(chosenTransport(), 'host', null,
-    info => { document.getElementById('onlineCode').value = (info && info.roomId) || ''; document.getElementById('onlineHostStatus').textContent = 'Share this code with up to ' + maxGuests + ' friend' + (maxGuests === 1 ? '' : 's') + ' — they can join any time.'; setOnlineUI(); },
-    () => { document.getElementById('onlineHostStatus').textContent = 'Could not start — try again.'; setOnlineUI(); });
+    info => { document.getElementById('onlineCode').value = (info && info.roomId) || ''; document.getElementById('onlineHostStatus').textContent = 'Share this code with up to ' + maxGuests + ' friend' + (maxGuests === 1 ? '' : 's') + '. They can join any time.'; setOnlineUI(); },
+    () => { document.getElementById('onlineHostStatus').textContent = 'Could not start. Try again.'; setOnlineUI(); });
   setOnlineUI();
 };
 document.getElementById('btnJoinShow').onclick = () => {
@@ -5897,8 +6018,8 @@ document.getElementById('btnJoinGo').onclick = () => {
   if (!code) return;
   document.getElementById('onlineJoinStatus').textContent = 'Connecting…';
   startNet(chosenTransport(), 'join', code,
-    () => { document.getElementById('onlineJoinStatus').textContent = 'Connected — receiving the board…'; setOnlineUI(); },
-    () => { document.getElementById('onlineJoinStatus').textContent = 'Could not connect — check the code.'; setOnlineUI(); });
+    () => { document.getElementById('onlineJoinStatus').textContent = 'Connected, receiving the board…'; setOnlineUI(); },
+    () => { document.getElementById('onlineJoinStatus').textContent = 'Could not connect. Check the code.'; setOnlineUI(); });
   setOnlineUI();
 };
 document.getElementById('btnCopyCode').onclick = () => {
@@ -5924,7 +6045,10 @@ document.getElementById('joinCode').addEventListener('keydown', e => { if (e.key
 //  host/join delegate to the existing #onlineModal so all the code-sharing,
 //  loopback and disconnect UI is reused verbatim.
 // ============================================================
-const MENU = { view: 'home', mode: 'solo', stepVal: 2, stepMin: 2, stepMax: 4 };
+// onlineBack: where the onlineChoice view's Back/Esc should return to — 'coopMode'
+// when reached via Home → Co-op → Online, 'grid' when reached via the grid's own
+// mode pill (which skips the coopMode chooser entirely)
+const MENU = { view: 'home', mode: 'solo', stepVal: 2, stepMin: 2, stepMax: 4, onlineBack: 'coopMode' };
 // canvas count in the sub-line is computed, not hardcoded, so it never drifts as maps are added/removed
 document.getElementById('menuSolo').innerHTML = 'Single Player<small>' + MAPS.length + ' canvases · your progress is kept per canvas</small>';
 const LAST_SOLO_KEY = 'proverbs2-lastsolo';   // most recent single-player map, for Continue
@@ -5959,7 +6083,11 @@ function menuApplySort(){
   for (const c of grid.querySelectorAll('.mapCard')) byId[c.dataset.id] = c;
   for (const id of menuSortedIds()) if (byId[id]) grid.appendChild(byId[id]);   // appendChild moves in place
 }
-const _menuCardCache = {};   // keyed by `id@hue` so a theme change re-renders
+// keyed by `id@hue@doneMask` so a theme change OR newly-unlocked regions re-render;
+// only one entry per map is kept (see the sweep in menuRenderCard)
+const _menuCardCache = {};
+const _menuArtCache = {};   // id -> per-cell RGBA of the map's artwork (see menuArtCols)
+const _menuImg = {};        // id -> Image, the menu's own decodes (never touches mapImgCache's onload)
 
 // region run-length for a map: hand maps carry it in HAND_LAYOUTS, watershed
 // maps (castle/crew/fighters) use the baked PREVIEW_RLE
@@ -5969,19 +6097,90 @@ function menuMapRLE(id){
   return (typeof PREVIEW_RLE !== 'undefined' && PREVIEW_RLE[id]) || null;
 }
 
-// render a small region-tint + gold-border thumbnail for one map, in the current
-// theme (cached per id+hue so switching themes re-renders but revisits are cheap)
-function menuRenderCard(id){
-  const key = id + '@' + themeHue;
-  if (_menuCardCache[key]) return _menuCardCache[key];
+// ---------- unlocked-region previews ----------
+// A card shows the map's REAL artwork inside every region the player has already
+// finished, and flat region tint everywhere else — the same thing the board does on
+// a reveal, just at thumbnail scale. Nothing here generates a board: the region
+// partition comes from the baked RLE, the plot rects from the same tables
+// choosePlots() reads, the unlocked set from localStorage (doneKey), and the colours
+// straight off the map image. So it costs one image decode + one O(cells) paint.
+
+// this map's saved unlocked-region mask ('0'/'1' per region id), '' if never played
+function menuDoneMask(id){
+  try { return localStorage.getItem(doneKey(id)) || ''; } catch (e) { return ''; }
+}
+// the decoded image for a map, or null if it isn't ready yet. Prefers the board
+// loader's copy when it has already decoded one.
+function menuImg(id){
+  const c = mapImgCache[id];
+  if (c && c.complete && c.naturalWidth) return c;
+  const m = _menuImg[id];
+  return (m && m.complete && m.naturalWidth) ? m : null;
+}
+// decode a map's image for the menu, then run cb. Deliberately keeps its own Image
+// rather than reusing a half-loaded mapImgCache entry, whose onload belongs to the
+// board loader (rebuildForMap) and must not be reassigned.
+function menuLoadImg(id, cb){
+  if (menuImg(id)) { cb(); return; }
+  if (_menuImg[id]) { _menuImg[id].addEventListener('load', cb, { once: true }); return; }
+  const im = new Image();
+  _menuImg[id] = im;
+  im.addEventListener('load', cb, { once: true });
+  im.src = mapDef(id).src;
+}
+// per-cell artwork colours for a map, sampled exactly the way sampleImage() fills
+// cellCol (nearest-neighbour into a gw×gh offscreen), so a revealed region on a card
+// matches the revealed region on the board. Null until the image has decoded.
+function menuArtCols(id){
+  if (_menuArtCache[id]) return _menuArtCache[id];
+  const im = menuImg(id), meta = MAP_META[id];
+  if (!im || !meta) return null;
+  try {
+    const off = document.createElement('canvas');
+    off.width = meta.gw; off.height = meta.gh;
+    const octx = off.getContext('2d', { willReadFrequently: true });
+    octx.imageSmoothingEnabled = false;
+    octx.drawImage(im, 0, 0, meta.gw, meta.gh);
+    _menuArtCache[id] = octx.getImageData(0, 0, meta.gw, meta.gh).data;
+  } catch (e) { return null; }
+  return _menuArtCache[id];
+}
+// a map's plot rects + their region ids, resolved the way choosePlots()/attachPlots()
+// number them (REG_PIX + zone idx, then REG_PIX + zones + patch idx) but WITHOUT
+// touching the board: hand maps carry the plots verbatim, castle has its pinned pair,
+// the rest re-place from the map's own seed and baked dims. Returns null if the
+// numbering doesn't reconcile with MAP_META, so a bad assumption just costs the art.
+function menuPlotRects(id, regPix){
   const meta = MAP_META[id];
+  const L = (typeof HAND_LAYOUTS !== 'undefined') && HAND_LAYOUTS[id];
+  let zones, pics;
+  if (L && L.zones) { zones = L.zones; pics = L.picross; }
+  else if (mapDef(id).hand) { zones = CASTLE_ZONES; pics = CASTLE_PICROSS; }
+  else { const pl = placePlots(mapDef(id).seed, meta.gw, meta.gh); zones = pl.zones; pics = pl.picross; }
+  if (!zones || !pics || regPix + zones.length + pics.length !== meta.regions) return null;
+  const out = [];
+  zones.forEach((z, k) => out.push({ region: regPix + k, x: z.x, y: z.y, n: z.n }));
+  pics.forEach((p, k) => out.push({ region: regPix + zones.length + k, x: p.x, y: p.y, n: p.n }));
+  return out;
+}
+
+// render a small thumbnail for one map in the current theme: region tint + gold
+// borders, with the real artwork painted into every region this player has already
+// unlocked. Cached per id+hue+unlocked-set, so revisits are free and finishing a
+// region re-renders exactly one card.
+function menuRenderCard(id){
+  const meta = MAP_META[id];
+  const mask = menuDoneMask(id);
+  const art = mask.indexOf('1') >= 0 ? menuArtCols(id) : null;   // no art needed until something is unlocked
+  const key = id + '@' + themeHue + '@' + (art ? mask : '');
+  if (_menuCardCache[key]) return _menuCardCache[key];
   const gw = meta.gw, gh = meta.gh, n = gw * gh;
   const rle = menuMapRLE(id);
   const CELL = Math.max(2, Math.min(6, Math.round(360 / Math.max(gw, gh))) || 3);
   const cv = document.createElement('canvas');
   cv.width = gw * CELL; cv.height = gh * CELL;
   const cx = cv.getContext('2d');
-  const reg = new Int16Array(n);
+  const reg = new Int16Array(n);   // drives tint + borders: organic id, -2 for plot cells
   if (rle) {
     let i = 0;
     for (let k = 0; k < rle.length && i < n; k += 2) {
@@ -5989,10 +6188,30 @@ function menuRenderCard(id){
       for (let m = 0; m < len && i < n; m++) reg[i++] = v;
     }
   } else { reg.fill(0); }
+  // region id per cell for the unlocked lookup. The two RLE bakes differ: the
+  // watershed maps' PREVIEW_RLE already carries final ids (plots included), while a
+  // hand layout's regionRLE marks plot cells -2, so those need their plot region ids
+  // stamped in. If the numbering doesn't reconcile we just leave the plots out —
+  // organic regions still reveal correctly.
+  let rid = reg, regPix = 0, hasPlotHoles = false;
+  for (let i = 0; i < n; i++) { if (reg[i] >= regPix) regPix = reg[i] + 1; else if (reg[i] < 0) hasPlotHoles = true; }
+  if (art && hasPlotHoles) {
+    const rects = menuPlotRects(id, regPix);
+    if (rects) {
+      rid = Int16Array.from(reg);
+      for (const pr of rects)
+        for (let dy = 0; dy < pr.n; dy++) for (let dx = 0; dx < pr.n; dx++) {
+          const i = (pr.y + dy) * gw + (pr.x + dx);
+          if (i >= 0 && i < n) rid[i] = pr.region;
+        }
+    }
+  }
   const empty = themed(2, 45, 89);   // matches --mapart
   for (let i = 0; i < n; i++) {
     const r = reg[i], x = i % gw, y = (i / gw) | 0;
-    cx.fillStyle = r < 0 ? empty : TINTS[r % TINTS.length];
+    const d = art && rid[i] >= 0 && mask.charCodeAt(rid[i]) === 49;   // 49 = '1'
+    cx.fillStyle = d ? 'rgb(' + art[i * 4] + ',' + art[i * 4 + 1] + ',' + art[i * 4 + 2] + ')'
+                     : (r < 0 ? empty : TINTS[r % TINTS.length]);
     cx.fillRect(x * CELL, y * CELL, CELL + 0.6, CELL + 0.6);
   }
   cx.strokeStyle = C.regionBorder; cx.lineWidth = Math.max(1, CELL * 0.3); cx.beginPath();
@@ -6002,7 +6221,18 @@ function menuRenderCard(id){
     if (y < gh - 1 && reg[i] !== reg[i + gw]) { cx.moveTo(x * CELL,       (y + 1) * CELL); cx.lineTo((x + 1) * CELL, (y + 1) * CELL); }
   }
   cx.stroke();
+  for (const k in _menuCardCache) if (k.indexOf(id + '@') === 0) delete _menuCardCache[k];   // one entry per map
   _menuCardCache[key] = cv;
+  return cv;
+}
+// a thumbnail node to put in the DOM. menuRenderCard hands back the CACHED canvas,
+// and one element can only live in one place — the resume map appears both on its own
+// card and on the Continue card — so every insertion gets its own copy.
+function menuCardNode(id){
+  const src = menuRenderCard(id);
+  const cv = document.createElement('canvas');
+  cv.width = src.width; cv.height = src.height;
+  cv.getContext('2d').drawImage(src, 0, 0);
   return cv;
 }
 
@@ -6031,10 +6261,13 @@ function menuBuildGrid(){
     const card = document.createElement('button');
     card.className = 'mapCard'; card.dataset.id = m.id;
     const art = document.createElement('div'); art.className = 'mapCardArt';
-    art.appendChild(menuRenderCard(m.id));
+    art.appendChild(menuCardNode(m.id));
     const body = document.createElement('div'); body.className = 'mapCardBody';
     body.innerHTML = '<div class="mapCardTitle">' + m.name + '</div>' +
-      '<div class="mapCardMeta">' + meta.regions + ' regions · ' + meta.cells.toLocaleString() + ' squares</div>';
+      '<div class="mapCardMeta">' + meta.regions + ' regions · ' + meta.cells.toLocaleString() + ' squares</div>' +
+      // progress bar + "NN% · unlocked/total"; hidden until this map has a save
+      '<div class="mapCardProg" style="display:none"><span class="mapCardBar"><span class="mapCardBarFill"></span></span>' +
+      '<span class="mapCardStat"></span></div>';
     card.appendChild(art); card.appendChild(body);
     card.onclick = () => menuPlay(m.id);
     grid.appendChild(card);
@@ -6046,11 +6279,61 @@ function menuPaintCards(){
   if (!_menuGridBuilt) return;
   for (const art of document.querySelectorAll('#mapGrid .mapCard .mapCardArt')) {
     const id = art.parentElement.dataset.id;
-    art.replaceChildren(menuRenderCard(id));
+    art.replaceChildren(menuCardNode(id));
   }
   const cc = document.getElementById('gridContinueCard');
   const soloId = menuLastSolo();
-  if (cc && cc.style.display !== 'none' && soloId) cc.querySelector('.continueArt').replaceChildren(menuRenderCard(soloId));
+  if (cc && cc.style.display !== 'none' && soloId) cc.querySelector('.continueArt').replaceChildren(menuCardNode(soloId));
+}
+// While the player sits on the home screen, warm the thumbnails for the maps they've
+// actually played: decode the artwork and render the card off the saved unlocked-set,
+// one map per idle slot so the menu never janks. By the time Single Player is pressed
+// the grid is already painted. Maps with no save cost nothing — their plain-tint
+// thumbnail is built lazily by menuBuildGrid as before.
+function menuPreloadCards(){
+  let queue;
+  try { queue = MAPS.map(m => m.id).filter(id => menuDoneMask(id).indexOf('1') >= 0); } catch (e) { return; }
+  const resume = menuLastSolo();
+  if (resume && queue.indexOf(resume) > 0) queue.unshift(queue.splice(queue.indexOf(resume), 1)[0]);   // the map they'll most likely resume, first
+  const idle = window.requestIdleCallback || (fn => setTimeout(fn, 60));
+  const step = () => {
+    const id = queue.shift();
+    if (!id) return;
+    menuLoadImg(id, () => idle(() => { menuRenderCard(id); menuRepaintCard(id); step(); }, { timeout: 3000 }));
+  };
+  idle(step, { timeout: 3000 });
+}
+// repaint one map's thumbnail in place (both its own card and, if it's the resume
+// map, the Continue card) — used when a map's artwork finishes decoding
+function menuRepaintCard(id){
+  if (!_menuGridBuilt) return;
+  const card = document.querySelector('#mapGrid .mapCard[data-id="' + id + '"]');
+  if (card) card.querySelector('.mapCardArt').replaceChildren(menuCardNode(id));
+  const cc = document.getElementById('gridContinueCard');
+  if (cc && cc.style.display !== 'none' && menuLastSolo() === id) cc.querySelector('.continueArt').replaceChildren(menuCardNode(id));
+}
+// refresh every card's progress row from the saved summaries, and make sure any map
+// with unlocked regions has its artwork decoded so the thumbnail can show them (the
+// first paint falls back to plain tint, then repaints the moment the image lands)
+function menuRefreshCards(){
+  if (!_menuGridBuilt) return;
+  for (const card of document.querySelectorAll('#mapGrid .mapCard')) {
+    const id = card.dataset.id, meta = MAP_META[id];
+    const mask = menuDoneMask(id);
+    let done = 0;
+    for (let k = 0; k < mask.length; k++) if (mask.charCodeAt(k) === 49) done++;
+    // thumbnail first, so a map that was just reset drops back to plain tint
+    if (done && !menuArtCols(id)) menuLoadImg(id, () => menuRepaintCard(id));   // art still decoding
+    else card.querySelector('.mapCardArt').replaceChildren(menuCardNode(id));
+    const row = card.querySelector('.mapCardProg');
+    let played = false, pct = 0;
+    try { played = localStorage.getItem(stateKey(id)) !== null; } catch (e) {}
+    try { pct = Math.max(0, Math.min(100, parseInt(localStorage.getItem(progressKey(id)), 10) || 0)); } catch (e) {}
+    if (!played) { row.style.display = 'none'; card.querySelector('.mapCardStat').textContent = ''; continue; }
+    row.style.display = '';
+    card.querySelector('.mapCardBarFill').style.width = pct + '%';
+    card.querySelector('.mapCardStat').textContent = pct + '% · ' + done + '/' + (meta ? meta.regions : mask.length);
+  }
 }
 // fill in (or hide) the grid's Continue card from the last solo map's saved progress
 function menuRefreshGridContinue(){
@@ -6065,7 +6348,8 @@ function menuRefreshGridContinue(){
   cc.querySelector('.continueName').textContent = mapDef(id).name;
   cc.querySelector('.continueBarFill').style.width = pct + '%';
   cc.querySelector('.continueStat').textContent = pct + '% · ' + fmtTime(ms);
-  cc.querySelector('.continueArt').replaceChildren(menuRenderCard(id));
+  cc.querySelector('.continueArt').replaceChildren(menuCardNode(id));
+  if (menuDoneMask(id).indexOf('1') >= 0 && !menuArtCols(id)) menuLoadImg(id, () => menuRepaintCard(id));
 }
 // highlight the mode pill matching the grid's current mode ('solo'/'local'/'host')
 function updateModeRow(){
@@ -6108,6 +6392,7 @@ function menuContinue(){
 
 // open the map grid configured for a given mode ('solo' | 'local' | 'host')
 function menuOpenGrid(mode){
+  if (generated && !GEN.active) saveNow();   // flush the debounced save so the cards show the region you JUST finished
   MENU.mode = mode;
   const step = document.getElementById('menuPlayerStep');
   if (mode === 'local') {
@@ -6125,6 +6410,7 @@ function menuOpenGrid(mode){
   document.getElementById('mapSort').value = mapSort;
   menuBuildGrid();
   menuApplySort();
+  menuRefreshCards();          // progress rows + unlocked-region artwork, from the saved summaries
   menuRefreshGridContinue();
   updateModeRow();
   menuShowView('grid');
@@ -6206,7 +6492,7 @@ document.getElementById('menuCoop').onclick = () => menuShowView('coopMode');
 document.getElementById('menuContinue').onclick = () => menuContinue();
 document.getElementById('menuCredits').onclick = () => menuShowView('credits');
 document.getElementById('menuLocal').onclick = () => menuOpenGrid('local');
-document.getElementById('menuOnline').onclick = () => menuShowView('onlineChoice');
+document.getElementById('menuOnline').onclick = () => { MENU.onlineBack = 'coopMode'; menuShowView('onlineChoice'); };
 document.getElementById('menuHostPick').onclick = () => menuOpenGrid('host');
 document.getElementById('menuJoinPick').onclick = () => menuJoin();
 document.getElementById('menuHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
@@ -6215,12 +6501,13 @@ document.getElementById('menuGridHelp').onclick = () => document.getElementById(
 document.querySelectorAll('.modePill').forEach(b => b.onclick = () => {
   const m = b.dataset.mode;
   if (m === 'local') menuOpenGrid('local');
-  else if (m === 'online') menuShowView('onlineChoice');
+  else if (m === 'online') { MENU.onlineBack = 'grid'; menuShowView('onlineChoice'); }
   else menuOpenGrid('solo');
 });
 document.querySelectorAll('#menuScreen .menuBack').forEach(b => b.onclick = () => {
   const where = b.dataset.back;
   if (where === 'auto') menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
+  else if (where === 'onlineAuto') menuShowView(MENU.onlineBack);
   else menuShowView(where);
 });
 document.getElementById('mapSort').onchange = e => {
@@ -6245,7 +6532,7 @@ function menuEscape(){
   if (!ms.classList.contains('show')) return false;
   const v = MENU.view;
   if (v === 'grid')              menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
-  else if (v === 'onlineChoice') menuShowView('coopMode');
+  else if (v === 'onlineChoice') menuShowView(MENU.onlineBack);
   else if (v === 'coopMode')     menuShowView('home');
   else if (v === 'credits')      menuShowView('home');
   else if (generated)            hideMenu();
@@ -6275,13 +6562,17 @@ document.getElementById('btnFit').onclick = () => fitView();
 document.getElementById('btnBrush').onclick = () => { touchBrush = touchBrush === 1 ? 2 : 1; updateBrushBtn(); document.getElementById('btnBrush').blur(); };
 updateBrushBtn();
 try { if (matchMedia('(pointer: coarse)').matches) revealBrushBtn(); } catch (e) {}
-document.getElementById('btnHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
+document.getElementById('btnHelpLegend').onclick = () => document.getElementById('helpModal').classList.add('show');
 document.getElementById('btnCloseHelp').onclick = () => document.getElementById('helpModal').classList.remove('show');
 document.getElementById('btnShowAdvanced').onclick = () => {
   document.getElementById('helpModal').classList.remove('show');
   document.getElementById('advancedModal').classList.add('show');
 };
 document.getElementById('btnCloseAdvanced').onclick = () => document.getElementById('advancedModal').classList.remove('show');
+document.getElementById('btnSudokuHelp').onclick = () => document.getElementById('sudokuHelpModal').classList.add('show');
+document.getElementById('btnCloseSudokuHelp').onclick = () => document.getElementById('sudokuHelpModal').classList.remove('show');
+document.getElementById('btnPicrossHelp').onclick = () => document.getElementById('picrossHelpModal').classList.add('show');
+document.getElementById('btnClosePicrossHelp').onclick = () => document.getElementById('picrossHelpModal').classList.remove('show');
 document.getElementById('btnShare').onclick = () => {
   if (!generated) return;
   document.getElementById('shareOut').value = exportCode();
@@ -6295,11 +6586,11 @@ document.getElementById('btnCharClose').onclick = () => {
 };
 document.getElementById('btnShareCopy').onclick = () => {
   const ta = document.getElementById('shareOut');
-  const done = () => toast('Code copied — paste it to a friend.', true);
+  const done = () => toast('Code copied. Paste it to a friend.', true);
   const fallback = () => {
     ta.focus(); ta.select();
     try { document.execCommand('copy'); done(); }
-    catch (e) { toast('Copy failed — select the code and copy it manually.', true); }
+    catch (e) { toast('Copy failed. Select the code and copy it manually.', true); }
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(ta.value).then(done, fallback);
@@ -6318,7 +6609,7 @@ document.getElementById('btnShareDownload').onclick = () => {
   a.href = url; a.download = 'one-more-tile-canvas.npxs';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  toast('Saved one-more-tile-canvas.npxs — send the file to a friend.', true);
+  toast('Saved one-more-tile-canvas.npxs. Send the file to a friend.', true);
 };
 document.getElementById('btnShareUpload').onclick = () => document.getElementById('shareFile').click();
 document.getElementById('shareFile').onchange = e => {
@@ -6444,6 +6735,7 @@ if (!AUDIT_MODE) {
     if (window.requestIdleCallback) requestIdleCallback(initBgm, { timeout: 2000 });
     else setTimeout(initBgm, 150);
   }
+  menuPreloadCards();
 }
 </script>
 </body>
