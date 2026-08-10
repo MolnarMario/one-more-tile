@@ -382,9 +382,10 @@
   .menuSpacer{flex:1}
   #mapSort{border-radius:20px;padding:8px 30px 8px 14px;font-size:13px;background-color:rgba(255,255,255,.6)}
   .menuOptLbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-right:8px}
-  .menuStep{display:flex;align-items:center;gap:10px;margin-top:14px}
-  .menuStep b{font-size:18px;min-width:1.4em;text-align:center;color:var(--text)}
-  .menuStep button{width:34px}
+  .menuStep{display:flex;align-items:center;gap:10px;padding:6px 14px 6px 18px;border-radius:22px;
+    background:rgba(255,255,255,.6);border:1px solid var(--panel-border)}
+  .menuStep b{font-size:15px;min-width:1.2em;text-align:center;color:var(--text)}
+  .menuStep button{width:28px;padding:4px 0;border-radius:14px}
   .mapGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px;width:100%;margin-top:24px}
   .mapCard{padding:0;overflow:hidden;border-radius:14px;background:var(--panel);border:1px solid var(--panel-border);
     cursor:pointer;position:relative;text-align:left;box-shadow:0 8px 24px hsl(var(--hue) 46% 35% / .12);
@@ -561,7 +562,7 @@
     </div>
 
     <div class="menuView" id="menuOnlineChoice" style="display:none">
-      <button class="menuBack" data-back="coopMode">← Back</button>
+      <button class="menuBack" data-back="onlineAuto">← Back</button>
       <h2 class="menuH2">🌐 Online co-op</h2>
       <div class="menuBig">
         <button class="menuChoice" id="menuHostPick"><span class="mc-ico">📡</span><span class="mc-t">Host a game</span><span class="mc-s">Pick a canvas, get a code to share</span></button>
@@ -582,6 +583,12 @@
         <button class="modePill" data-mode="solo">Single player</button>
         <button class="modePill" data-mode="local">🖥 Local co-op</button>
         <button class="modePill" data-mode="online">🌐 Online co-op</button>
+        <div class="menuStep" id="menuPlayerStep" style="display:none">
+          <span class="menuOptLbl" id="menuStepLbl">Players</span>
+          <button id="menuStepMinus">−</button>
+          <b id="menuStepVal">2</b>
+          <button id="menuStepPlus">+</button>
+        </div>
         <span class="menuSpacer"></span>
         <select id="mapSort">
           <option value="az">Name A → Z</option>
@@ -591,12 +598,6 @@
           <option value="most">Most squares</option>
           <option value="least">Fewest squares</option>
         </select>
-      </div>
-      <div class="menuStep" id="menuPlayerStep" style="display:none">
-        <span class="menuOptLbl" id="menuStepLbl">Players</span>
-        <button id="menuStepMinus">−</button>
-        <b id="menuStepVal">2</b>
-        <button id="menuStepPlus">+</button>
       </div>
       <div class="mapGrid" id="mapGrid"></div>
     </div>
@@ -5609,7 +5610,7 @@ addEventListener('keydown', e => {
   const open = shown[shown.length - 1];
   if (!open) return;
   closeOverlay(open);
-  e.preventDefault(); e.stopPropagation();
+  e.preventDefault(); e.stopImmediatePropagation();
 }, true);
 // clicking the scrim outside a modal's card closes it, exactly like its Close/Done button
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
@@ -5635,7 +5636,7 @@ document.addEventListener('click', e => {
 document.querySelectorAll('#overflowMenu .ov-item').forEach(b => b.addEventListener('click', closeOverflowMenu));
 addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('overflowMenu').classList.contains('show')) {
-    closeOverflowMenu(); e.stopPropagation();
+    closeOverflowMenu(); e.stopImmediatePropagation();
   }
 }, true);
 
@@ -5924,7 +5925,10 @@ document.getElementById('joinCode').addEventListener('keydown', e => { if (e.key
 //  host/join delegate to the existing #onlineModal so all the code-sharing,
 //  loopback and disconnect UI is reused verbatim.
 // ============================================================
-const MENU = { view: 'home', mode: 'solo', stepVal: 2, stepMin: 2, stepMax: 4 };
+// onlineBack: where the onlineChoice view's Back/Esc should return to — 'coopMode'
+// when reached via Home → Co-op → Online, 'grid' when reached via the grid's own
+// mode pill (which skips the coopMode chooser entirely)
+const MENU = { view: 'home', mode: 'solo', stepVal: 2, stepMin: 2, stepMax: 4, onlineBack: 'coopMode' };
 // canvas count in the sub-line is computed, not hardcoded, so it never drifts as maps are added/removed
 document.getElementById('menuSolo').innerHTML = 'Single Player<small>' + MAPS.length + ' canvases · your progress is kept per canvas</small>';
 const LAST_SOLO_KEY = 'proverbs2-lastsolo';   // most recent single-player map, for Continue
@@ -6206,7 +6210,7 @@ document.getElementById('menuCoop').onclick = () => menuShowView('coopMode');
 document.getElementById('menuContinue').onclick = () => menuContinue();
 document.getElementById('menuCredits').onclick = () => menuShowView('credits');
 document.getElementById('menuLocal').onclick = () => menuOpenGrid('local');
-document.getElementById('menuOnline').onclick = () => menuShowView('onlineChoice');
+document.getElementById('menuOnline').onclick = () => { MENU.onlineBack = 'coopMode'; menuShowView('onlineChoice'); };
 document.getElementById('menuHostPick').onclick = () => menuOpenGrid('host');
 document.getElementById('menuJoinPick').onclick = () => menuJoin();
 document.getElementById('menuHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
@@ -6215,12 +6219,13 @@ document.getElementById('menuGridHelp').onclick = () => document.getElementById(
 document.querySelectorAll('.modePill').forEach(b => b.onclick = () => {
   const m = b.dataset.mode;
   if (m === 'local') menuOpenGrid('local');
-  else if (m === 'online') menuShowView('onlineChoice');
+  else if (m === 'online') { MENU.onlineBack = 'grid'; menuShowView('onlineChoice'); }
   else menuOpenGrid('solo');
 });
 document.querySelectorAll('#menuScreen .menuBack').forEach(b => b.onclick = () => {
   const where = b.dataset.back;
   if (where === 'auto') menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
+  else if (where === 'onlineAuto') menuShowView(MENU.onlineBack);
   else menuShowView(where);
 });
 document.getElementById('mapSort').onchange = e => {
@@ -6245,7 +6250,7 @@ function menuEscape(){
   if (!ms.classList.contains('show')) return false;
   const v = MENU.view;
   if (v === 'grid')              menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
-  else if (v === 'onlineChoice') menuShowView('coopMode');
+  else if (v === 'onlineChoice') menuShowView(MENU.onlineBack);
   else if (v === 'coopMode')     menuShowView('home');
   else if (v === 'credits')      menuShowView('home');
   else if (generated)            hideMenu();
