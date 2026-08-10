@@ -108,9 +108,11 @@
   #hudLegend{position:fixed;left:14px;bottom:12px;display:flex;align-items:center;gap:8px;
     background:var(--panel);border:1px solid var(--panel-border);border-radius:20px;padding:7px 14px;
     font-size:12px;color:var(--muted);backdrop-filter:blur(8px);z-index:10}
-  #hudLegend b{color:var(--text);font-weight:600}
-  #hudLegend b.gold{color:#b07a1a}
-  #hudLegend b.teal{color:#1f9c84}
+  #hudLegend .hud-legend-btn{background:none;border:none;padding:0;margin:0;font:inherit;
+    font-weight:600;color:var(--text);cursor:pointer}
+  #hudLegend .hud-legend-btn:hover,#hudLegend .hud-legend-btn:focus-visible{text-decoration:underline}
+  #hudLegend .hud-legend-btn.gold{color:#b07a1a}
+  #hudLegend .hud-legend-btn.teal{color:#1f9c84}
   #version{position:fixed;bottom:14px;right:14px;z-index:11;pointer-events:none;
     font-size:11px;color:var(--muted);opacity:.7;font-variant-numeric:tabular-nums}
 
@@ -198,6 +200,16 @@
   .mini.teal{background:hsl(168 45% 90%);box-shadow:inset 0 0 0 3px #2fb39a}
   .tut .wall{flex:0 0 auto;width:6px;min-height:102px;border-radius:3px;background:#e0a24a}
   b.gold{color:#b07a1a}b.teal{color:#1f9c84}b.bad{color:#d23c4e}
+  /* picross (nonogram) demo grid, used in the picross how-to modal */
+  .picDemo{display:flex;justify-content:center;margin:14px 0}
+  .picGrid{display:grid;grid-template-columns:34px repeat(3,30px);grid-auto-rows:30px;gap:3px;align-items:center;
+    background:hsl(168 45% 90%);box-shadow:inset 0 0 0 3px #2fb39a;border-radius:9px;padding:8px 10px}
+  .picGrid .pg-colclue{font-size:12px;font-weight:700;color:#1f9c84;align-self:end;
+    line-height:1.15;text-align:center}
+  .picGrid .pg-rowclue{font-size:12px;font-weight:700;color:#1f9c84;justify-self:end;padding-right:2px}
+  .picGrid .pg-cell{width:30px;height:30px;border-radius:5px}
+  .picGrid .pg-cell.lit{background:#fdfcff}
+  .picGrid .pg-cell.drk{background:hsl(var(--hue) 38% 34%)}
   /* character dialogue box */
   .card.dialogue{text-align:left;border-left:5px solid var(--accent);max-width:480px}
   .card.dialogue .dlg-name{color:var(--accent);font-weight:700;letter-spacing:.5px;font-size:15px;margin-bottom:10px}
@@ -512,12 +524,11 @@
   <button class="ov-item" id="btnWatch" title="Watch your partners' views" style="display:none"><span class="ov-ico">⊟</span>Watch</button>
   <button class="ov-item" id="btnShare" title="Save your progress, or share it with a friend"><span class="ov-ico">💾</span>Save or share</button>
   <button class="ov-item" id="btnOptions" title="Options: interface colour, music, difficulty, controller"><span class="ov-ico">⚙</span>Options</button>
-  <button class="ov-item" id="btnHelp" title="How to play"><span class="ov-ico">📖</span>How to play</button>
   <button class="ov-item ov-danger" id="btnReset"><span class="ov-ico">↺</span>Reset this canvas</button>
 </div>
 
 <div id="hudLegend">
-  <b>⌨ Controls</b><span class="hud-sep">·</span><b class="gold">gold</b> sudoku<span class="hud-sep">·</span><b class="teal">teal</b> picross
+  <button class="hud-legend-btn" id="btnHelpLegend" title="How to play">📖 How to play</button><span class="hud-sep">·</span><button class="hud-legend-btn gold" id="btnSudokuHelp" title="What is sudoku?">gold sudoku</button><span class="hud-sep">·</span><button class="hud-legend-btn teal" id="btnPicrossHelp" title="What is picross?">teal picross</button>
 </div>
 
 <div id="menuScreen">
@@ -714,6 +725,74 @@
     <p>The <b>6</b> and <b>3</b> overlap on the middle tiles. The 6 needs <b>three</b> more lights than the 3, and there are exactly <b>three</b> tiles only the 6 can see, so those <b style="color:#3a9d7e">must all be light</b>, and the three only the 3 sees <b style="color:#c44a6a">must all be dark</b>. Forced, never a guess. Counting takes over again from there.</p>
     <p style="font-size:13px"><b>If in doubt, use a hint (H).</b> Guessing is <b>never</b> required.</p>
     <div class="btns"><button class="primary" id="btnCloseAdvanced">Got it</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="sudokuHelpModal">
+  <div class="card" style="max-width:min(520px, calc(100vw - 24px))">
+    <h2>Sudoku, in brief</h2>
+    <p class="tut-intro"><b class="gold">Gold-bordered plots</b> on the canvas are sudoku: fill every empty cell with a number so nothing repeats.</p>
+
+    <div class="tut">
+      <div class="mini m3 plot gold">
+        <div class="c lit">1</div><div class="c lit">2</div><div class="c lit">3</div>
+        <div class="c lit">2</div><div class="c lit">3</div><div class="c lit">1</div>
+        <div class="c lit">3</div><div class="c lit">1</div><div class="c lit">2</div>
+      </div>
+      <p class="tut-txt">Every <b>row</b> and every <b>column</b> must contain each number <b>exactly once</b> — no repeats, no gaps.</p>
+    </div>
+
+    <div class="tut">
+      <div class="mini m3 plot gold">
+        <div class="c lit t2">1</div><div class="c lit t2">2</div><div class="c lit">3</div>
+        <div class="c lit">2</div><div class="c lit t2">3</div><div class="c lit">1</div>
+        <div class="c lit">3</div><div class="c lit">1</div><div class="c lit">2</div>
+      </div>
+      <p class="tut-txt">The plot is also carved into smaller <b>shapes</b> (shaded here) — not always square. Each shape follows the same rule: every number appears once inside it too.</p>
+    </div>
+
+    <p class="tut-note">Click a cell, then type a digit to fill it (<b>Backspace</b> or <b>0</b> clears it); arrow keys move between cells. Every placement follows from the rule above — no guessing needed.</p>
+
+    <div class="btns" style="margin-top:18px">
+      <button class="primary" id="btnCloseSudokuHelp">Got it</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="picrossHelpModal">
+  <div class="card" style="max-width:min(520px, calc(100vw - 24px))">
+    <h2>Picross, in brief</h2>
+    <p class="tut-intro"><b class="teal">Teal patches</b> on the canvas are picross (nonogram): fill cells so each row and column matches its clue, and a hidden picture emerges.</p>
+
+    <div class="picDemo">
+      <div class="picGrid">
+        <div></div>
+        <div class="pg-colclue">1<br>1</div>
+        <div class="pg-colclue">1</div>
+        <div class="pg-colclue">1<br>1</div>
+
+        <div class="pg-rowclue">1 1</div>
+        <div class="pg-cell lit"></div>
+        <div class="pg-cell drk"></div>
+        <div class="pg-cell lit"></div>
+
+        <div class="pg-rowclue">1</div>
+        <div class="pg-cell drk"></div>
+        <div class="pg-cell lit"></div>
+        <div class="pg-cell drk"></div>
+
+        <div class="pg-rowclue">1 1</div>
+        <div class="pg-cell lit"></div>
+        <div class="pg-cell drk"></div>
+        <div class="pg-cell lit"></div>
+      </div>
+    </div>
+
+    <p class="tut-note">Each clue lists <b>run lengths</b> — groups of consecutive filled cells — in order along that line, with at least one empty cell between groups. A clue of <b>3</b> means three filled cells in a row somewhere on that line; <b>1 1</b> means two separate single cells. Hover a patch in-game to see its clues, and cross-check rows against columns until every cell is certain — no guessing needed.</p>
+
+    <div class="btns" style="margin-top:18px">
+      <button class="primary" id="btnClosePicrossHelp">Got it</button>
+    </div>
   </div>
 </div>
 
@@ -5595,7 +5674,8 @@ const MODAL_CLOSE = {
   pinModal: 'btnPinCancel', charModal: 'btnCharClose', resetModal: 'btnCancelReset',
   solveModal: 'btnCancelSolve', mpModal: 'btnCloseMP', coopModal: 'btnCoopCancel',
   onlineModal: 'btnCloseOnline', shareModal: 'btnCloseShare',
-  optionsModal: 'btnCloseOptions',
+  optionsModal: 'btnCloseOptions', sudokuHelpModal: 'btnCloseSudokuHelp',
+  picrossHelpModal: 'btnClosePicrossHelp',
 };
 // close an overlay via its mapped button (falls back to the last button / hiding)
 function closeOverlay(open){
@@ -6280,13 +6360,17 @@ document.getElementById('btnFit').onclick = () => fitView();
 document.getElementById('btnBrush').onclick = () => { touchBrush = touchBrush === 1 ? 2 : 1; updateBrushBtn(); document.getElementById('btnBrush').blur(); };
 updateBrushBtn();
 try { if (matchMedia('(pointer: coarse)').matches) revealBrushBtn(); } catch (e) {}
-document.getElementById('btnHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
+document.getElementById('btnHelpLegend').onclick = () => document.getElementById('helpModal').classList.add('show');
 document.getElementById('btnCloseHelp').onclick = () => document.getElementById('helpModal').classList.remove('show');
 document.getElementById('btnShowAdvanced').onclick = () => {
   document.getElementById('helpModal').classList.remove('show');
   document.getElementById('advancedModal').classList.add('show');
 };
 document.getElementById('btnCloseAdvanced').onclick = () => document.getElementById('advancedModal').classList.remove('show');
+document.getElementById('btnSudokuHelp').onclick = () => document.getElementById('sudokuHelpModal').classList.add('show');
+document.getElementById('btnCloseSudokuHelp').onclick = () => document.getElementById('sudokuHelpModal').classList.remove('show');
+document.getElementById('btnPicrossHelp').onclick = () => document.getElementById('picrossHelpModal').classList.add('show');
+document.getElementById('btnClosePicrossHelp').onclick = () => document.getElementById('picrossHelpModal').classList.remove('show');
 document.getElementById('btnShare').onclick = () => {
   if (!generated) return;
   document.getElementById('shareOut').value = exportCode();
