@@ -39,25 +39,7 @@
     background:var(--game-bg);touch-action:none}   /* touch-action:none: we handle pan/zoom ourselves */
   #game.panning{cursor:grabbing}
 
-  /* ---------- HUD ---------- */
-  #hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;flex-wrap:wrap;
-    gap:8px 14px;padding:9px 16px;background:var(--panel);border-bottom:1px solid var(--panel-border);
-    backdrop-filter:blur(8px);z-index:10}
-  #hud h1{font-size:15px;letter-spacing:3px;font-weight:600;color:var(--accent);white-space:nowrap}
-  #hud h1 small{display:block;font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:400}
-  /* a cluster of related controls — stays on one line; the header wraps between clusters */
-  .hud-group{display:flex;align-items:center;gap:7px}
-  .hud-stats{flex:1 1 240px;gap:12px}                      /* grows to fill the middle; holds the progress bar.
-                                                              min-width defaults to auto (min-content) so this cluster
-                                                              never shrinks past its own text — the controls wrap to a
-                                                              new row *before* the timer and Menu button can overlap. */
-  .hud-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
-  #progressWrap{flex:1;min-width:70px;max-width:340px;height:10px;border-radius:5px;background:var(--track);overflow:hidden}
-  #progressBar{height:100%;width:0%;border-radius:5px;background:var(--grad-bar);transition:width .3s}
-  #progressTxt{font-size:12px;color:var(--muted);min-width:88px}
-  #mistakes{font-size:13px;color:var(--muted);white-space:nowrap}
-  #mistakes b{color:var(--accent2)}
-  #timer{font-size:13px;color:var(--muted);min-width:60px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  /* ---------- HUD — "calmer toolbar" ---------- */
   button{background:rgba(255,255,255,.6);border:1px solid var(--panel-border);color:var(--text);
     border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
   button:hover{background:rgba(255,255,255,.95)}
@@ -77,64 +59,106 @@
   select:hover{background-color:rgba(255,255,255,.95)}
   select option{background:var(--card);color:var(--text)}
 
-  /* ---------- music player ---------- */
-  #music{display:flex;align-items:center;gap:7px}
-  #btnMusic{min-width:34px;padding:7px 11px;font-size:14px;line-height:1}
-  #btnMusic.playing{background:var(--grad-primary);border:none;color:#fff}
-  #musicVol{width:72px;height:4px;cursor:pointer;accent-color:var(--accent)}
+  #hud{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:16px;
+    padding:10px 16px 11px;background:var(--panel);border-bottom:1px solid var(--panel-border);
+    backdrop-filter:blur(8px);z-index:10}
+  #hud h1{font-size:14px;letter-spacing:3px;font-weight:600;color:var(--accent);white-space:nowrap;flex:none;margin:0}
+  /* the status run: baseline-aligned so the bold % sits level with the smaller muted text */
+  .hud-status{flex:1;min-width:0;display:flex;align-items:baseline;gap:10px;overflow:hidden}
+  #progressTxt{font-size:15px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;flex:none}
+  #hudMapName{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #timer{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+  #mistakes{font-size:13px;color:hsl(313 48% 50%);white-space:nowrap;flex:none}
+  .hud-sep{color:hsl(calc(var(--hue) + 2) 41% 44% / .5);flex:none}
+  .hud-controls{display:flex;align-items:center;gap:8px;flex:none}
+  #hud button, #hud select{border-radius:9px}
+  #hud select#selDiff{padding:7px 30px 7px 12px}
+  #hud button.icon{padding:7px 12px}
+  /* the zoom segment: one bordered pill, three cells divided by hairlines */
+  .zoomSeg{display:flex;border:1px solid var(--panel-border);border-radius:9px;overflow:hidden;background:rgba(255,255,255,.6)}
+  .zoomSeg button{background:none;border:none;border-radius:0;border-right:1px solid var(--panel-border);padding:7px 11px}
+  .zoomSeg button:last-child{border-right:none}
+  .zoomSeg button:hover{background:rgba(255,255,255,.95)}
+  #btnOverflow{background:rgba(255,255,255,.95);border:1px solid var(--accent);color:hsl(var(--hue) 88% 56%);
+    font-weight:700;letter-spacing:1px}
+  #btnOverflow:hover{background:#fff}
+  /* the progress hairline — pinned to the bar's own bottom edge, replaces the old standalone bar */
+  #hudProgress{position:absolute;left:0;right:0;bottom:-1px;height:3px;background:hsl(calc(var(--hue) + 2) 41% 44% / .12)}
+  #progressBar{height:100%;width:0%;background:var(--grad-bar);transition:width .3s ease-out}
 
-  /* responsive header — placed after the base button/select rules so these
-     overrides win the cascade. flex-wrap (above) already prevents clipping;
-     these just tighten spacing/type so more fits before it needs to wrap. */
-  @media (max-width:820px){
-    #hud{gap:7px 9px;padding:8px 11px}
-    #hud h1{font-size:13px;letter-spacing:2px}
-    .hud-controls{gap:6px 8px}
-    #hud button{padding:6px 10px;font-size:12px}
-    #hud select{padding:6px 7px;font-size:12px}
-  }
-  @media (max-width:480px){
-    #hud h1 small{display:none}
-    .hud-stats{flex-basis:100%;order:5}                    /* progress drops to its own full-width row */
-    #progressTxt{min-width:0;font-size:11px}
-    #mistakes,#timer{font-size:12px}
-    #musicVol{width:52px}
-  }
+  /* ---------- overflow (⋯) popover ---------- */
+  #overflowMenu{position:fixed;top:62px;right:16px;width:250px;background:var(--card);
+    border:1px solid var(--panel-border);border-radius:14px;box-shadow:0 18px 46px hsl(var(--hue) 46% 30% / .3);
+    padding:8px;display:flex;flex-direction:column;gap:2px;z-index:20;
+    opacity:0;transform:translateY(-4px);pointer-events:none;transition:opacity .12s,transform .12s}
+  #overflowMenu.show{opacity:1;transform:translateY(0);pointer-events:auto}
+  #overflowMenu .ov-vol{display:flex;align-items:center;gap:9px;padding:9px 10px 11px;
+    border-bottom:1px solid hsl(calc(var(--hue) + 2) 41% 44% / .12);margin-bottom:4px}
+  #overflowMenu .ov-vol button{background:none;border:none;padding:0;font-size:14px;cursor:pointer;color:var(--text);min-width:auto}
+  #overflowMenu .ov-vol button.playing{color:var(--accent)}
+  #overflowMenu #musicVol{flex:1;height:4px;cursor:pointer;accent-color:var(--accent)}
+  #overflowMenu .ov-item{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:9px;
+    font-size:13px;color:var(--text);background:none;border:none;cursor:pointer;font-family:inherit;text-align:left}
+  #overflowMenu .ov-item:hover{background:hsl(var(--hue) 60% 92% / .7)}
+  #overflowMenu .ov-item .ov-ico{width:18px;text-align:center;flex:none}
+  #overflowMenu .ov-item.ov-danger{color:hsl(313 48% 50%);border-top:1px solid hsl(calc(var(--hue) + 2) 41% 44% / .12);
+    margin-top:4px;padding-top:11px}
 
-  #controls{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:8px;
-    font-size:12px;color:var(--muted);background:var(--panel);border-top:1px solid var(--panel-border);z-index:10}
-  #controls b{color:var(--text);font-weight:600}
-  #version{position:fixed;bottom:7px;right:10px;z-index:11;pointer-events:none;
+  /* ---------- legend chip + version stamp ---------- */
+  #hudLegend{position:fixed;left:14px;bottom:12px;display:flex;align-items:center;gap:8px;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:20px;padding:7px 14px;
+    font-size:12px;color:var(--muted);backdrop-filter:blur(8px);z-index:10}
+  #hudLegend b{color:var(--text);font-weight:600}
+  #hudLegend b.gold{color:#b07a1a}
+  #hudLegend b.teal{color:#1f9c84}
+  #version{position:fixed;bottom:14px;right:14px;z-index:11;pointer-events:none;
     font-size:11px;color:var(--muted);opacity:.7;font-variant-numeric:tabular-nums}
+
+  /* light-touch narrow-viewport safety net (the design targets ≥1000px) */
+  @media (max-width:820px){
+    #hud{gap:10px;padding:8px 11px 9px}
+    #hud h1{font-size:13px;letter-spacing:2px}
+    .hud-controls{gap:6px}
+    #hud button{padding:6px 10px;font-size:12px}
+    #hud select#selDiff{padding:6px 26px 6px 10px;font-size:12px}
+  }
+  @media (max-width:600px){
+    #hudMapName{display:none}
+  }
 
   /* ---------- loading ---------- */
   #loader{position:fixed;inset:0;background:var(--bg);z-index:50;display:flex;
     flex-direction:column;align-items:center;justify-content:center;transition:opacity .5s}
   #loader.done{opacity:0;pointer-events:none}
-  #genPanel{display:flex;flex-direction:column;align-items:center;gap:16px}
-  #loader h1{font-size:26px;letter-spacing:8px;color:var(--accent);font-weight:600}
-  #loader p{color:var(--muted);font-size:13px;letter-spacing:1px;text-align:center}
-  #loadBarWrap{width:280px;height:8px;border-radius:4px;background:var(--track);overflow:hidden}
+  #genPanel{display:flex;flex-direction:column;align-items:center;gap:16px;width:100%}
+  #loader h1{font-size:26px;letter-spacing:8px;color:var(--accent);font-weight:600;text-align:center}
+  #loadBarWrap{flex:1;height:8px;border-radius:4px;background:var(--track);overflow:hidden}
   #loadBar{height:100%;width:0%;background:var(--grad-bar);transition:width .18s ease-out}
-  /* generation-animation mode: the board shows through; the title/subtitle/bar sit
+  /* phase trail — only meaningful once the generation overlay (.gen) is showing */
+  #genTrail{display:none;align-items:center;gap:10px;width:100%}
+  #genTrail .gt-item{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:hsl(var(--hue) 30% 62%);white-space:nowrap}
+  #genTrail .gt-item.cur{color:hsl(var(--hue) 88% 72%);font-weight:700}
+  #genTrail .gt-rule{flex:1;height:1px;background:hsl(var(--hue) 30% 40%)}
+  #genProgRow{display:flex;align-items:center;gap:12px;width:100%}
+  #genPct{font-size:13px;color:hsl(var(--hue) 30% 78%);font-variant-numeric:tabular-nums;min-width:38px;text-align:right}
+  /* generation-animation mode: the board shows through; the title/trail/bar sit
      in an opaque card pinned to the top so they stay readable over the moving board */
   #loader.gen{background:transparent;justify-content:flex-start;padding-top:20px;pointer-events:none}   /* pointer-events:none lets scroll/zoom reach the canvas beneath */
   #loader.gen #genPanel{background:var(--gen-card);border:1px solid var(--line);border-radius:14px;
-    padding:14px 26px 16px;gap:9px;box-shadow:0 12px 36px rgba(0,0,0,.45);max-width:min(680px,calc(100vw - 28px))}
-  #loader.gen h1{font-size:19px;letter-spacing:5px}
+    width:520px;padding:16px 26px 18px;gap:12px;box-shadow:0 12px 36px rgba(0,0,0,.45);max-width:calc(100vw - 28px)}
+  #loader.gen h1{font-size:17px;letter-spacing:5px;text-transform:uppercase}
+  #loader.gen #genTrail{display:flex}
   #loader .skiphint{display:none}
-  #loader.gen .skiphint{display:block;font-size:11px;color:var(--muted);letter-spacing:1px;opacity:.75}
+  #loader.gen .skiphint{display:block;font-size:11px;color:hsl(var(--hue) 22% 58%);letter-spacing:1px}
   /* hide the game chrome while the loading animation plays (the loader bg is transparent then) */
-  #hud, #controls{transition:opacity .3s}
-  body.generating #hud, body.generating #controls{opacity:0;pointer-events:none}
+  #hud, #hudLegend{transition:opacity .3s}
+  body.generating #hud, body.generating #hudLegend, body.generating #overflowMenu{opacity:0;pointer-events:none}
   body.generating #toast{opacity:0 !important}
 
   /* ---------- modal / overlay ---------- */
   .overlay{position:fixed;inset:0;background:var(--scrim);z-index:40;display:flex;
     align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .4s;padding:16px}
   .overlay.show{opacity:1;pointer-events:auto}
-  /* controller setup is opened from within Options, so it must sit ABOVE the z-40 overlays */
-  #padModal{z-index:46}
   .card{background:var(--card);border:1px solid var(--panel-border);border-radius:16px;
     padding:28px 32px;max-width:min(560px, calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;text-align:center;box-shadow:0 24px 70px rgba(70,48,130,.35)}
   .card h2{color:var(--accent);font-size:19px;margin-bottom:10px;letter-spacing:1px}
@@ -318,6 +342,18 @@
   .menuStackBtn:disabled{opacity:.45;cursor:default;filter:grayscale(.35)}
   .menuStackBtn:disabled:hover{background:var(--grad-primary);transform:none;box-shadow:0 8px 22px rgba(70,48,130,.20);filter:grayscale(.35)}
   .menuStackBtn small{display:block;font-size:11px;font-weight:500;letter-spacing:.5px;text-transform:none;opacity:.85;margin-top:3px}
+  .menuStackBtn small:empty{display:none}
+  /* Single Player / Co-op: same shape as the primary stack button, but surface-toned */
+  .menuStackBtn.secondary{background:var(--panel);border:1px solid var(--panel-border);color:var(--text);box-shadow:none}
+  .menuStackBtn.secondary:hover{background:var(--panel);filter:none;transform:translateY(-2px);
+    box-shadow:0 8px 22px hsl(var(--hue) 46% 35% / .12)}
+  .menuStackBtn.secondary small{color:var(--muted);opacity:1}
+  .menuOptCredRow{display:flex;gap:12px;margin-top:2px}
+  .menuRowBtn{flex:1;padding:13px 18px;border-radius:14px;border:1px solid var(--panel-border);cursor:pointer;
+    font-family:inherit;font-size:14px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--text);background:var(--panel)}
+  .menuRowBtn:hover{background:var(--panel);transform:translateY(-2px);
+    box-shadow:0 8px 22px hsl(var(--hue) 46% 35% / .12)}
   .credits{max-width:520px;text-align:center}
   .credits p{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:14px}
   .credits .cr-title{color:var(--accent);font-size:18px;font-weight:700;letter-spacing:1px;margin-bottom:8px}
@@ -329,46 +365,105 @@
     border-radius:22px;padding:9px 20px;font-weight:600;letter-spacing:.4px;font-size:13px}
   .menuLink:hover{background:var(--accent);border-color:var(--accent);color:#fff}
   .menuBack{align-self:flex-start;margin-bottom:10px}
-  .menuOpts{display:flex;gap:26px;flex-wrap:wrap;align-items:center;justify-content:center;margin-bottom:22px}
+  /* ---------- canvas grid — "board first" header + mode row ---------- */
+  .gridHead{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;width:100%}
+  .gridBrand{font-size:22px;letter-spacing:7px;color:hsl(var(--hue) 88% 62%);font-weight:600}
+  .gridBrand small{display:block;font-size:10px;letter-spacing:3px;color:var(--muted);font-weight:400;margin-top:4px}
+  .gridHeadBtns{display:flex;align-items:center;gap:10px}
+  .ghostPill{background:rgba(255,255,255,.5);border:1px solid var(--panel-border);color:var(--text);
+    border-radius:20px;padding:8px 16px;font-size:13px;font-family:inherit;cursor:pointer}
+  .ghostPill:hover{background:rgba(255,255,255,.8)}
+  .ghostPill.accent{border-color:var(--accent);color:hsl(var(--hue) 88% 58%);font-weight:600}
+  .modeRow{display:flex;align-items:center;gap:12px;margin-top:26px;flex-wrap:wrap;width:100%}
+  .modePill{padding:9px 20px;border-radius:22px;font-size:14px;font-weight:600;letter-spacing:1px;
+    cursor:pointer;font-family:inherit;color:var(--text);background:rgba(255,255,255,.6);border:1px solid var(--panel-border)}
+  .modePill:hover{background:rgba(255,255,255,.85)}
+  .modePill.active{background:var(--grad-primary);color:#fff;font-weight:700;border:none}
+  .menuSpacer{flex:1}
+  #mapSort{border-radius:20px;padding:8px 30px 8px 14px;font-size:13px;background-color:rgba(255,255,255,.6)}
   .menuOptLbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-right:8px}
-  .menuDiff{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
-  .menuSort{display:flex;align-items:center;gap:6px}
-  .diffPills{display:inline-flex;gap:6px;flex-wrap:wrap}
-  .diffPill{padding:6px 12px;border-radius:20px;font-size:13px;cursor:pointer;background:rgba(255,255,255,.6);
-    border:1px solid var(--panel-border);color:var(--text);font-family:inherit}
-  .diffPill:hover{background:rgba(255,255,255,.95)}
-  .diffPill.sel{background:var(--grad-primary);border:none;color:#fff;font-weight:600}
-  .menuStep{display:flex;align-items:center;gap:10px}
+  .menuStep{display:flex;align-items:center;gap:10px;margin-top:14px}
   .menuStep b{font-size:18px;min-width:1.4em;text-align:center;color:var(--text)}
   .menuStep button{width:34px}
-  .mapGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px;width:100%}
+  .mapGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px;width:100%;margin-top:24px}
   .mapCard{padding:0;overflow:hidden;border-radius:14px;background:var(--panel);border:1px solid var(--panel-border);
-    cursor:pointer;position:relative;text-align:left;box-shadow:0 8px 24px rgba(70,48,130,.12);
+    cursor:pointer;position:relative;text-align:left;box-shadow:0 8px 24px hsl(var(--hue) 46% 35% / .12);
     transition:transform .15s, box-shadow .15s, border-color .15s}
-  .mapCard:hover,.mapCard:focus-visible{transform:translateY(-3px);box-shadow:0 16px 40px rgba(70,48,130,.26);border-color:var(--accent);outline:none}
+  .mapCard:hover,.mapCard:focus-visible{transform:translateY(-3px);box-shadow:0 16px 40px hsl(var(--hue) 46% 35% / .26);border-color:var(--accent);outline:none}
   .mapCardArt{width:100%;aspect-ratio:16/10;background:var(--mapart);display:block;overflow:hidden}
   .mapCardArt canvas{width:100%;height:100%;object-fit:cover;display:block}
-  .mapCardName{padding:10px 12px 12px;font-size:15px;font-weight:600;color:var(--text)}
-  .mapCardInfo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-    background:var(--overlay-dark);color:#fff;opacity:0;transition:opacity .18s;pointer-events:none;padding:10px;text-align:center}
-  .mapCard:hover .mapCardInfo,.mapCard:focus-visible .mapCardInfo{opacity:1}
-  .mapCardInfo .ci-name{font-size:16px;font-weight:700;letter-spacing:.5px}
-  .mapCardInfo .ci-stat{font-size:13px;color:var(--info-light)}
-  .mapCardInfo .ci-go{margin-top:8px;font-size:12px;background:var(--grad-primary);padding:6px 14px;border-radius:16px;font-weight:600}
+  .mapCardBody{padding:10px 12px 12px}
+  .mapCardTitle{font-size:15px;font-weight:600;color:var(--text)}
+  .mapCardMeta{font-size:12px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+  /* the Continue card: raised + accent-bordered, spans 2 columns, always first */
+  .continueCard{grid-column:span 2;overflow:hidden;border-radius:14px;background:var(--card);
+    border:1px solid var(--accent);box-shadow:0 16px 40px hsl(var(--hue) 46% 35% / .26);
+    position:relative;text-align:left;cursor:pointer;padding:0;font-family:inherit;
+    transition:transform .15s, box-shadow .15s}
+  .continueCard:hover{transform:translateY(-3px);box-shadow:0 20px 48px hsl(var(--hue) 46% 35% / .3)}
+  .continueArt{aspect-ratio:32/10}
+  .continueBody{padding:12px 14px 14px;display:flex;align-items:center;gap:14px}
+  .continueInfo{flex:1;min-width:0}
+  .continueLbl{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+  .continueName{font-size:17px;font-weight:700;color:var(--text);margin-top:2px}
+  .continueProgRow{display:flex;align-items:center;gap:9px;margin-top:8px}
+  .continueBar{flex:1;height:6px;border-radius:3px;background:hsl(calc(var(--hue) + 2) 41% 44% / .16);overflow:hidden;display:block}
+  .continueBarFill{display:block;height:100%;width:0%;background:var(--grad-bar)}
+  .continueStat{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .continueResume{font-size:13px;background:var(--grad-primary);color:#fff;padding:10px 20px;border-radius:20px;
+    font-weight:600;white-space:nowrap;flex:none}
   .menuClose{position:absolute;top:0;right:0;width:40px;height:40px;border-radius:50%;font-size:16px}
-  /* ---------- options ---------- */
-  .opt-row{margin-bottom:20px}
-  .opt-label{font-weight:600;color:var(--text);margin-bottom:8px;font-size:14px}
+  /* ---------- options (rail & pane) ---------- */
+  .opt-dialog{display:flex;width:620px;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);
+    background:var(--card);border:1px solid var(--panel-border);border-radius:18px;overflow:hidden;
+    box-shadow:0 24px 70px hsl(var(--hue) 46% 30% / .35)}
+  .opt-rail{flex:0 0 190px;background:hsl(calc(var(--hue) - 6) 40% 94%);
+    border-right:1px solid hsl(calc(var(--hue) + 2) 41% 44% / .14);
+    padding:20px 12px;display:flex;flex-direction:column;gap:4px}
+  .opt-rail-title{font-size:15px;font-weight:700;color:hsl(var(--hue) 88% 60%);letter-spacing:1px;padding:0 10px 14px}
+  .opt-navitem{width:100%;text-align:left;padding:10px 12px;border-radius:10px;font-size:14px;
+    background:transparent;border:none;color:var(--text);font-family:inherit;cursor:pointer}
+  .opt-navitem:hover{background:rgba(255,255,255,.5)}
+  .opt-navitem.active{background:var(--grad-primary);color:#fff;font-weight:600}
+  .opt-navitem.active:hover{background:var(--grad-primary)}
+  .opt-rail-spacer{flex:1}
+  .opt-rail-done{width:100%;border-radius:11px;padding:10px 16px;font-size:14px}
+  .opt-pane{flex:1;min-width:0;padding:24px 26px 26px;text-align:left;overflow-y:auto}
+  .opt-pane-section{display:flex;flex-direction:column}
+  .opt-pane-h{font-size:17px;font-weight:700;color:var(--text);margin-bottom:4px}
+  .opt-pane-copy{font-size:12.5px;color:var(--muted);line-height:1.6;margin:0 0 18px}
   .opt-sub{font-size:12px;color:var(--muted);margin-top:6px}
   .opt-inline{display:flex;align-items:center;gap:12px}
-  .opt-slider{display:flex;align-items:center;gap:10px;margin-top:12px}
-  .opt-slider input[type=range],.opt-inline input[type=range]{flex:1;accent-color:var(--accent);cursor:pointer}
-  .swatches{display:flex;gap:10px;flex-wrap:wrap}
-  .swatch{width:34px;height:34px;border-radius:50%;cursor:pointer;border:2px solid transparent;
+  .opt-inline input[type=range]{flex:1;accent-color:var(--accent);cursor:pointer}
+  .swatches{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+  .swatch{width:38px;height:38px;border-radius:50%;cursor:pointer;border:2px solid transparent;
     box-shadow:0 2px 8px rgba(0,0,0,.18);transition:transform .12s}
   .swatch:hover{transform:scale(1.08)}
-  .swatch.sel{border-color:var(--text);transform:scale(1.12)}
+  .swatch.sel{border-color:var(--text);transform:scale(1.08)}
+  .opt-hue-label{font-size:12px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px}
+  .opt-hue-track{position:relative;height:20px;display:flex;align-items:center;margin-bottom:22px}
+  .opt-hue-track::before{content:'';position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
+    height:12px;border-radius:6px;pointer-events:none;
+    background:linear-gradient(90deg,hsl(0 70% 62%),hsl(60 70% 62%),hsl(120 70% 62%),hsl(180 70% 62%),hsl(240 70% 62%),hsl(300 70% 62%),hsl(360 70% 62%))}
+  .opt-hue-track input[type=range]{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;cursor:pointer}
+  .opt-hue-thumb{position:absolute;left:calc(var(--hue) * 100% / 360);top:50%;width:20px;height:20px;
+    transform:translate(-50%,-50%);border-radius:50%;background:var(--accent);border:3px solid #fff;
+    box-shadow:0 2px 8px rgba(0,0,0,.3);pointer-events:none}
+  .opt-preview{border-radius:12px;overflow:hidden;border:1px solid var(--panel-border)}
+  .opt-preview-grid{display:grid;grid-template-columns:repeat(10,1fr);grid-template-rows:repeat(2,28px);
+    gap:1px;padding:1px;background:hsl(calc(var(--hue) + 1) 45% 83%)}
+  .opt-preview-grid .pc{display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+  .opt-preview-cap{display:flex;gap:14px;padding:8px 12px;background:var(--card);font-size:11px;
+    color:var(--muted);border-top:1px solid hsl(calc(var(--hue) + 2) 41% 44% / .14)}
+  .opt-preview-cap .gold{color:#b07a1a;font-weight:600}
+  .opt-preview-cap .teal{color:#1f9c84;font-weight:600}
   #optDiff{width:100%}
+  @media (max-width:640px){
+    .opt-dialog{flex-direction:column;width:100%}
+    .opt-rail{flex-direction:row;flex-wrap:wrap;border-right:none;border-bottom:1px solid var(--panel-border)}
+    .opt-rail-spacer{display:none}
+    .opt-rail-done{width:auto}
+  }
   @media (max-width:520px){ .menuChoice{width:100%;max-width:320px} .mapGrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))} }
 </style>
 </head>
@@ -377,53 +472,51 @@
 <canvas id="game"></canvas>
 
 <div id="hud">
-  <h1>ONE MORE TILE<small>the emergent canvas</small></h1>
+  <h1>ONE MORE TILE</h1>
 
-  <!-- stats cluster: grows to fill the middle, wraps to its own row when tight -->
-  <div class="hud-group hud-stats">
-    <div id="progressWrap"><div id="progressBar"></div></div>
+  <div class="hud-status">
     <span id="progressTxt">0%</span>
-    <span id="mistakes">Mistakes <b>0</b>/4</span>
+    <span id="hudMapName"></span>
+    <span class="hud-sep">·</span>
     <span id="timer" title="Total time spent on this canvas — pauses when you leave, resumes when you return">⏱ 00:00</span>
+    <span class="hud-sep" id="hudMistakeSep" style="display:none">·</span>
+    <span id="mistakes" style="display:none"></span>
   </div>
 
-  <!-- control clusters: each group stays intact; the row wraps between groups -->
   <div class="hud-controls">
-    <div class="hud-group">
-      <button id="btnMenu" title="Home menu — switch canvas, difficulty or mode">🏠 Menu</button>
-      <select id="selDiff" title="Difficulty — clues are rewoven, your stitches stay"></select>
-    </div>
-    <div class="hud-group">
-      <button id="btnUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
-      <button id="btnHint" title="Hint (H)">💡 Hint</button>
-      <button id="btnSolve">✓ Solve</button>
-      <button id="btnClearMistakes" title="Sweep away every incorrect tile" disabled>🧹 Clear errors</button>
-    </div>
-    <div class="hud-group">
-      <button id="btnBrush" title="Touch brush — what a tap or drag places (tap to flip)" style="display:none">💡 Light</button>
+    <button id="btnMenu" title="Home menu — switch canvas, difficulty or mode">🏠 Menu</button>
+    <select id="selDiff" title="Difficulty — clues are rewoven, your stitches stay"></select>
+    <button id="btnUndo" class="icon" title="Undo (Ctrl+Z)">↶</button>
+    <button id="btnHint" class="primary" title="Hint (H)">💡 Hint</button>
+    <div class="zoomSeg">
       <button id="btnZoomOut" title="Zoom out (−)">−</button>
       <button id="btnZoomIn" title="Zoom in (+)">+</button>
-      <button id="btnFit" title="Fit to view (F)">⛶ Fit</button>
+      <button id="btnFit" title="Fit to view (F)">⛶</button>
     </div>
-    <div class="hud-group">
-      <span id="music" title="Background music">
-        <button id="btnMusic" aria-label="Play or pause background music">▶</button>
-        <input id="musicVol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Music volume" title="Music volume">
-      </span>
-      <button id="btnOptions" title="Options — interface colour, music, difficulty, controller">⚙ Options</button>
-      <button id="btnMP" title="Play with others — local split-screen or online">👥 Multiplayer</button>
-      <button id="btnWatch" title="Watch your partners' views" style="display:none">⊟ Watch</button>
-      <button id="btnHelp" title="How to play">?</button>
-      <button id="btnShare" title="Save your progress — or share it with a friend">💾</button>
-      <button id="btnReset">Reset</button>
-    </div>
+    <button id="btnOverflow" title="More" aria-haspopup="true" aria-expanded="false">⋯</button>
   </div>
+
+  <div id="hudProgress"><div id="progressBar"></div></div>
 </div>
 
-<div id="controls">
-  <b>Left click</b> light · <b>Right click</b> dark · <b>drag</b> to paint · <b>wheel</b> zoom ·
-  <b>middle&nbsp;/&nbsp;space-drag</b> pan · <b>H</b> hint · <b>Ctrl+Z</b> undo ·
-  <b style="color:#b07a1a">gold plots</b> sudoku · <b style="color:#1f9c84">teal patches</b> picross · <b>🎮</b> supported · <b>👥</b> local split-screen co-op
+<div id="overflowMenu">
+  <div class="ov-vol">
+    <button id="btnMusic" aria-label="Play or pause background music">▶</button>
+    <input id="musicVol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Music volume" title="Music volume">
+  </div>
+  <button class="ov-item" id="btnBrush" title="Touch brush — what a tap or drag places (tap to flip)" style="display:none"><span class="ov-ico">💡</span>Light</button>
+  <button class="ov-item" id="btnClearMistakes" title="Sweep away every incorrect tile" disabled><span class="ov-ico">🧹</span>Clear errors</button>
+  <button class="ov-item" id="btnSolve"><span class="ov-ico">✓</span>Solve</button>
+  <button class="ov-item" id="btnMP" title="Play with others — local split-screen or online"><span class="ov-ico">👥</span>Multiplayer</button>
+  <button class="ov-item" id="btnWatch" title="Watch your partners' views" style="display:none"><span class="ov-ico">⊟</span>Watch</button>
+  <button class="ov-item" id="btnShare" title="Save your progress — or share it with a friend"><span class="ov-ico">💾</span>Save or share</button>
+  <button class="ov-item" id="btnOptions" title="Options — interface colour, music, difficulty, controller"><span class="ov-ico">⚙</span>Options</button>
+  <button class="ov-item" id="btnHelp" title="How to play"><span class="ov-ico">📖</span>How to play</button>
+  <button class="ov-item ov-danger" id="btnReset"><span class="ov-ico">↺</span>Reset this canvas</button>
+</div>
+
+<div id="hudLegend">
+  <b>⌨ Controls</b><span class="hud-sep">·</span><b class="gold">gold</b> sudoku<span class="hud-sep">·</span><b class="teal">teal</b> picross
 </div>
 
 <div id="menuScreen">
@@ -434,11 +527,13 @@
     <div class="menuView" id="menuHome">
       <p class="menuTag">A stitch-by-numbers canvas. Choose how you'd like to play.</p>
       <div class="menuStack">
-        <button class="menuStackBtn" id="menuSolo">Single Player</button>
-        <button class="menuStackBtn" id="menuCoop">Co-op</button>
-        <button class="menuStackBtn" id="menuContinue">Continue</button>
-        <button class="menuStackBtn" id="menuOptions">Options</button>
-        <button class="menuStackBtn" id="menuCredits">Credits</button>
+        <button class="menuStackBtn" id="menuContinue" style="display:none">Continue<small></small></button>
+        <button class="menuStackBtn secondary" id="menuSolo">Single Player<small></small></button>
+        <button class="menuStackBtn secondary" id="menuCoop">Co-op<small>Split-screen for 2–4, or online with a code</small></button>
+        <div class="menuOptCredRow">
+          <button class="menuRowBtn" id="menuOptions">⚙ Options</button>
+          <button class="menuRowBtn" id="menuCredits">Credits</button>
+        </div>
       </div>
       <div class="menuFoot"><button id="menuHelp" class="menuLink">📖 How to play</button></div>
     </div>
@@ -476,25 +571,32 @@
 
     <div class="menuView" id="menuGrid" style="display:none">
       <button class="menuBack" data-back="auto">← Back</button>
-      <h2 class="menuH2" id="menuGridTitle">Choose a canvas</h2>
-      <div class="menuOpts">
-        <div class="menuSort">
-          <span class="menuOptLbl">Sort</span>
-          <select id="mapSort">
-            <option value="az">Name A → Z</option>
-            <option value="za">Name Z → A</option>
-            <option value="new">Newest added</option>
-            <option value="old">Oldest added</option>
-            <option value="most">Most squares</option>
-            <option value="least">Fewest squares</option>
-          </select>
+      <div class="gridHead">
+        <div class="gridBrand">ONE MORE TILE<small>the emergent canvas</small></div>
+        <div class="gridHeadBtns">
+          <button class="ghostPill" id="menuGridOptions">⚙ Options</button>
+          <button class="ghostPill accent" id="menuGridHelp">📖 How to play</button>
         </div>
-        <div class="menuStep" id="menuPlayerStep" style="display:none">
-          <span class="menuOptLbl" id="menuStepLbl">Players</span>
-          <button id="menuStepMinus">−</button>
-          <b id="menuStepVal">2</b>
-          <button id="menuStepPlus">+</button>
-        </div>
+      </div>
+      <div class="modeRow">
+        <button class="modePill" data-mode="solo">Single player</button>
+        <button class="modePill" data-mode="local">🖥 Local co-op</button>
+        <button class="modePill" data-mode="online">🌐 Online co-op</button>
+        <span class="menuSpacer"></span>
+        <select id="mapSort">
+          <option value="az">Name A → Z</option>
+          <option value="za">Name Z → A</option>
+          <option value="new">Newest added</option>
+          <option value="old">Oldest added</option>
+          <option value="most">Most squares</option>
+          <option value="least">Fewest squares</option>
+        </select>
+      </div>
+      <div class="menuStep" id="menuPlayerStep" style="display:none">
+        <span class="menuOptLbl" id="menuStepLbl">Players</span>
+        <button id="menuStepMinus">−</button>
+        <b id="menuStepVal">2</b>
+        <button id="menuStepPlus">+</button>
       </div>
       <div class="mapGrid" id="mapGrid"></div>
     </div>
@@ -505,10 +607,19 @@
 
 <div id="loader">
   <div id="genPanel">
-    <h1>ONE MORE TILE: THE EMERGENT CANVAS</h1>
-    <p>Stitching the canvas…</p>
-    <div id="loadBarWrap"><div id="loadBar"></div></div>
-    <div class="skiphint">scroll to zoom</div>
+    <h1 id="genMapName">ONE MORE TILE: THE EMERGENT CANVAS</h1>
+    <div id="genTrail">
+      <span class="gt-item cur" data-phase="territories">territories</span>
+      <span class="gt-rule"></span>
+      <span class="gt-item" data-phase="compute">compute</span>
+      <span class="gt-rule"></span>
+      <span class="gt-item" data-phase="thinning">thinning clues</span>
+    </div>
+    <div id="genProgRow">
+      <div id="loadBarWrap"><div id="loadBar"></div></div>
+      <span id="genPct">0%</span>
+    </div>
+    <div class="skiphint">scroll to zoom · this canvas is kept, so next time is instant</div>
   </div>
 </div>
 
@@ -645,60 +756,87 @@
   </div>
 </div>
 
-<div class="overlay" id="padModal">
-  <div class="card">
-    <h2>🎮 Controller</h2>
-    <p id="padStatus">No controller detected — connect one and press any button.</p>
-    <div style="display:flex;justify-content:flex-end;gap:24px;padding:0 2px;margin-bottom:8px;font-size:11px;color:var(--text);font-weight:700">
-      <span style="display:flex;gap:14px">
-        <span style="width:44px;text-align:center">Xbox</span>
-        <span style="width:74px;text-align:center">PlayStation</span>
-      </span>
-    </div>
-    <div id="padList" style="margin-bottom:8px"></div>
-    <p style="font-size:12px;margin-bottom:14px">
-      Move the cursor with the <b>left stick / d-pad</b> · pan with the <b>right stick</b> ·
-      in menus, <b>stitch</b> confirms and <b>mark</b> cancels.
-    </p>
-    <div class="btns">
-      <button class="primary" id="btnPadRemap">Remap buttons</button>
-      <button id="btnPadDefaults">Defaults</button>
-      <button id="btnClosePad">Done</button>
-    </div>
-  </div>
-</div>
-
 <div class="overlay" id="optionsModal">
-  <div class="card" style="max-width:min(520px, calc(100vw - 24px));text-align:left">
-    <h2 style="text-align:center">⚙ Options</h2>
-
-    <div class="opt-row">
-      <div class="opt-label">Interface colour</div>
-      <div class="swatches" id="themeSwatches"></div>
-      <div class="opt-slider"><span class="opt-sub">Hue</span><input type="range" id="hueSlider" min="0" max="359" step="1" aria-label="Interface hue"></div>
+  <div class="opt-dialog">
+    <div class="opt-rail">
+      <div class="opt-rail-title">⚙ Options</div>
+      <button class="opt-navitem" data-pane="colour">🎨 Colour</button>
+      <button class="opt-navitem" data-pane="music">🔊 Music</button>
+      <button class="opt-navitem" data-pane="difficulty">🎯 Difficulty</button>
+      <button class="opt-navitem" data-pane="controller">🎮 Controller</button>
+      <span class="opt-rail-spacer"></span>
+      <button class="primary opt-rail-done" id="btnCloseOptions">Done</button>
     </div>
-
-    <div class="opt-row">
-      <div class="opt-label">Music</div>
-      <div class="opt-inline">
-        <button id="optMute">🔊 On</button>
-        <input type="range" id="optVol" min="0" max="1" step="0.01" aria-label="Music volume">
+    <div class="opt-pane">
+      <div class="opt-pane-section" id="optPaneColour">
+        <div class="opt-pane-h">Interface colour</div>
+        <p class="opt-pane-copy">Recolours the whole game from one hue — chrome, region tints and clue ink. Gold sudoku, teal picross and error red stay where they are.</p>
+        <div class="swatches" id="themeSwatches"></div>
+        <div class="opt-hue-label">Or pick any hue</div>
+        <div class="opt-hue-track">
+          <input type="range" id="hueSlider" min="0" max="359" step="1" aria-label="Interface hue">
+          <span class="opt-hue-thumb" aria-hidden="true"></span>
+        </div>
+        <div class="opt-preview">
+          <div class="opt-preview-grid">
+            <div class="pc" style="background:#fdfcff;color:var(--text)">4</div>
+            <div class="pc" style="background:hsl(calc(var(--hue) - 3.5) 38% 34%)"></div>
+            <div class="pc" style="background:hsl(calc(var(--hue) - 0.6) 50% 85%)"></div>
+            <div class="pc" style="background:#fdfcff"></div>
+            <div class="pc" style="background:hsl(calc(var(--hue) - 5) 39% 77%)"></div>
+            <div class="pc" style="background:hsl(calc(var(--hue) - 1.6) 39% 78%);color:var(--text)">6</div>
+            <div class="pc" style="background:hsl(calc(var(--hue) - 3.5) 38% 34%)"></div>
+            <div class="pc" style="background:hsl(40 60% 90%);box-shadow:inset 0 3px 0 #e0a24a, inset 3px 0 0 #e0a24a;color:#b07a1a">7</div>
+            <div class="pc" style="background:hsl(40 60% 90%);box-shadow:inset 0 3px 0 #e0a24a, inset -3px 0 0 #e0a24a"></div>
+            <div class="pc" style="background:hsl(168 45% 90%);box-shadow:inset 0 3px 0 #2fb39a, inset 0 0 0 3px #2fb39a"></div>
+            <div class="pc" style="background:hsl(calc(var(--hue) + 4.7) 33% 78%)"></div>
+            <div class="pc" style="background:#fdfcff"></div>
+            <div class="pc" style="background:hsl(calc(var(--hue) - 3.5) 38% 34%)"></div>
+            <div class="pc" style="background:hsl(calc(var(--hue) - 0.9) 52% 87%)"></div>
+            <div class="pc" style="background:#fdfcff"></div>
+            <div class="pc" style="background:hsl(calc(var(--hue) - 1.3) 46% 82%)"></div>
+            <div class="pc" style="background:hsl(calc(var(--hue) + 3.8) 35% 81%)"></div>
+            <div class="pc" style="background:hsl(40 60% 90%);box-shadow:inset 0 -3px 0 #e0a24a, inset 3px 0 0 #e0a24a"></div>
+            <div class="pc" style="background:hsl(40 60% 90%);box-shadow:inset 0 -3px 0 #e0a24a, inset -3px 0 0 #e0a24a;color:#b07a1a">2</div>
+            <div class="pc" style="background:hsl(168 45% 90%);box-shadow:inset 0 -3px 0 #2fb39a, inset 3px 0 0 #2fb39a, inset -3px 0 0 #2fb39a"></div>
+          </div>
+          <div class="opt-preview-cap"><span>live board preview</span><span class="gold">gold stays</span><span class="teal">teal stays</span></div>
+        </div>
       </div>
-    </div>
 
-    <div class="opt-row">
-      <div class="opt-label">Default difficulty</div>
-      <select id="optDiff"></select>
-      <p class="opt-sub">New canvases start at this tier. You can still change it any time from the toolbar — your stitches always survive.</p>
-    </div>
+      <div class="opt-pane-section" id="optPaneMusic" style="display:none">
+        <div class="opt-pane-h">Music</div>
+        <div class="opt-inline">
+          <button id="optMute">🔊 On</button>
+          <input type="range" id="optVol" min="0" max="1" step="0.01" aria-label="Music volume">
+        </div>
+      </div>
 
-    <div class="opt-row">
-      <div class="opt-label">Controller</div>
-      <button id="optPad">🎮 Controller setup</button>
-    </div>
+      <div class="opt-pane-section" id="optPaneDifficulty" style="display:none">
+        <div class="opt-pane-h">Default difficulty</div>
+        <select id="optDiff"></select>
+        <p class="opt-sub">New canvases start at this tier. You can still change it any time from the toolbar — your stitches always survive.</p>
+      </div>
 
-    <div class="btns" style="margin-top:20px;justify-content:center">
-      <button class="primary" id="btnCloseOptions">Done</button>
+      <div class="opt-pane-section" id="optPaneController" style="display:none">
+        <div class="opt-pane-h">🎮 Controller</div>
+        <p id="padStatus" class="opt-pane-copy" style="margin-bottom:14px">No controller detected — connect one and press any button.</p>
+        <div style="display:flex;justify-content:flex-end;gap:24px;padding:0 2px;margin-bottom:8px;font-size:11px;color:var(--text);font-weight:700">
+          <span style="display:flex;gap:14px">
+            <span style="width:44px;text-align:center">Xbox</span>
+            <span style="width:74px;text-align:center">PlayStation</span>
+          </span>
+        </div>
+        <div id="padList" style="margin-bottom:8px"></div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+          Move the cursor with the <b>left stick / d-pad</b> · pan with the <b>right stick</b> ·
+          in menus, <b>stitch</b> confirms and <b>mark</b> cancels.
+        </p>
+        <div class="btns" style="justify-content:flex-start">
+          <button class="primary" id="btnPadRemap">Remap buttons</button>
+          <button id="btnPadDefaults">Defaults</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -900,7 +1038,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.27.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.28.0';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -916,11 +1054,15 @@ let currentMap = 'castle';
 try { const m = localStorage.getItem(MAP_KEY); if (MAPS.some(x => x.id === m)) currentMap = m; } catch (e) {}
 function mapDef(id){ return MAPS.find(m => m.id === (id === undefined ? currentMap : id)) || MAPS[0]; }
 function mapIndex(id){ const k = MAPS.findIndex(m => m.id === (id === undefined ? currentMap : id)); return k < 0 ? 0 : k; }
-// per-map progress keys; castle keeps its original key so old saves survive
-function stateKey(){ return 'proverbs2-' + currentMap + '-v3'; }
-function zonesKey(){ return stateKey() + '-plots'; }
-function timerKey(){ return stateKey() + '-time'; }   // accumulated active play-time (ms) for this map
-function picKey(){ return stateKey() + '-pic'; }      // per-patch picross tier (see picTier / shapePicross)
+// per-map progress keys; castle keeps its original key so old saves survive.
+// Each takes an optional map id (default: currentMap) so the menu can read another
+// map's saved progress/timer without switching boards.
+function stateKey(id){ return 'proverbs2-' + (id || currentMap) + '-v3'; }
+function zonesKey(id){ return stateKey(id) + '-plots'; }
+function timerKey(id){ return stateKey(id) + '-time'; }   // accumulated active play-time (ms) for this map
+function picKey(id){ return stateKey(id) + '-pic'; }      // per-patch picross tier (see picTier / shapePicross)
+function progressKey(id){ return stateKey(id) + '-pct'; } // last-known completion % (see boardPercent) — lets
+                                                            // the menu show live progress without regenerating the board
 const DIFF_KEY = 'proverbs2-diff';
 
 // Per-map preview metadata (regions/squares) shown on the menu map cards.
@@ -2368,7 +2510,10 @@ function rebuildForMap(id, done){
   try { localStorage.setItem(MAP_KEY, id); } catch (e) {}
   updateMapSel();
   const loader = document.getElementById('loader');
-  if (loader) { const p = loader.querySelector('p'); if (p) p.textContent = 'Loading the canvas…'; loader.classList.remove('done'); }
+  if (loader) {
+    const h1 = document.getElementById('genMapName'); if (h1) h1.textContent = mapDef(id).name;
+    loader.classList.remove('done');
+  }
   const apply = image => {
     SEED = mapDef(id).seed;
     dimsForImage(image, mapDef(id));   // board shape from this image's aspect
@@ -2451,10 +2596,10 @@ function makeClueWorker(){
   return w;
 }
 // synchronous fallback (original behaviour): one region per event-loop turn
-function syncRegen(done, bar){
+function syncRegen(done){
   let idx = 0;
   (function step(){
-    if (idx < REG_PIX) { genRegionClues(idx); idx++; GEN.progress = idx / REG_PIX; if (bar) bar.style.width = (idx / REG_PIX * 100) + '%'; setTimeout(step, 0); }
+    if (idx < REG_PIX) { genRegionClues(idx); idx++; GEN.progress = idx / REG_PIX; genPctUI(idx / REG_PIX * 100); setTimeout(step, 0); }
     else done();
   })();
 }
@@ -2501,17 +2646,16 @@ function regenCluesFresh(token, done0){
     bcacheTrim();
     done0();
   };
-  const bar = document.getElementById('loadBar');
-  if (bar) bar.style.width = '0%';
+  genPctUI(0);
   let worker = null;
   const forceSync = /[?&]nowork=/.test(location.search);   // debug/headless: run generation on the main thread
   try { worker = forceSync ? null : makeClueWorker(); } catch (e) { worker = null; }
-  if (!worker) { syncRegen(done, bar); return; }   // Workers/Blob unavailable → synchronous
+  if (!worker) { syncRegen(done); return; }   // Workers/Blob unavailable → synchronous
   clueWorker = worker;
-  worker.onerror = () => { worker.terminate(); if (clueWorker === worker) clueWorker = null; syncRegen(done, bar); };
+  worker.onerror = () => { worker.terminate(); if (clueWorker === worker) clueWorker = null; syncRegen(done); };
   worker.onmessage = ev => {
     const d = ev.data;
-    if (d.progress !== undefined) { GEN.progress = d.progress; if (bar) bar.style.width = (d.progress * 100) + '%'; return; }
+    if (d.progress !== undefined) { GEN.progress = d.progress; genPctUI(d.progress * 100); return; }
     const wc = d.clue, wl = d.locked;                // merge only the organic-region cells (picross/sudoku already set)
     for (let i = 0; i < N; i++) if (regionOf[i] >= 0 && regionOf[i] < REG_PIX) { clue[i] = wc[i]; locked[i] = wl[i]; }
     worker.terminate(); if (clueWorker === worker) clueWorker = null;
@@ -2801,7 +2945,10 @@ function beginGen(kind, done, cached){
         settle: GTL_BASE.settle, hold: GTL_BASE.hold };
   GEN.t0 = now - (skipBloom ? (GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay) : 0);
   const loader = document.getElementById('loader');
-  if (loader){ loader.classList.remove('done'); loader.classList.add('gen'); const p = loader.querySelector('p'); if (p) p.textContent = cached ? 'Restoring the canvas…' : (kind === 'diff' ? 'Reweaving the clues…' : 'Weaving the canvas…'); }
+  if (loader){
+    loader.classList.remove('done'); loader.classList.add('gen');
+    const h1 = document.getElementById('genMapName'); if (h1) h1.textContent = mapDef().name;
+  }
   document.body.classList.add('generating');
   startLoop();
 }
@@ -2886,11 +3033,25 @@ function drawGen(now){
     : (rel < thinBegin ? 'Counting every square' : 'Thinning to the real clues');
   genUpdateHeader(phase, Math.round(genClamp(GEN.progress) * 100));
 }
-// update the loading card's subtitle + bar only when the text/fill actually change
+// phase text (from drawGen's own generation-progress reasoning) → which of the
+// three trail items lights up. A cache-hit run never leaves 'territories' — its
+// whole beat is too short to narrate (see GTL_CACHED).
+const GEN_PHASE_TRAIL = {
+  'Restoring your canvas': 'territories', 'Growing the territories': 'territories',
+  'Counting every square': 'compute', 'Thinning to the real clues': 'thinning',
+};
+function genPctUI(pct){
+  pct = Math.round(pct);
+  const b = document.getElementById('loadBar'); if (b) b.style.width = pct + '%';
+  const t = document.getElementById('genPct'); if (t) t.textContent = pct + '%';
+}
+function genPhaseUI(key){
+  for (const el of document.querySelectorAll('#genTrail .gt-item')) el.classList.toggle('cur', el.dataset.phase === key);
+}
+// update the loading card's phase trail + bar only when the phase/fill actually change
 function genUpdateHeader(phase, pct){
-  if (pct !== GEN._pct){ GEN._pct = pct; const b = document.getElementById('loadBar'); if (b) b.style.width = pct + '%'; }
-  const txt = phase + ' · ' + pct + '%';
-  if (txt !== GEN._hdr){ GEN._hdr = txt; const p = document.querySelector('#loader p'); if (p) p.textContent = txt; }
+  if (pct !== GEN._pct){ GEN._pct = pct; genPctUI(pct); }
+  if (phase !== GEN._hdr){ GEN._hdr = phase; genPhaseUI(GEN_PHASE_TRAIL[phase] || 'territories'); }
 }
 
 // ---------- dev: zero-given audit ----------
@@ -3535,7 +3696,10 @@ function undoOwn(pl){
 }
 
 // ---------- HUD ----------
-function updateHUD(){
+// fraction of the board (organic cells matched to sol + solved zone digits) that's
+// currently correct — the HUD's headline number, and what saveNow() remembers so
+// the menu can show live progress without regenerating the board.
+function boardPercent(){
   let correct = 0;
   for (let i = 0; i < N; i++) {
     if (zoneOf[i] >= 0) continue;
@@ -3543,11 +3707,18 @@ function updateHUD(){
   }
   for (const z of ZONES)
     for (let p = 0; p < z.n * z.n; p++) if (z.entries && z.entries[p] === z.solution[p]) correct++;
-  const pct = Math.floor(correct / N * 100);
-  const done = regionDone.filter(Boolean).length;
+  return Math.floor(correct / N * 100);
+}
+function updateHUD(){
+  const pct = boardPercent();
   document.getElementById('progressBar').style.width = pct + '%';
-  document.getElementById('progressTxt').textContent = `${pct}% · ${done}/${REG_COUNT} regions`;
-  document.getElementById('mistakes').innerHTML = `Mistakes <b>${wrong.size}</b>/4`;
+  document.getElementById('progressTxt').textContent = pct + '%';
+  document.getElementById('hudMapName').textContent = mapDef().name;
+  // the mistake readout (and its separator) only appears once there's something to report
+  const mc = wrong.size;
+  const mEl = document.getElementById('mistakes'), sEl = document.getElementById('hudMistakeSep');
+  if (mc > 0) { mEl.textContent = mc + ' mistake' + (mc === 1 ? '' : 's'); mEl.style.display = ''; sEl.style.display = ''; }
+  else { mEl.style.display = 'none'; sEl.style.display = 'none'; }
   const cmb = document.getElementById('btnClearMistakes');   // greyed out until there's something to sweep
   if (cmb) cmb.disabled = wrong.size === 0;
 }
@@ -3590,6 +3761,7 @@ function saveNow(){
     localStorage.setItem(stateKey(), Array.from(state.subarray(0, N)).join(''));
     localStorage.setItem(zonesKey(), JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
     localStorage.setItem(timerKey(), String(timerTotal()));
+    localStorage.setItem(progressKey(), String(boardPercent()));
     // which tier each picross patch is shaped at, so a reload rebuilds the exact
     // patches these saved marks were made against
     localStorage.setItem(picKey(), Array.from(picTier.subarray(0, PICROSS.length)).join(''));
@@ -3876,7 +4048,7 @@ function importCode(code, onDone, silent){
     // same map, new difficulty and/or different patch shapes → re-weave, then apply
     picTier.set(want);
     const loader = document.getElementById('loader');
-    loader.querySelector('p').textContent = 'Reweaving the clues…';
+    genPhaseUI('thinning'); genPctUI(0);
     loader.classList.remove('done');
     setTimeout(() => {
       regenClues(() => {              // no keepTouched: the payload is authoritative
@@ -5421,7 +5593,7 @@ const MODAL_CLOSE = {
   helpModal: 'btnCloseHelp', advancedModal: 'btnCloseAdvanced', winModal: 'btnAdmire',
   pinModal: 'btnPinCancel', charModal: 'btnCharClose', resetModal: 'btnCancelReset',
   solveModal: 'btnCancelSolve', mpModal: 'btnCloseMP', coopModal: 'btnCoopCancel',
-  onlineModal: 'btnCloseOnline', shareModal: 'btnCloseShare', padModal: 'btnClosePad',
+  onlineModal: 'btnCloseOnline', shareModal: 'btnCloseShare',
   optionsModal: 'btnCloseOptions',
 };
 // close an overlay via its mapped button (falls back to the last button / hiding)
@@ -5443,6 +5615,29 @@ addEventListener('keydown', e => {
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => {
   if (e.target === o) closeOverlay(o);
 }));
+
+// ---- HUD overflow (⋯) popover: click to toggle; closes on outside click, Esc, or picking an item ----
+function closeOverflowMenu(){
+  document.getElementById('overflowMenu').classList.remove('show');
+  document.getElementById('btnOverflow').setAttribute('aria-expanded', 'false');
+}
+document.getElementById('btnOverflow').onclick = () => {
+  const ov = document.getElementById('overflowMenu');
+  const opening = !ov.classList.contains('show');
+  ov.classList.toggle('show', opening);
+  document.getElementById('btnOverflow').setAttribute('aria-expanded', String(opening));
+};
+document.addEventListener('click', e => {
+  const ov = document.getElementById('overflowMenu');
+  if (!ov.classList.contains('show')) return;
+  if (ov.contains(e.target) === false && e.target.id !== 'btnOverflow') closeOverflowMenu();
+});
+document.querySelectorAll('#overflowMenu .ov-item').forEach(b => b.addEventListener('click', closeOverflowMenu));
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('overflowMenu').classList.contains('show')) {
+    closeOverflowMenu(); e.stopPropagation();
+  }
+}, true);
 
 function zoomCenter(k, pl = players[0]){
   const v = pl.view, cx = paneW(pl) / 2, cy = paneH(pl) / 2;
@@ -5619,16 +5814,6 @@ document.getElementById('btnSolveAll').onclick = () => {
   document.getElementById('solveModal').classList.remove('show');
   startSolve(Array.from({ length: REG_COUNT }, (_, r) => r));
 };
-// opened from the Options menu (the 🎮 header button moved there)
-function openPad(){
-  renderPadList();
-  updatePadStatus();
-  document.getElementById('padModal').classList.add('show');
-}
-document.getElementById('btnClosePad').onclick = () => {
-  padCaptureIdx = -1;
-  document.getElementById('padModal').classList.remove('show');
-};
 document.getElementById('btnPadRemap').onclick = () => {
   padCaptureIdx = 0;
   padCapturePlayer = players.find(p => p.padIndex >= 0) || players[0];
@@ -5740,6 +5925,8 @@ document.getElementById('joinCode').addEventListener('keydown', e => { if (e.key
 //  loopback and disconnect UI is reused verbatim.
 // ============================================================
 const MENU = { view: 'home', mode: 'solo', stepVal: 2, stepMin: 2, stepMax: 4 };
+// canvas count in the sub-line is computed, not hardcoded, so it never drifts as maps are added/removed
+document.getElementById('menuSolo').innerHTML = 'Single Player<small>' + MAPS.length + ' canvases · your progress is kept per canvas</small>';
 const LAST_SOLO_KEY = 'proverbs2-lastsolo';   // most recent single-player map, for Continue
 // order the maps were added (from git history), oldest → newest — used by the
 // "newest/oldest added" sort. Kept separate from MAPS so mapIndex() (which share
@@ -5823,19 +6010,32 @@ let _menuGridBuilt = false;
 function menuBuildGrid(){
   if (_menuGridBuilt) { menuPaintCards(); return; }
   const grid = document.getElementById('mapGrid');
+  // the Continue card: always first, spans 2 columns, hidden until there's a save
+  // to resume (menuRefreshGridContinue fills it in and shows/hides it)
+  const cc = document.createElement('button');
+  cc.className = 'continueCard'; cc.id = 'gridContinueCard'; cc.style.display = 'none';
+  cc.innerHTML =
+    '<div class="mapCardArt continueArt"></div>' +
+    '<div class="continueBody">' +
+      '<div class="continueInfo">' +
+        '<div class="continueLbl">Continue</div>' +
+        '<div class="continueName"></div>' +
+        '<div class="continueProgRow"><span class="continueBar"><span class="continueBarFill"></span></span><span class="continueStat"></span></div>' +
+      '</div>' +
+      '<span class="continueResume">Resume</span>' +
+    '</div>';
+  cc.onclick = () => menuContinue();
+  grid.appendChild(cc);
   for (const m of MAPS) {
     const meta = MAP_META[m.id];
     const card = document.createElement('button');
     card.className = 'mapCard'; card.dataset.id = m.id;
     const art = document.createElement('div'); art.className = 'mapCardArt';
     art.appendChild(menuRenderCard(m.id));
-    const name = document.createElement('div'); name.className = 'mapCardName'; name.textContent = m.name;
-    const info = document.createElement('div'); info.className = 'mapCardInfo';
-    info.innerHTML = '<div class="ci-name">' + m.name + '</div>' +
-      '<div class="ci-stat">' + meta.regions + ' regions</div>' +
-      '<div class="ci-stat">' + meta.cells.toLocaleString() + ' squares</div>' +
-      '<div class="ci-go">Play →</div>';
-    card.appendChild(art); card.appendChild(name); card.appendChild(info);
+    const body = document.createElement('div'); body.className = 'mapCardBody';
+    body.innerHTML = '<div class="mapCardTitle">' + m.name + '</div>' +
+      '<div class="mapCardMeta">' + meta.regions + ' regions · ' + meta.cells.toLocaleString() + ' squares</div>';
+    card.appendChild(art); card.appendChild(body);
     card.onclick = () => menuPlay(m.id);
     grid.appendChild(card);
   }
@@ -5844,10 +6044,33 @@ function menuBuildGrid(){
 // repaint each card's thumbnail in the current theme (called on theme change)
 function menuPaintCards(){
   if (!_menuGridBuilt) return;
-  for (const art of document.querySelectorAll('#mapGrid .mapCardArt')) {
+  for (const art of document.querySelectorAll('#mapGrid .mapCard .mapCardArt')) {
     const id = art.parentElement.dataset.id;
     art.replaceChildren(menuRenderCard(id));
   }
+  const cc = document.getElementById('gridContinueCard');
+  const soloId = menuLastSolo();
+  if (cc && cc.style.display !== 'none' && soloId) cc.querySelector('.continueArt').replaceChildren(menuRenderCard(soloId));
+}
+// fill in (or hide) the grid's Continue card from the last solo map's saved progress
+function menuRefreshGridContinue(){
+  const cc = document.getElementById('gridContinueCard');
+  if (!cc) return;
+  const id = menuLastSolo();
+  if (!id) { cc.style.display = 'none'; return; }
+  cc.style.display = '';
+  let pct = 0, ms = 0;
+  try { pct = Math.max(0, Math.min(100, parseInt(localStorage.getItem(progressKey(id)), 10) || 0)); } catch (e) {}
+  try { ms = parseInt(localStorage.getItem(timerKey(id)), 10) || 0; } catch (e) {}
+  cc.querySelector('.continueName').textContent = mapDef(id).name;
+  cc.querySelector('.continueBarFill').style.width = pct + '%';
+  cc.querySelector('.continueStat').textContent = pct + '% · ' + fmtTime(ms);
+  cc.querySelector('.continueArt').replaceChildren(menuRenderCard(id));
+}
+// highlight the mode pill matching the grid's current mode ('solo'/'local'/'host')
+function updateModeRow(){
+  const active = MENU.mode === 'local' ? 'local' : MENU.mode === 'host' ? 'online' : 'solo';
+  for (const b of document.querySelectorAll('.modePill')) b.classList.toggle('active', b.dataset.mode === active);
 }
 
 function menuShowView(v){
@@ -5855,6 +6078,7 @@ function menuShowView(v){
   const map = { home: 'menuHome', credits: 'menuCreditsView', coopMode: 'menuCoopMode', onlineChoice: 'menuOnlineChoice', grid: 'menuGrid' };
   for (const id of Object.values(map)) document.getElementById(id).style.display = 'none';
   document.getElementById(map[v]).style.display = '';
+  document.querySelector('.menuBrand').style.display = v === 'grid' ? 'none' : '';   // the grid draws its own compact wordmark
 }
 
 // the most recently played single-player map (id), or null if none/invalid
@@ -5862,12 +6086,17 @@ function menuLastSolo(){
   try { const id = localStorage.getItem(LAST_SOLO_KEY); if (MAPS.some(m => m.id === id)) return id; } catch (e) {}
   return null;
 }
-// enable/label the Continue button from the last solo map
+// label the Continue button from the last solo map's saved progress — hidden
+// entirely (not just disabled) when there's nothing to resume
 function menuRefreshContinue(){
   const btn = document.getElementById('menuContinue');
   const id = menuLastSolo();
-  if (id) { btn.disabled = false; btn.innerHTML = 'Continue<small>' + mapDef(id).name + '</small>'; }
-  else    { btn.disabled = true;  btn.innerHTML = 'Continue<small>no game played yet</small>'; }
+  if (!id) { btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  let pct = 0, ms = 0;
+  try { pct = Math.max(0, Math.min(100, parseInt(localStorage.getItem(progressKey(id)), 10) || 0)); } catch (e) {}
+  try { ms = parseInt(localStorage.getItem(timerKey(id)), 10) || 0; } catch (e) {}
+  btn.innerHTML = 'Continue<small>' + mapDef(id).name + ' · ' + pct + '% · ' + fmtTime(ms) + ' played</small>';
 }
 // resume the most recent single-player map (skips the picker)
 function menuContinue(){
@@ -5881,25 +6110,23 @@ function menuContinue(){
 function menuOpenGrid(mode){
   MENU.mode = mode;
   const step = document.getElementById('menuPlayerStep');
-  const title = document.getElementById('menuGridTitle');
   if (mode === 'local') {
-    title.textContent = '🖥 Local Co-op — choose a canvas';
     document.getElementById('menuStepLbl').textContent = 'Players';
     MENU.stepMin = 2; MENU.stepMax = 4; MENU.stepVal = Math.min(4, Math.max(2, MENU.stepVal || 2));
     step.style.display = '';
   } else if (mode === 'host') {
-    title.textContent = '📡 Host Online — choose a canvas';
     document.getElementById('menuStepLbl').textContent = 'Guests';
     MENU.stepMin = 1; MENU.stepMax = 3; MENU.stepVal = Math.min(3, Math.max(1, MENU.stepVal || 1));
     step.style.display = '';
   } else {
-    title.textContent = '▶ Single Player — choose a canvas';
     step.style.display = 'none';
   }
   document.getElementById('menuStepVal').textContent = String(MENU.stepVal);
   document.getElementById('mapSort').value = mapSort;
   menuBuildGrid();
   menuApplySort();
+  menuRefreshGridContinue();
+  updateModeRow();
   menuShowView('grid');
 }
 
@@ -5983,6 +6210,14 @@ document.getElementById('menuOnline').onclick = () => menuShowView('onlineChoice
 document.getElementById('menuHostPick').onclick = () => menuOpenGrid('host');
 document.getElementById('menuJoinPick').onclick = () => menuJoin();
 document.getElementById('menuHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
+document.getElementById('menuGridOptions').onclick = openOptions;
+document.getElementById('menuGridHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
+document.querySelectorAll('.modePill').forEach(b => b.onclick = () => {
+  const m = b.dataset.mode;
+  if (m === 'local') menuOpenGrid('local');
+  else if (m === 'online') menuShowView('onlineChoice');
+  else menuOpenGrid('solo');
+});
 document.querySelectorAll('#menuScreen .menuBack').forEach(b => b.onclick = () => {
   const where = b.dataset.back;
   if (where === 'auto') menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
@@ -6166,7 +6401,15 @@ function setDefaultDifficulty(d){
   }
   document.getElementById('optDiff').value = difficulty;
 }
-function openOptions(){ syncOptions(); document.getElementById('optionsModal').classList.add('show'); }
+// rail-and-pane section switching — controller pane refreshes the live pad list/status
+// each time it's shown (it used to be a separate modal's own open handler)
+const OPT_PANES = { colour: 'optPaneColour', music: 'optPaneMusic', difficulty: 'optPaneDifficulty', controller: 'optPaneController' };
+function showOptPane(name){
+  for (const k in OPT_PANES) document.getElementById(OPT_PANES[k]).style.display = k === name ? '' : 'none';
+  for (const b of document.querySelectorAll('.opt-navitem')) b.classList.toggle('active', b.dataset.pane === name);
+  if (name === 'controller') { renderPadList(); updatePadStatus(); }
+}
+function openOptions(){ syncOptions(); showOptPane('colour'); document.getElementById('optionsModal').classList.add('show'); }
 
 // build the default-difficulty dropdown
 {
@@ -6178,9 +6421,12 @@ function openOptions(){ syncOptions(); document.getElementById('optionsModal').c
 buildSwatches();
 document.getElementById('btnOptions').onclick = openOptions;
 document.getElementById('menuOptions').onclick = openOptions;
-document.getElementById('btnCloseOptions').onclick = () => document.getElementById('optionsModal').classList.remove('show');
+document.getElementById('btnCloseOptions').onclick = () => {
+  padCaptureIdx = -1;
+  document.getElementById('optionsModal').classList.remove('show');
+};
 document.getElementById('hueSlider').oninput = () => { applyTheme(+document.getElementById('hueSlider').value, true); syncOptions(); };
-document.getElementById('optPad').onclick = openPad;
+document.querySelectorAll('.opt-navitem').forEach(b => b.onclick = () => showOptPane(b.dataset.pane));
 
 // ---- boot: apply the saved theme, then land on the home menu (skipped under
 // ?audit=, which drives its own pipeline). The loading panel is dismissed so the

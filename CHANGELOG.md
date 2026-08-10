@@ -5,6 +5,34 @@ shipped to the live site.
 
 ---
 
+## [0.28.0] — 2026-08-10 — UI polish pass: HUD, menus, loading, Options
+
+### Changed
+- **HUD rebuilt as a calmer single-row toolbar**: the old two-row stat cluster +
+  progress bar is now one status line (bold `%` · map name · timer · mistakes)
+  with a slim progress hairline pinned under the header, and a segmented zoom
+  control. Secondary actions (music, Clear errors, Solve, Multiplayer, Save/
+  share, Options, How to play, Reset canvas) moved into a new **⋯ overflow
+  popover**, and the map legend became a small pill anchored bottom-left,
+  replacing the old full-width footer bar.
+- **Options rebuilt as a rail-and-pane dialog** (Colour / Music / Difficulty /
+  Controller sections in a left rail) instead of a single scrolling column.
+- **Loading screen** now shows a phase trail (bloom → compute → thin) with the
+  target map name and an inline percentage next to the bar, instead of a bare
+  title + progress bar.
+- **Home menu** buttons now carry a sub-label (canvas count, co-op mode
+  description); **Continue** shows the resumed canvas's live progress % and
+  play time.
+- **Canvas grid** reworked board-first: brand + Options/How-to-play move to a
+  header row, Single player/Local co-op/Online co-op become an in-grid mode
+  switcher, sort moves to a pill, and map cards show plain name/region/square
+  info instead of a hover-only overlay; Continue gets its own wide progress
+  card, pinned first.
+- Purely presentational — no changes to generation, clue, or save logic;
+  `?audit=1` unaffected.
+
+---
+
 ## [0.27.0] — 2026-08-07 — New map: In-and-Out 🌀
 
 ### Added
