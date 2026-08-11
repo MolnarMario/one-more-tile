@@ -5,6 +5,50 @@ shipped to the live site.
 
 ---
 
+## [0.30.0] — 2026-08-11 — Boards ship precomputed: no more waiting to start
+
+### Added
+- **Every canvas now ships already generated.** The puzzle was always identical
+  for everyone — the whole pipeline is deterministic from each canvas's seed —
+  but each player was recomputing the same bytes on their own machine, which
+  cost between one second (Castle) and about **35 seconds** (Angels) the first
+  time you opened a canvas, and again for every difficulty you tried. That work
+  is now done once, ahead of time, and shipped with the game. On the largest
+  canvas the stages it replaced now take **1.4 ms** (0.2 decoding the solution,
+  0.6 the clues, 0.6 re-checking them against the solution), so what you wait
+  for is the loading animation's own ~0.9 s beat, not the computation.
+- **`boards/<map>.js`** — the clue set for all five difficulties, four bits per
+  square, loaded only for the canvas you actually pick (26–122 KB each). The
+  solution grids and the region partitions are small enough to live inside
+  `index.html` itself (+38 KB total).
+- **`?bake=<map>`** — a developer mode that produces those payloads by running
+  the real generation pipeline in the browser, so the shipped bytes are always
+  exactly what the shipped code makes, never a reimplementation of it. Paired
+  with **`_bake_boards.js`**, which folds the result into the game.
+- **`?verifybake=<map>`** — the guardrail: rebuilds every canvas and difficulty
+  from scratch and asserts the shipped payload is byte-for-byte identical.
+
+### Changed
+- **The same board on every machine, guaranteed.** Generation began with a
+  canvas draw to sample the artwork, and that one step could in principle differ
+  between browsers — which would have shifted the solution *and* the region
+  borders derived from it. With the partitions and solutions baked, nothing
+  about the puzzle depends on the local browser any more; only the revealed
+  artwork is still sampled per machine.
+- `?audit=`, `?bake=` and `?verifybake=` all accept a comma-separated canvas
+  list now (`?audit=angels,castle`), so a full check can be sharded across tabs
+  instead of running for hours in one.
+
+### Notes
+- Nothing about the puzzles themselves changed — the baked boards are provably
+  the same boards the game generated before, so saves, share codes and co-op
+  sessions all carry over untouched (`BOARD_COMPAT` is unchanged at 4).
+- If a payload is ever missing, stale or damaged, the game silently generates
+  the board itself exactly as it used to. A bad bake can cost you the wait; it
+  cannot hand you a wrong board.
+
+---
+
 ## [0.29.0] — 2026-08-10 — Canvas grid shows the regions you've unlocked
 
 ### Added

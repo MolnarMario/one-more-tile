@@ -1123,7 +1123,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.29.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.30.0';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -1295,9 +1295,25 @@ function choosePlots(){
     ZONES = CASTLE_ZONES.map((z, k) => Object.assign({ idx: k, name: 'Plot ' + ROMAN[k] }, z));
     PICROSS = CASTLE_PICROSS.map((p, k) => Object.assign({ idx: k, name: 'Patch ' + ROMAN[k] }, p));
   } else {
-    const pl = placePlots(SEED);
+    // auto-placed: prefer the baked geometry so the plots stay put no matter
+    // what seed the board is woven at (see bakedLayout)
+    const b = bakedLayoutIfAny(m.id);
+    const pl = (b && b.zones && b.picross) ? bakedPlots(b) : placePlots(SEED);
     ZONES = pl.zones; PICROSS = pl.picross;
   }
+}
+// The baked tables and bakedLayout() live down in the generation section, which
+// is OUTSIDE the "Block A" range that _build_editor.js / _build_inspector.js
+// extract to build the dev tools (CLAUDE.md §8.7). Guarding the lookup keeps a
+// rebuilt tool working: in the game this always resolves, and in a generated
+// tool it falls through to growing/placing the layout exactly as before.
+function bakedLayoutIfAny(id){ return typeof bakedLayout === 'function' ? bakedLayout(id) : null; }
+// rehydrate baked plot descriptors into what placePlots would have returned
+function bakedPlots(b){
+  return {
+    zones:   b.zones.map((z, k) => Object.assign({}, z, { idx: k, name: 'Plot ' + ROMAN[k] })),
+    picross: b.picross.map((p, k) => Object.assign({}, p, { idx: k, name: 'Patch ' + ROMAN[k] })),
+  };
 }
 
 // (re)compute zoneOf/picrossOf + each plot's cell list for the current layout
@@ -1550,8 +1566,10 @@ function attachPlots(){
 function buildLayout(){
   choosePlots();
   fillPlotCells();
-  const L = mapDef().layout && HAND_LAYOUTS[mapDef().layout];
-  if (L) applyHandPartition(L); else growRegions();   // hand-drawn partition, or the watershed
+  // hand-drawn partition, else the baked one (same format — see bakedLayout),
+  // else grow it with the watershed
+  const L = (mapDef().layout && HAND_LAYOUTS[mapDef().layout]) || bakedLayoutIfAny();
+  if (L && L.regionRLE) applyHandPartition(L); else growRegions();
   healRegions();   // guarantee every region is one connected blob (no stray cells to hunt)
   attachPlots();
   picrossByRegion.clear();
@@ -2190,6 +2208,181 @@ const AUDIT_MODE = /[?&]audit=/.test(location.search);
 // map; menuLaunch() then loads that map's image and runs startGeneration().
 // ?audit=1 still bypasses everything and lets auditGivens() drive the pipeline.
 
+// ---------- baked boards (precomputed generation output) ----------
+// The whole pipeline is deterministic from SEED, so the expensive half of it
+// ships as DATA rather than being recomputed on every machine: a cold build
+// costs 0.6-2.1s of weave+repair plus 1.1s (Castle/Medium) to ~35s
+// (Angels/Medium) of clue thinning, and every player was paying it for the
+// same bytes. Three artifacts are baked (see bakeBoards / ?bake=):
+//   BAKED_LAYOUT — the region partition + plot geometry, but ONLY for the maps
+//       that derive them at runtime (castle/crew/fighters go through
+//       growRegions()/placePlots(); the rest already ship a HAND_LAYOUTS entry).
+//       Inline: tiny, and needed before anything else runs.
+//   BAKED_SOL   — sol[] at 1 bit/cell, pre-picross-shaping (exactly what the
+//       IndexedDB cache stores, so it stays tier-independent). Inline: ~27KB
+//       for all nine maps.
+//   boards/<map>.js — clue[] at 4 bits/cell for all five tiers, ~26-125KB per
+//       map, loaded lazily for the map actually being played.
+// Baking also closes the pipeline's one non-deterministic seam: sampleImage()
+// depends on the browser's drawImage downscale, and that feeds both sol and
+// edge[] -> regionOf. With all three baked, every player provably gets the same
+// board; only cellCol (the revealed artwork) is still sampled per machine.
+// EVERY lookup degrades to null on any problem — missing file, wrong dims,
+// stale BOARD_COMPAT, corrupt base64 — and the game falls back to generating
+// for real, exactly as it did before. A bake can make the game slower; it must
+// never make it wrong.
+const BAKE_MODE   = /[?&]bake=/.test(location.search);          // produce the payload
+const VERIFY_BAKE = /[?&]verifybake=/.test(location.search);    // prove it equals a real build
+// Both bake modes must generate for real — one IS the source of truth, the
+// other is checking it. ?audit=1 and ?nocache=1 opt out for the same reason.
+const BAKED_OFF = AUDIT_MODE || BAKE_MODE || VERIFY_BAKE || /[?&]nocache=/.test(location.search);
+// BOARD_COMPAT the inline tables below were baked at. A mismatch means someone
+// changed generation without re-baking: ignore the tables and generate.
+// (boards/<map>.js carries its own stamp, checked in BAKED.put.)
+const BAKED_COMPAT = 4;
+
+// ---- bit packing. sol = 1 bit/cell LSB-first; clue = 4 bits/cell, 15 = "no
+// clue" (values are -1 or 0..9, so 11 symbols fit a nibble with room to spare)
+function bytesToB64(u8){
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function b64ToBytes(s){
+  let bin;
+  try { bin = atob(s); } catch (e) { return null; }
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function packBits(src, n){
+  const out = new Uint8Array((n + 7) >> 3);
+  for (let i = 0; i < n; i++) if (src[i]) out[i >> 3] |= 1 << (i & 7);
+  return out;
+}
+function unpackBits(b, n){
+  const out = new Uint8Array(n);
+  for (let i = 0; i < n; i++) out[i] = (b[i >> 3] >> (i & 7)) & 1;
+  return out;
+}
+// `keep(i)` gates which cells carry a clue at all — the plot cells are rebuilt
+// at load time by setupPicross/regenZones, so only organic cells are stored
+// (this mirrors the organic-cells-only merge in regenClues)
+function packNibbles(src, n, keep){
+  const out = new Uint8Array((n + 1) >> 1);
+  for (let i = 0; i < n; i++){
+    const v = (keep(i) && src[i] >= 0 && src[i] <= 9) ? src[i] : 15;
+    if (i & 1) out[i >> 1] |= v << 4; else out[i >> 1] |= v;
+  }
+  return out;
+}
+function unpackNibbles(b, n){
+  const out = new Int8Array(n);
+  for (let i = 0; i < n; i++){
+    const v = (i & 1) ? (b[i >> 1] >> 4) & 15 : b[i >> 1] & 15;
+    out[i] = v === 15 ? -1 : v;
+  }
+  return out;
+}
+
+// ---- the inline tables. Spliced in by _bake_boards.js between these markers;
+// hand-editing them is pointless — re-run the bake instead.
+/* BAKED_LAYOUT:BEGIN */
+const BAKED_LAYOUT = {
+  "castle": {"gw":120,"gh":64,"regPix":18,"zones":[{"x":57,"y":4,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":18,"y":38,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":86,"y":44,"n":9,"boxW":3,"boxH":3,"jigsaw":true,"givens":38},{"x":100,"y":10,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":4,"y":14,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15},{"x":52,"y":50,"n":9,"boxW":3,"boxH":3,"jigsaw":false,"givens":36},{"x":26,"y":16,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":28,"y":52,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15}],"picross":[{"x":30,"y":8,"n":8},{"x":70,"y":20,"n":7},{"x":43,"y":41,"n":7},{"x":102,"y":24,"n":8},{"x":40,"y":26,"n":6},{"x":66,"y":42,"n":6},{"x":12,"y":26,"n":7},{"x":108,"y":40,"n":6}],"regionRLE":[0,23,1,43,2,33,3,21,0,25,1,41,2,34,3,20,0,26,1,39,2,35,3,20,0,26,1,33,2,41,3,20,0,26,1,31,-2,4,2,40,3,19,0,26,1,31,-2,4,2,8,4,4,2,28,3,19,0,26,1,31,-2,4,4,15,2,26,3,18,0,26,1,31,-2,4,4,15,2,26,3,18,0,26,1,4,-2,8,1,23,4,15,2,25,3,19,0,26,1,4,-2,8,1,25,4,13,2,25,3,19,0,26,1,4,-2,8,1,26,4,14,2,22,-2,4,3,16,0,26,1,4,-2,8,1,25,4,15,2,22,-2,4,3,16,0,26,1,4,-2,8,1,23,4,17,2,22,-2,4,3,16,0,26,1,4,-2,8,1,22,4,18,2,22,-2,4,3,16,0,4,-2,6,0,16,1,4,-2,8,1,20,4,20,2,24,3,18,0,4,-2,6,0,16,1,4,-2,8,1,20,4,20,2,23,3,19,0,4,-2,6,0,16,-2,6,5,6,1,19,4,20,6,5,2,18,3,20,0,4,-2,6,0,16,-2,6,5,7,1,1,5,1,1,16,4,19,6,7,2,17,3,20,0,4,-2,6,0,16,-2,6,5,10,1,15,4,18,6,11,2,12,6,2,3,20,0,4,-2,6,0,15,7,1,-2,6,5,13,1,12,4,17,6,14,2,9,6,4,3,19,0,19,7,2,0,3,7,2,-2,6,5,15,1,10,4,13,-2,7,6,13,2,6,6,6,3,18,0,16,7,10,-2,6,5,16,1,9,4,1,8,5,4,5,8,2,-2,7,6,14,2,4,6,7,3,18,0,15,7,13,9,5,5,16,1,1,5,1,1,5,8,8,4,2,8,4,-2,7,6,14,2,2,6,1,2,1,6,7,3,15,10,3,0,14,7,14,9,5,5,19,8,18,-2,7,6,25,3,12,10,6,0,13,7,14,9,7,5,18,8,18,-2,7,6,25,-2,8,3,3,10,7,0,12,7,15,9,9,5,16,8,18,-2,7,6,25,-2,8,3,1,10,9,0,12,-2,7,7,7,9,11,5,3,-2,6,5,5,8,19,-2,7,6,25,-2,8,10,10,0,12,-2,7,7,7,9,13,5,1,-2,6,5,4,8,24,6,27,11,1,-2,8,10,10,0,12,-2,7,7,6,9,15,-2,6,5,3,8,24,6,26,11,3,-2,8,10,10,0,12,-2,7,7,6,9,15,-2,6,8,27,6,25,11,4,-2,8,10,10,0,12,-2,7,7,7,9,14,-2,6,8,27,6,23,11,6,-2,8,10,10,7,3,0,9,-2,7,7,9,9,12,-2,6,8,26,6,18,12,5,11,7,-2,8,10,10,7,4,0,8,-2,7,7,9,9,18,13,3,8,23,6,16,12,8,11,11,10,13,7,5,0,1,7,1,0,7,7,14,9,18,13,3,8,23,6,14,12,11,11,11,10,12,7,8,0,2,7,11,9,4,7,3,9,18,13,6,8,20,6,9,12,13,11,15,10,11,7,20,9,6,7,2,9,18,13,8,8,17,6,6,12,16,11,17,10,10,7,21,9,5,7,2,9,14,14,2,9,1,13,11,8,15,6,2,12,19,11,18,10,10,7,20,9,7,7,1,9,13,14,3,13,12,8,15,6,1,12,18,11,21,10,9,7,18,-2,6,9,17,14,4,13,11,8,16,12,15,11,24,10,9,7,18,-2,6,9,17,14,4,13,11,8,15,12,15,11,14,12,2,11,5,12,1,11,3,10,9,7,18,-2,6,9,14,14,7,13,11,8,15,12,16,11,10,12,6,11,1,12,4,-2,6,15,6,7,18,-2,6,9,14,14,5,-2,7,13,6,8,16,12,36,-2,6,15,6,16,3,7,15,-2,6,9,14,14,5,-2,7,13,6,8,10,-2,6,12,36,-2,6,15,6,16,5,7,13,-2,6,9,14,14,5,-2,7,13,8,8,7,13,1,-2,6,12,36,-2,6,15,6,16,6,7,15,14,3,9,13,14,6,-2,7,13,8,8,5,13,3,-2,6,12,14,-2,9,12,13,-2,6,15,6,16,8,7,2,16,3,7,6,14,6,9,7,14,3,9,2,14,6,-2,7,13,9,8,3,13,4,-2,6,12,14,-2,9,12,13,-2,6,15,6,16,14,7,4,14,9,9,2,14,1,9,3,14,10,-2,7,13,16,-2,6,12,14,-2,9,12,16,15,9,16,14,7,3,14,26,-2,7,13,16,-2,6,12,14,-2,9,12,17,15,8,16,17,14,27,17,3,13,24,12,15,-2,9,12,18,15,7,16,18,14,25,17,10,13,18,12,15,-2,9,12,17,15,8,16,18,14,24,17,10,-2,9,13,10,12,15,-2,9,12,17,15,8,16,18,14,16,17,1,14,2,17,15,-2,9,13,10,12,15,-2,9,12,17,15,8,16,28,-2,6,17,18,-2,9,13,10,12,15,-2,9,12,19,15,6,16,28,-2,6,17,18,-2,9,13,11,12,44,15,4,16,27,17,1,-2,6,17,18,-2,9,13,11,12,44,15,4,16,25,17,3,-2,6,17,18,-2,9,13,12,12,42,15,5,16,13,17,15,-2,6,17,18,-2,9,13,13,12,40,15,6,16,9,17,19,-2,6,17,18,-2,9,13,14,12,39,15,6,16,8,17,44,-2,9,13,15,12,36,15,8,16,6,17,50,13,21,12,31,15,12,16,4,17,52,13,22,12,29,15,13,16,4,17,52,13,22,12,25,15,2,12,1,15,14,16,4,17,52,13,22,12,19,15,23,16,4,17,52,13,24,12,16,15,24]},
+  "crew": {"gw":146,"gh":53,"regPix":11,"zones":[{"x":104,"y":30,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":10,"y":15,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":26,"y":10,"n":9,"boxW":3,"boxH":3,"jigsaw":true,"givens":38},{"x":62,"y":35,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":84,"y":45,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15},{"x":113,"y":40,"n":9,"boxW":3,"boxH":3,"jigsaw":false,"givens":36},{"x":123,"y":33,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":98,"y":0,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15}],"picross":[{"x":130,"y":21,"n":8},{"x":63,"y":42,"n":7},{"x":37,"y":27,"n":7},{"x":21,"y":32,"n":8},{"x":118,"y":25,"n":6},{"x":97,"y":7,"n":6},{"x":113,"y":9,"n":7},{"x":81,"y":4,"n":6}],"regionRLE":[0,19,1,79,-2,6,2,42,0,20,1,78,-2,6,2,42,0,22,1,76,-2,6,2,42,0,22,1,2,0,1,1,73,-2,6,2,42,0,25,1,56,-2,6,1,11,-2,6,2,42,0,32,1,49,-2,6,1,10,2,1,-2,6,2,42,0,33,1,48,-2,6,1,10,2,49,0,33,1,48,-2,6,1,9,3,1,-2,6,2,43,0,34,1,47,-2,6,1,8,3,2,-2,6,2,43,0,35,1,46,-2,6,1,7,3,3,-2,6,2,10,-2,7,2,26,0,26,-2,9,1,57,3,5,-2,6,2,10,-2,7,2,26,0,26,-2,9,1,56,3,6,-2,6,2,10,-2,7,2,26,0,26,-2,9,1,55,3,7,-2,6,2,10,-2,7,2,26,0,26,-2,9,1,53,3,15,2,10,-2,7,2,26,0,18,4,1,0,7,-2,9,1,17,5,3,1,32,3,21,2,5,-2,7,2,26,0,10,-2,6,4,4,0,3,4,3,-2,9,1,15,5,6,1,30,3,22,2,5,-2,7,2,26,0,10,-2,6,4,4,0,1,4,5,-2,9,1,13,5,8,1,29,3,24,2,37,0,10,-2,6,4,10,-2,9,1,11,5,11,1,25,3,28,2,36,0,10,-2,6,4,10,-2,9,1,10,5,13,1,24,3,27,2,11,6,1,2,1,6,1,2,3,6,1,2,19,0,10,-2,6,4,9,5,9,1,10,5,14,1,23,3,28,2,10,6,14,2,13,0,2,4,6,0,2,-2,6,4,9,5,10,1,8,5,16,1,21,3,30,2,9,6,14,2,13,0,1,4,24,5,12,1,3,5,19,1,15,3,36,6,2,2,7,6,11,-2,8,2,8,4,25,5,35,1,13,3,31,6,1,3,1,6,1,3,1,6,5,2,4,6,13,-2,8,2,8,4,26,5,34,1,14,3,29,6,12,2,1,6,14,-2,8,2,8,4,21,5,2,4,3,5,34,1,14,3,30,6,26,-2,8,2,8,4,20,5,4,4,1,5,34,1,14,3,32,6,13,-2,6,6,6,-2,8,2,8,4,20,5,39,1,12,3,33,6,14,-2,6,6,6,-2,8,6,1,2,7,4,19,7,1,5,17,-2,7,5,4,8,3,5,7,8,1,1,11,3,28,6,3,3,2,6,15,-2,6,6,6,-2,8,6,2,2,6,4,18,7,3,5,16,-2,7,5,3,8,5,5,4,8,4,1,9,3,29,6,20,-2,6,6,6,-2,8,6,2,2,6,4,16,7,6,5,14,7,1,-2,7,5,2,8,14,1,8,3,29,6,21,-2,6,6,15,2,7,4,16,7,7,5,7,7,2,5,3,7,2,-2,7,8,15,1,8,3,29,6,8,-2,4,6,10,-2,6,6,14,2,8,4,16,7,7,5,7,7,7,-2,7,8,15,1,7,3,28,6,10,-2,4,6,29,2,9,4,16,7,5,-2,8,7,8,-2,7,8,14,1,7,3,29,6,10,-2,4,6,28,2,10,4,17,7,4,-2,8,7,8,-2,7,8,14,1,7,3,29,9,4,6,6,-2,4,6,15,-2,6,6,7,2,10,4,17,7,4,-2,8,7,12,8,18,1,5,3,29,9,7,6,23,-2,6,6,6,2,11,4,18,7,3,-2,8,7,12,8,20,1,1,-2,4,3,27,9,6,6,24,-2,6,6,5,2,12,4,18,7,3,-2,8,7,13,8,20,-2,4,3,27,9,6,6,24,-2,6,6,5,2,12,4,18,7,3,-2,8,7,12,8,21,-2,4,3,19,9,1,3,7,9,5,6,25,-2,6,6,4,2,13,4,13,7,3,4,1,7,4,-2,8,7,12,8,21,-2,4,3,19,9,4,3,3,9,6,6,25,-2,6,6,5,2,12,4,12,7,9,-2,8,7,13,8,22,3,21,9,13,6,37,2,11,4,11,7,31,8,12,7,3,8,12,3,16,9,13,6,15,-2,9,6,14,2,10,4,11,7,32,8,10,7,4,8,13,3,15,9,13,6,15,-2,9,6,14,2,10,4,11,7,33,8,7,7,6,8,6,-2,7,3,15,9,13,6,15,-2,9,6,12,10,3,2,9,4,14,7,33,8,2,7,8,8,6,-2,7,3,15,9,13,6,15,-2,9,6,8,10,7,2,9,4,15,7,42,8,6,-2,7,3,16,9,12,6,15,-2,9,6,8,10,7,2,9,4,16,7,40,8,7,-2,7,3,14,-2,6,9,9,6,14,-2,9,6,8,10,8,2,8,4,17,7,40,8,6,-2,7,3,14,-2,6,9,10,6,13,-2,9,6,8,10,8,2,8,4,18,7,39,8,6,-2,7,3,14,-2,6,9,11,6,12,-2,9,6,8,10,8,2,8,4,18,7,41,8,4,-2,7,3,14,-2,6,6,1,9,7,6,15,-2,9,6,9,10,8,2,7,4,18,7,42,8,10,3,14,-2,6,6,41,10,9,2,6,4,18,7,42,8,10,3,14,-2,6,6,41,10,11,2,4,4,18,7,43,8,2,7,1,8,5,3,19,6,44,10,11,2,3,4,18,7,50,3,20,6,44,10,11,2,3]},
+  "fighters": {"gw":117,"gh":66,"regPix":13,"zones":[{"x":99,"y":14,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":101,"y":3,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":28,"y":25,"n":9,"boxW":3,"boxH":3,"jigsaw":true,"givens":38},{"x":98,"y":47,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":86,"y":54,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15},{"x":100,"y":54,"n":9,"boxW":3,"boxH":3,"jigsaw":false,"givens":36},{"x":57,"y":7,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":75,"y":4,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15}],"picross":[{"x":98,"y":19,"n":8},{"x":44,"y":19,"n":7},{"x":69,"y":12,"n":7},{"x":29,"y":14,"n":8},{"x":89,"y":6,"n":6},{"x":13,"y":54,"n":6},{"x":75,"y":26,"n":7},{"x":7,"y":23,"n":6}],"regionRLE":[0,11,1,20,2,86,0,12,1,20,2,85,0,13,1,14,2,1,1,5,2,33,3,1,2,50,0,14,1,13,2,2,1,4,2,31,3,4,2,33,-2,6,2,10,0,15,1,11,2,26,3,4,2,3,3,16,-2,6,2,20,-2,6,2,10,0,12,1,14,2,27,3,5,2,1,3,16,-2,6,2,20,-2,6,2,10,0,12,1,14,2,28,3,21,-2,6,2,8,-2,6,2,6,-2,6,2,10,0,12,1,14,2,28,3,3,-2,6,3,12,-2,6,2,8,-2,6,2,6,-2,6,2,10,0,12,1,13,2,28,3,4,-2,6,3,12,-2,6,2,8,-2,6,2,6,-2,6,2,9,4,1,0,11,1,14,2,24,3,8,-2,6,3,6,2,1,3,1,2,1,3,3,-2,6,2,8,-2,6,2,20,4,2,0,12,1,13,2,23,3,9,-2,6,3,5,2,21,-2,6,2,19,4,3,0,12,1,12,2,24,3,9,-2,6,3,5,2,21,-2,6,2,18,4,4,5,2,0,10,1,13,2,23,3,9,-2,6,3,5,2,1,-2,7,2,37,4,4,5,3,0,11,1,12,2,22,3,21,-2,7,2,37,4,4,5,3,0,12,1,13,2,1,-2,8,2,10,3,22,-2,7,2,23,-2,4,2,10,4,4,5,3,0,14,1,12,-2,8,2,7,3,14,6,1,3,10,-2,7,2,23,-2,4,2,9,4,5,5,3,0,14,1,12,-2,8,2,5,6,2,3,13,6,3,3,7,6,2,-2,7,2,23,-2,4,2,9,4,5,5,3,0,11,7,3,1,12,-2,8,2,3,6,5,3,12,6,3,3,6,6,3,-2,7,2,20,4,3,-2,4,2,9,4,5,5,3,0,10,7,5,1,4,7,5,1,2,-2,8,2,2,6,5,3,12,6,5,3,4,6,4,-2,7,2,20,4,5,2,10,4,6,5,4,0,8,7,7,1,2,7,7,1,1,-2,8,2,1,6,6,-2,7,3,4,6,7,3,2,6,10,2,21,4,3,-2,8,2,5,4,6,5,4,0,6,7,19,-2,8,6,7,-2,7,3,1,8,2,6,21,2,2,6,1,2,16,4,4,-2,8,2,5,4,6,5,5,0,4,7,20,-2,8,6,7,-2,7,8,4,6,24,2,12,4,7,-2,8,9,2,2,2,4,7,5,6,0,3,7,24,6,11,-2,7,8,3,6,24,2,11,4,9,-2,8,9,3,4,8,5,6,0,1,-2,6,7,20,6,11,-2,7,8,3,6,25,2,9,4,10,-2,8,9,6,4,5,5,7,-2,6,7,21,6,10,-2,7,8,3,6,25,2,8,4,11,-2,8,9,6,4,5,5,7,-2,6,7,15,-2,9,6,7,-2,7,8,3,6,25,2,8,4,11,-2,8,9,5,4,6,5,7,-2,6,5,1,7,14,-2,9,6,10,8,7,6,21,-2,7,2,5,4,11,-2,8,9,5,4,6,5,7,-2,6,5,1,7,14,-2,9,6,11,8,7,6,20,-2,7,4,1,2,4,4,19,9,6,4,5,5,7,-2,6,5,2,7,13,-2,9,6,12,8,7,6,19,-2,7,4,3,2,1,4,20,9,6,4,5,5,15,7,13,-2,9,6,1,10,1,6,11,8,7,6,18,-2,7,4,2,2,2,4,20,9,6,4,5,5,15,7,13,-2,9,10,3,6,10,8,7,6,18,-2,7,4,3,2,1,4,21,9,5,4,5,5,14,7,14,-2,9,10,3,6,11,8,7,6,17,-2,7,4,24,9,6,4,5,5,14,7,14,-2,9,10,3,6,10,8,7,6,18,-2,7,4,24,9,6,4,5,5,14,7,2,11,1,7,11,-2,9,10,3,6,11,8,4,6,28,4,24,9,5,4,5,5,13,11,5,7,16,10,6,6,43,4,25,9,4,4,5,5,13,11,5,7,16,10,7,6,41,4,27,9,3,4,5,5,12,11,6,7,16,10,8,6,41,4,34,5,11,11,8,7,14,10,10,6,42,4,32,5,10,11,9,7,13,10,11,6,42,4,32,5,9,11,9,7,15,10,10,6,43,4,31,5,7,11,10,7,17,10,8,6,43,4,32,5,7,11,12,7,14,10,4,6,1,10,1,6,46,4,32,5,3,11,1,5,2,11,13,7,17,6,49,4,32,5,3,11,16,7,17,6,48,4,33,5,2,11,17,7,18,6,46,4,34,5,3,11,15,7,18,6,46,4,35,5,5,11,13,7,18,6,46,4,35,5,5,11,14,7,18,6,47,4,11,6,2,4,1,-2,4,4,15,5,5,11,14,7,17,6,49,4,9,6,4,-2,4,4,15,5,4,11,14,7,18,6,49,4,9,6,4,-2,4,4,15,5,4,11,14,7,18,6,49,4,10,6,3,-2,4,4,15,5,4,11,13,7,20,6,49,4,9,6,6,4,16,5,4,11,13,7,15,12,2,7,1,6,51,4,10,6,4,4,17,5,4,11,13,7,14,12,4,6,52,4,9,6,4,4,17,5,4,11,9,-2,6,7,12,12,4,6,51,-2,6,4,3,6,5,-2,9,4,8,5,4,11,9,-2,6,7,5,12,2,7,5,12,4,6,51,-2,6,4,2,6,6,-2,9,4,8,5,4,11,9,-2,6,7,5,12,3,7,1,12,2,7,1,12,4,6,51,-2,6,4,1,6,7,-2,9,4,8,5,4,11,9,-2,6,7,4,12,4,7,1,12,7,6,51,-2,6,6,8,-2,9,4,8,5,4,11,9,-2,6,12,17,6,50,-2,6,6,8,-2,9,4,8,5,6,11,7,-2,6,12,17,6,50,-2,6,6,8,-2,9,4,8,5,6,11,12,12,19,6,63,-2,9,4,8,5,7,11,6,12,4,11,1,12,19,6,63,-2,9,4,8,5,13,12,24,6,63,-2,9,4,8,5,14,12,23,6,69,4,11,5,14,12,26,6,66,4,11,5,15,12,25,6,66,4,11]},
+};
+/* BAKED_LAYOUT:END */
+/* BAKED_SOL:BEGIN */
+const BAKED_SOL = {
+  "portal": {"gw":237,"gh":158,"b":"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"},
+  "inferno": {"gw":184,"gh":164,"b":"fvR33fH3f3+/uf7/fwX+2t8/v268lJ3Vs+o7v6i1m9XnZ2Jtp9fv+hPy/z/A+79v39vf+/Vnv/d9///t+5//I/HpHfD/4E/tfn+f775nf/r/t3k94BUR+LEPOxcp/G//X6+/6fpu5b3V9acSPwD//+r7g3i+/du/u/+v+99L7/+XoYF+VPN/x20RfNbvf2b/7//D8wF/9/bF5m8BH9lht4Lbvrv9/c5/22D/AvJe78D/7wV227MXIP13zmBuhdkfcDs7tIJ8+P//aPt7AUiIHm1uVaTNvxOiXwf7Hixh27/x3/WIEAHrL2ZRrK9/n/jvZf/6CPjwn/Tb6CSRZN59YFFsjvVS7vDv/+wD2lTNMN9xJUQAN3puWe4smh8AWn/73pDsf2fgb0IKgBL/b25Rru19CoD/3P8fFHgcEO4taEEyQLJ95mC2LueH85z7rw15sO+9t1eECgAC/zfG8zmGXub+t1A7hmvhvxr93wEACAme/ff////555/f9/32/1hrv3v2GVBBrPlN+sre99+P9+2071/+tf//r/6MGQB+//1vR0etfwX4878vs1vtv2FavR0ISED2/f+s3Pu1QwSJ7/3bH39rD9ROu0AiGf+b0vz21/73hyD73/a6tm+G9OcbNQAo9f/////+z/VeLLw4+3f7djNU+y0BEEC9zMGSg8O7WluAIPe9787+9fzNPpKCAfe62eKtJfP81UEU/M/+/yo9v+97JXQIvTaZ5v5m4rr/AREU+tu99+/WX2wASETtfIlf/ubK6v4hYGY0gO9sPf86uEAlI/984VsK5orG/4kEEAAU3u+L8PAcgYBBqjbJwb5msvLvURKKiEAQfwCS/nQoUkj/vpmdvSV7/v8TQCHBCGs9AhFcK2AACNzAubmBg/u+/zoBFUB0Xw8EIqzrAGEa+/3v3e//3dv/wyYAWSTsm2fg/KvGAqC/v13v/mw/3+//R4QEA9/330j8LGAiAOb3/r+3++////kbESEM/2z+RiIAhIC0twC6Jm+bALJrX7+AyHL4//t/KJfCJeT+5Ms+CDXdf/n/7wICgNj13x+ANKEQgbu/N+ff/28/b9v9EVgBgt++JaOzGIJWX7/de+y/uto+M31L4yaA/yci8AFAC8D9n6V91df+f9PX7y5QgDqrAQEOkxPHiFf/cx3I5/973/9bT0AQ3Py4jX0GQgCE918fb/Hf893v3/4/BRB5+7AfuQiYNSH2fesf8H7099p39z1qgODd+WwvxYBOEmNv57u0t/6t7/+//wAA4H7/7zkAGZ5Z8tHuY35rM/4fsNk/Aknk0la7PRIGOFC3//9/7Nv//xIud/w5YOXr+8+DQPFD0OP/7e8/vfnbhPv7Z2MQgubejRSQtMtA0X2/7di/z36Q7lc1GwKpe+8CQjTe4uByfvy+57f9H4Dv/z4/UQyYtQUTAqBPiIl/gHnc5/eb+fPbtQeECgBtoASE4LzhY8875/+/ARy47TffJRsggAwhpSDKT4GP+f/b+v8pHMJbfU/IAggAJDKCGJF5kgbi9v8/a+4g//d1BnBAAgOcGghkAhbAVoEv7+8//wh2/zsGtXIhV0IGGQLwycknZHy1/QpyRTyY/SQCRBCAgyeARNwrGZeA82uo+Z8QgHXXRIKQYhPMFmCIN0yQFiTU//DfDglx/96gMQQhMJCgCcB//pVXCPF+7LeXmenX32AIsAARDII00Xy2QxXGwOi7fdaZ9dW6qpQeAAAnLRBYf37AN4gE5Je3z7xvtn0x4Q2ZssEJAb13DosWERIb1/9227z/d4gAAkEAOBEI3DscbFegYAS+b+/lT18/EGWkURAg9An8vsCPNkQEgff7a/vL33shOAAIghMAiIj3ya+fUlQQ3v7dvnf/Qg6AH0AAgLgj4PEEzBfqpAT3/f7rrd8HxAHHpZAQDEwFroCuVQChkbj7979/+CoAJgAwQQKJQoDXye1XATIAAP3v36/vkSyu2AECKLkAEOzr9VclCoUhtOW7f1wDgCX5TAxAQJSqfKu9V0gQiAjb99f//4MXACC9RIIKAADhe/9XgnIIwPd2v+/vsw4r/gEADAApBXjfa1eAAyGC/73tXFC3loD8f5gRREAghPvMVxAhlEqeb/t//P0PYPMXgYCLjJnw/b9XaRYIHgJ+22m/3070d8X0lWBAAAHO/1cit0hUIMG/h/emKXq/bo9UQhQkGH9mVCCwIT4QwBYH+q1P7jRsgQBFYAlDLHeWFFITcXb+P+Xc9wPb/bw4CxBEEKDuf9dAGBL1N+8W/79bAf8/7iAhAJgiRPhlN4QYVgHutO/ezZlTF/f3iaEMXAkBNQQWyIQEUP/vzHdf5Mc+9LZG0gXiROo0AJcBHPAC0H2fPl/HDnO/9k/AF4AMEXjMlhhAAg7A7u730NT6b/3u+9QGQAB8NKR3pEACTC5/i/ZD6f0vwGZf/z8JZvAQJoXkOVD+/lPFv1XdMXbX6J+tEwOOuWJIN0JCpOzXPeE7sn8bDsquJt8hfwzYcydzwBhBtH0uIFX69F9+xI+e/QQLDcnjQRIKgsjDaQ+YfnMt+3zFIJ73Ai5cR2MBFxBFwT3/iDou63tfWIwJGcNIBn/npcFHABgA+5689p0VbnvYhmAQ50mK8zPEAOWEQYLeG9jv+Xd97vnGeaC73ZuPGAnAxxQIEXaP/N/4Rzf2WJZ9FWwbw50MIeXVCFBQyH+92aVhPi58lESJP/cPBqEAaPeFArj4mdT/vaRt7niUEAO/812GnBg8tyHEvCMG2Ef4zmbIyq1kSZi/LWECxr7V0yDwnRB47na0dxhfqJwhI33fayLDZPeDJNBPaNJDPf16MZuuhDQw2N8/CNKgdSPw8goFcTHnr10tzykoEBLju41CJnCla0LwOwTIZytc/KwSJBDYAR/8D4kBLnBrEssNAeD1/uttATgoNzEn9o1cRIIHsS+Jw14FZdG/cTAgmCAaIICiApfKlUDy3SiHbwKg4TaxcaTaJraCACahN+LZCfAWAB50Jej7I/945tkGYaQ0QP8LiqHM1DRb/H8S4Y7j5lSjWSInAoII+kqUk93mQQo7O0Gkcec3UKDQAEaIGsEwF+2KC/chb/e5oMH2taVTZ58dAiEfFTKS7RmBVSEKPx8pzLvnZ0bjWV8ZwEABO4ZwAyD3oczZCmWRH+MOaIpZj4/IDSlek3wAN/IjDtovAKjMZ4Z4ACCTIEYkiDwAGCmjYDYvmkcQgBzNRH9JEJgogAD0JxIcAPa0d4aeApAEHcbwjADCmpG3kGEHmVQLe/G2Ct4jsDCP3FJTECRQAFcN/JCdXisK1iZI7EpAjp1ulAHXoRllBGhGQBYdWkoFAAS/kwIEHsEExJwpKwECsQAiP1jqIBBVBvcBOGDUPZC7EGCaJmKyI7icD4qEokBOPhKBSNoXA1gCIDkAB/IbP55/jBAgRip1RADGHoR3cCJFFFIhsQ1rgMJchgVKLIyAQcLeA+8TAg1Q8MP5MS+HQZ1EmgCkMKiBtBeYGUASlwlIsd8CFxVJEA4AAi4gVkDAGdqBBIGDhDTHUXFDcPA7ArCWiQYBCMCL26yi7JdYPqMcZMBABJFwgiLsEJrEJAeTCjBgEsxj8oAgFCImAIACEu6gAAChH2rAKGClYWTC5GARBCK+WrhyLgpgSIDTAQaEdCho0iZEZJPkYEFAMjIAAgBSmiYE3QBkIDNShgCwkX3lqEK4jEDXQIKQI9BOIECizt+EChbQBZDTFLLJT1kgkADLfxR6gpWIIPxeREIABNgLgBhuGAQCpGEFEHgJAE4FrD8lGCGR8GoShC1AYyCA9Rlh6MEAENz0HgABOQxSKgAgSAMwRaVDJwVrMKaDkyARINwzjEOAYBOBAAACxFA+ACACPgCBQIJkPQCXmxUVADAACZCDO8CfgkDIShInnmA6ARYawEFlggEwCZri/xgmGYWTgA8grnenBgiAAgAAIEDMoxIpSOjSPwH8+n8YFbA5gU3yBzBgBgEFgJPY2QosrM8eA2AkIIntLS3/AgGSJAgAAACoQGD/xn3jyUO2Qn8uEfiBmgDAURMgFAKAhxPHt1+/AyDqPkBE3xcYJuVBQUkyDwuAR85/nAVrEsKNIE0OJmEghMkjDAYj4JoJIP5vnW/yCFEJBwRDFBAjydEYTgzIthMShIusA9LAB0ATogCQ5QNJwUCWgJk8Q0CAHtBF/it+BJYrk7iGEkgILA6Sf1QKhOUf+EnhAHqiJCMGEYDgicFAngh+2sNIYoe8IcAD6wWAAzYWEA/xhBEFETe+AYrgC3AXEp2Aa4oaFxhQ8AWSCfyaP/wYJoTl/wABwoEDUYJHcViQgACZ7EDcyqAC4Ms/JfIAMQEEzgIiGAVojADPF0/wVCZ5zxIQcNkBcAkoERAAUAYRki4DAPIALMnif5M+yAlskFiBRGQgCYnAGKg2wQgqyZPHfK8jCRJJgSiSAYn/EYyAAqBwVKHoFBDe/QAEEAQCEYkCADSUgELSAHoMCHggTSn/K8qNIDExUDxAIgnYCAgM0AMMapD8B28uAMCpcDgk0QGpQL8gAxupwUD5ZC5eAK0IZgjcBEEBfSAQ5A1fAogJANgEjgwNP2DgEXkgCA0geiYfhiP/E4IJ8AA40m0LADNAIQJkIKJgCcFgRumP8CHlMi8MnocvUKoQkBJm0AUgBI58AEfSi2UuxoIHP4AyEFRQiMqDAEghgcgASKSPcIGUxJ4D6HhIUBABwQdJYUESiVIgKcvhywAgDEEhsaISQBBsKCEoSY9qACYEgccIE+jAqAH4CGIgpmwlgkGEJwAGgWSIimIwTRTOxqCSgBUgTDIUIDMCAF+AIEAARiAL0gDxS0gUgAoxAAUHAoAg8RIAgagAuUABAOADCAMBgMSCqAahFIDbOwASwijwg7Ys2EtCpuQkcAIEKwoEgMI9QxAIFCB7hcCDgzRIRABAgAhJQCCTEPwMgABABQyAIBUSSCRZiCIBIAEQywTCyPMOxYAfAFAM4AAREwASOEoSVkIASAsStFfoEvikiUAFrA=="},
+  "angels": {"gw":204,"gh":136,"b":"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"},
+  "amigos": {"gw":144,"gh":95,"b":"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"},
+  "blinding-lights": {"gw":111,"gh":200,"b":"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"},
+  "zenitsu": {"gw":117,"gh":66,"b":"gQtAhAgsQEIAgRWsAABADagVJBRQFiMbPcqI2ikBAF5QIIRgJA4BDMSAFCSDrkHIgrkc5QlyEKNuMADiQ3gZkg8NJhDP4cABsEDw4QIEweXDhUA7EQwAoEwAQJBEDS4alLjJgzlIhR0ZCPqAkwcXgCdhwACwmAlQAIppWKQwCBcIPEwiMQgGyAEkGCwEkZCTOwSBIACmXQDBACuAPRbSYUgdEgiYHxApYgkUiAG0gAAIBjBsD3IWHhxo4sFBiiBCB8eAw78IALgT2jUAgAQRZDZgvBMRwz0RHiCADEIIECPtI4j0UQxIxiEIgEII0YAdAQPm05wKwQAICICkTPoB5WE0kigxCwAEqgNEgDcAfgAQYzBXqCwAYo2g3CZrHxRgxHBYEaMKgoMGkyH8IxgIQgOAqQgoAoh1UN0PDjcJIJgAQAAQYBIGTi3IBSBVBpoHFB0QFNPABxsODASAABIlGJYADDxA0GcQARAcRAMCgW0gBgJJ/z0LAdMgvySWItGhlA32nfUFAIhgixIAJCULGADr+2uQlSQGgkEcIACQEWXr9a9AEH5EsMwvIkA8KP4W2wMAww4KAtyIBgIDQP/7FyhmDEIAaAwAIEok7T//4OPHWRGQwBcBAHT4fzMGfuQ9gJgAkIgk4o/dL/+o3/ADygGAEIKk/qJZ83L4bT4YHjxQDAFkdT9/9+s/AAYM5wVQQYnop/7ktz8J5BEZSIsHAda3+Dvbu/E4gLMIQ3hwgNV3AI7uNzEgAEIkBsikQL4H4gXfBgDUIAQBMhQAmtUo2wDfC3QMIA54ABJA4U+AAcTP5B0AggCbLGYgGXgYgOU/sUAQKSA/KECgEL9ZQGE9jqifAIAAjBwB9T1AGE+DA/yDBNCga0gK/Bf44YDgROWAYAS4BgSCSywBCQAY/vwHKAMbBBbxh3FDsAHkDwQA4GpHChBnBgLBAGAvgCENGBEURKAE4AkgRrAkOIF4yUSaidSQOrAvDA8EgDilFAEIxKlIQr/9UwAAiAMIAFMkvEGC5r/vH4gsEAAABRDAGXUALCI8RJwBECh4ABj/4QWkKSMZEGAAAAIfevANWEFBogABAAwQAMAAJjDAAABABoQf+QBoYnqYEwpgkJDJAdiQN4AKAgbj8APQSYhwML8TZ6ioQXBA8AAQAAcMcAP52EALlVcQPBAB6B9THwhAMgJI5OAIJ5B6/HGgRQIAKEAGgMCILAMAcQIfHjAFEiQCwkIykXACCBxCCASAAksrBrBmQKIAliGGQBosEOAK5ICcgQIAYBJEAQAA"},
+  "castle": {"gw":120,"gh":64,"b":"3w1w/w7y9wy873uEP/j3Zn0C2+UBPACIfz1KKP6ymOkGfPuDP/zvrx98+/1/8P834G//h+/v/w9/3/s6Yd//Fv997f6/f8P/qf8dw/u///jXf//zBQD8f8uHB+637we6//8f8L9/P3SBDdi/f1uHwQcEjn7ng9/4f4Dd///zbUCoX9s9wD/C/wbg73//aX9I+P8fdP9h3/8B9P/83d8A/38B/9+w//IYgPXz/7kD9A34+3/8v5XfwwX8t3/w/wf/+wXt9v3//fkA4BcA/+Ng/8+f+Hs/v/AMBAL+gBj43w3/gO+f3bD/IMwhQCLnYC8WAcD/f2E7jwAI+RIA4A2E/yvAf4HfwxMA72EIvp74FABJbVP4P4Dxd8bi3Vri/wfgZgMwAACmOZn/ZxtK2v8/cUXCkLV9LgC+s01A/3bDuY0ADf+X9YDxzJYg+N8PiYYJ/gNmOjwwMwUSAH4AQBpT8gCcHQAOz/DAv6FntDq0DDpl6gB5IgD8dB/wD6kgcfyAFdOAL0D+7xMDJqIh4eFhKmB8AIDv8P/wF8AOxogHlXADFP95AQBAgJmxDBCHCvyY4v/zPsD+AwBYGWEchd8A+D9pAB9A0QdgMoYw6nel7F9ieAAcmgXgIRwA+REAewwEYPcDGAUVQTjyAGS8vqwicSpfHAcgk3KMkAB/nyBBJPXdV75AHOTgZ8BtC0AaAXMZGAQKZpiRTH670qCAgkCGnVS8wTOLbP9fU0AgAUgQUAUoQWCo7hsaFICggAQRGOQvAADQr/wLhKYgApKcFRw7QCDu5n8FoAqAkQC2EpwuAYDv7i8QfFtTRoy/EBguDACQJAACAABsEMG+Ahgs/v/AUaCmAAAASKQHKAE8QPIBgCA8/wcIISIWPAw8/D8CCsCDQPpgiphuDz1+KPAH4CAAHOETIAIEqHB9eGYH4CkAkBABReAgE0L+gIHyEyzAF8hAQIiCEID6VABQ/wgQBYBPIqUQYxrUIZr0AhAAKDAAhQAGkALACQCAvkYAglQLEAsACBCMAAD8BQAAAQKgiQgACBQABOz//x/PggCPYAYq2AAQAACAtIAoAASCEgAQCCAJyPz///8gAAAeBlDHBQgQBAAA/MdvbwEPIA8IBSAAAID/AwAAAEiBAPCBAMR8/n8A/P//52M/l74HQAAAAAD+AwAAAICDwe+Z5/P/XwgAfP//nqUgeL8AEAEAAP////8dIAEQAQBAyMzn/wAgLQgAGAhC5BkSEmAkobj////zQcJNAoCgYAYKBAAAQAAAABAA"},
+  "crew": {"gw":146,"gh":53,"b":"XiyQxXgFwEoKDAByAKIABgzsQwDSkhwke4AARSpDCWBYhZn6KQTJBwCAAUAAJhARYKAQBFH8ZxlQGwDBqiBSAYAhgIMJgiBQ6wEAZMsDAAIAAAQAQQ6+BwDgPwJB4JUaCAAoSBIEAhL4fpvI/i81EwtcBggIAAEAEEjh678FKh+EAhj8xEDJgsBIgAWg733bj8BC0AR8hgACBIATAAAB/v9tuoAjAOCiD7DEhMILPIIDMvp32XsGANhn/AZQAqIDfkDTBxrA9891EyRd8a0hYQJEfgmAHzRA2KdFQLDGxnkhI8SQAEAOflkAfLgeC8x7BnwVACQcCWAHaAE6IPTohEAxNn4rQgeIB+WOwLMyERIfcAjyH/gITH1nAOAfgeqHBgAiPoAWzoEgCLhSAKIHUvhZG1pSISVwGABAYPkPIKAzAGQNbIkCBFAvYAKAAES3FMB3AJge089UgEQawAMECAKAEYJqgktsiTenLYF+Do+DMREBRkL+AbqwGU/dFQkO+FjIIDGpIZ6JiAIIRArY9wBXpXSAFEzUrejFh2BFEBH59wdCEMHraRQGYctdpgAIAKLR7z8jKqSMBAGIQKe9FDUnASSki/4MAghxqhxJJE8jiAAAEUy8zucHJyAQCfgBAnwBLwCEgWS4/I9/cGAGBogBoGPQA0qQj42k/jf+hAFAagQZgM0KL2kBj7Sa/3/6vwwm9QhpQO/CcKkAmWlBvgOcNRgFsQ/5AD2DU4Cv0MYCiv0fPCOS0Gq/Ab6fSUA64K0giP8tYhaGqDfOCIAXBAZ5EC4gEPf9A7FACAqYBwA7MAPgCfgQh9r/L8ELNeBhfORjyhoQAMR/vuDfH+CfCODD8WMvAEgSOQmkZZL9f3BuAAISx90uaHDAwKSM9RO8++avKQRaXAwHVsmnDZ8ZnwZy/YO8glQ5cPB5WQlOr2UMf5gR1o+tQzPIwfDCAINC/BT7+ytQ/j1nTwQQiTRAJiRAqhlH2wcNIAB4HwjQAR0kUIZPrgO18z89wCHQm6AgkjSehUA/HACQ/G/wAIfkTZCCIABedLwvO/iHdPCrAQC0rwAB+ID2B4ONyeCDgP8BDwAsINRFwoF6FziPA4AsB/4YfgIQAIAwUAswL+BnAAA2jHDwPQoAAhRACDygAsEO0wl4QMB62lAAAIhiCKBnAAFCnA/gJAoO/ikABAgfCIkPgYRAIn1kIQD8BwBaoI8KliAnBkGkgeAbBxg4rUhSgABDAovcAURKAqmYfDDywJQBgZmoAF3oakBApAAcG/jBmQdQogA4SQI="},
+  "fighters": {"gw":117,"gh":66,"b":"KYiav4AIfn+IMARESCEGSYYCQ4qg3SZYYCVEKCECfgQAAwDg/xEAABCQAIGAL6AFZYAZ8kgmAYAAACL997+3939C+76Pdh9f/f/+p/f2tS/ot/v5X+/fs//3vvbY+g3br/++f/rP+oHBxx/9v0T3+7/+v/9vfwj+BLDPP2C/+/d+Pa/Hb78/VPtHCtzfv9b/72+q/+8jwf4DAv5z7/8z7kzqB2xx8jeJwPFa/H/t9tg3/3Xw0JkI6P+vb2f/f3eb9tnn568IwP/7f3j/rr3xPf7188AI/Pd/j29fivrg1pzbJEzADxW95flD8LG8wvjHoC1gUO47Hv+O/s9W45dswAUPgLtjgtXZN2zXb38f1/WB8rtT93v6zu3+n/Cb3yUA7V/svU/fBLjfcPvn/ebmvxbyxBoHIc6O/U6r/H36BXDoXVckFb/w/9EcHCvfAg2g6wZUhIXWB/Zjg/Hn/sFVNEBAAINvmDuSfX9MH3CHDwJMYHgBFCiws6Xci+7I4cETBHqhBE7C+cWVyrYZLjjhYAaYwBEwIvJrpgLnA84w5BMHHMMFZqCQ1+nc0wGAHO2BsfyQiIm0kR09jgEI43l5mx8UWQIuYv/SCwDrOrbv58ClAINi/X3QABhXCdV4IDobAOKm90GKHs8buWCME2YXxN6wkevi5yxvABCD1mwA2V4PGBx/DeNJUngGx10QduUJi8mvYTQBIKuQw2XgpBYftvC3mAuV+eDYOEBVzGMHAr9GgKN2A0BYo6qDaZ7gUGmEIdoPgCRh1m2YhwFVuDQOx3tVAOqHa/3iVMECn1PxfDsOAHxYrd4qgA/IYxKX7PaVJYOvB2mbv5XsANhx4d12MvLylLX9u5GPKbMeP5l9fwzEkfRACwO8BIaEMcPHBwA+mmtEg9EIQH7hBL35LOXM8WmscLiChA8doSxfAIxJMARK3icAwMiR+PeDP9FXNkncbg7GLPoQeij8jxxIgAzjk4ERgz6IBRbWtQccUHkitAI6pJJ7XOIfsoSDLw8BX0xXRR7Bj2ZyIDrgzBLHUSpZDwfIQxyQAw84AsoBQBWT5AM0hAfyp2gDgHkYRCtejKCHtAH8fABwBu0AuI4LBIDAexdoTwDc8UxAyYlzFA7+H/h/RSAdngGaKHGu1KH7Iz5IAiiHVpIsx4sAYBBlwA4tmcCxRBDkMAEITAQI/L4QSjh9iCAmADFAQYCBwWP/UcOCA2WNRzEwD7D3x/w+uHhlMvwiAACmg/T6n94mOBRa0i/uM+cegPoB4PRiyaNHCA8BAACQCUAC"},
+};
+/* BAKED_SOL:END */
+
+// ---- the lazily-loaded clue payloads. Injected as a script tag rather than
+// fetched: fetch/XHR is blocked on file:// by CORS, script tags are not, so
+// opening index.html straight off disk keeps working (the project's premise).
+const BAKED = {
+  clue: Object.create(null),
+  _pend: Object.create(null),
+  // called by boards/<map>.js
+  put(map, compat, rec){ if (compat === BOARD_COMPAT && rec) BAKED.clue[map] = rec; },
+  load(map, force){
+    if (BAKED_OFF && !force) return Promise.resolve(null);
+    if (BAKED.clue[map]) return Promise.resolve(BAKED.clue[map]);
+    if (BAKED._pend[map]) return BAKED._pend[map];
+    return BAKED._pend[map] = new Promise(res => {
+      let s;
+      try { s = document.createElement('script'); } catch (e) { res(null); return; }
+      s.src = 'boards/' + map + '.js';
+      s.async = true;
+      s.onload  = () => res(BAKED.clue[map] || null);
+      s.onerror = () => res(null);   // not shipped / offline / blocked -> generate
+      document.head.appendChild(s);
+    });
+  },
+};
+
+// ---- accessors. Each re-checks that the payload actually describes THIS
+// board before handing it over.
+function bakedInline(){ return !BAKED_OFF && BAKED_COMPAT === BOARD_COMPAT; }
+// The partition + plot geometry are pinned to the map, NOT to the seed: they
+// are what make region ids, MAP_QUOTES keys, doneKey masks and the menu card
+// previews stable. Only the puzzle itself follows the seed.
+function bakedLayout(id){
+  if (!bakedInline()) return null;
+  const L = BAKED_LAYOUT[id || currentMap];
+  return (L && L.gw === GW && L.gh === GH) ? L : null;
+}
+// sol/clue are the puzzle, so they DO key off the seed — a non-canonical seed
+// simply misses and takes the full generation path.
+function bakedSol(){
+  if (!bakedInline() || SEED !== mapDef().seed) return null;
+  const rec = BAKED_SOL[currentMap];
+  if (!rec || rec.gw !== GW || rec.gh !== GH) return null;
+  const b = b64ToBytes(rec.b);
+  return (b && b.length === ((N + 7) >> 3)) ? unpackBits(b, N) : null;
+}
+// split from bakedClue so clueCacheProbe can test availability without paying
+// for a full decode
+function bakedClueStr(){
+  if (BAKED_OFF || SEED !== mapDef().seed) return null;
+  const rec = BAKED.clue[currentMap];
+  if (!rec || rec.gw !== GW || rec.gh !== GH) return null;
+  return (rec.clue && rec.clue[difficulty]) || null;
+}
+// `clueMatchesSol()` verifies that every clue PRESENT is correct — but a clue
+// set that lost most of its entries would sail through it and hand the player an
+// unsolvable board (all -1 vacuously "matches"). So the payload also carries the
+// number of clues each tier should have, and we check it before trusting the
+// bytes. Cheap, and it is the difference between "shipped a slow board" and
+// "shipped a board nobody can finish".
+function bakedClue(){
+  const s = bakedClueStr();
+  if (!s) return null;
+  const b = b64ToBytes(s);
+  if (!b || b.length !== ((N + 1) >> 1)) return null;
+  const out = unpackNibbles(b, N);
+  const want = (BAKED.clue[currentMap].n || {})[difficulty];
+  if (typeof want !== 'number') return null;
+  let have = 0;
+  for (let i = 0; i < N; i++) if (out[i] >= 0) have++;
+  if (have !== want){
+    console.warn('[bake] ' + currentMap + '/' + difficulty + ': ' + have + ' clues, expected ' + want + ' — discarding');
+    return null;
+  }
+  return out;
+}
+
 // ---------- generated-board cache (IndexedDB) ----------
 // Rebuilding a board is expensive and used to happen on EVERY page load: the
 // clue worker alone runs ~1.1s on Castle and ~35s on Angels at Medium (Very
@@ -2289,12 +2482,20 @@ function clueMatchesSol(c){
 // Is this map+tier's clue set already banked? That — not the sol half — is what
 // decides the animation: the shimmer phase exists to mask worker time, and on a
 // clue hit there is none to mask.
+// This is also where the baked clue payload gets warmed: it wraps every board
+// build (startGeneration, rebuildForMap, setDifficulty), so resolving that
+// script load here means regenClues can read the result synchronously.
 function clueCacheProbe(cb){
-  if (BCACHE_OFF) { cb(false); return; }
-  bcacheHas(clueCacheKey()).then(cb, () => cb(false));
+  BAKED.load(currentMap).then(() => {
+    if (bakedClueStr()) { cb(true); return; }   // shipped: no worker time to mask
+    if (BCACHE_OFF) { cb(false); return; }
+    bcacheHas(clueCacheKey()).then(cb, () => cb(false));
+  }, () => cb(false));
 }
-// restore sol[] from the cache, else weave it and bank the result
+// restore sol[] from the bake or the cache, else weave it and bank the result
 function prepareSolution(done){
+  const baked = bakedSol();
+  if (baked){ sol.set(baked, 0); capturePicBase(); done(); return; }
   const key = solCacheKey();
   bcacheGet(key).then(rec => {
     if (rec && rec.buf && rec.buf.byteLength === N){ sol.set(new Uint8Array(rec.buf), 0); capturePicBase(); done(); return; }
@@ -2716,6 +2917,16 @@ function regenClues(done, retier){
   regenZones();
   if (clueWorker) { clueWorker.terminate(); clueWorker = null; }   // cancel a superseded run (fast difficulty/map switches)
   const key = clueCacheKey();
+  // shipped bake -> IndexedDB -> generate. Both cached sources go through the
+  // same organic-cells-only merge and the same clueMatchesSol() verification,
+  // so a stale payload costs a regeneration and never a wrong board.
+  const baked = bakedClue();
+  if (baked){
+    for (let i = 0; i < N; i++) if (regionOf[i] >= 0 && regionOf[i] < REG_PIX) clue[i] = baked[i];
+    if (clueMatchesSol(clue)){ GEN.progress = 1; done(); return; }
+    clue.fill(-1);
+    console.warn('[bake] ' + currentMap + '/' + difficulty + ' clue set does not match sol — re-baking is overdue; generating instead');
+  }
   bcacheGet(key).then(rec => {
     if (token !== regenToken) return;   // a newer map/difficulty switch overtook us
     const c = (rec && rec.buf && rec.buf.byteLength === N) ? new Int8Array(rec.buf) : null;
@@ -3156,7 +3367,10 @@ function genUpdateHeader(phase, pct){
 // Run from the console:  await auditGivens()  — or open index.html?audit=1
 // (renders the report and sets the title to AUDIT PASS/FAIL, headless-
 // friendly). Rebuilds the player's map when done; saves are never touched.
-async function auditGivens(){
+// `only` = an array of map ids to audit, or null/empty for all of them. The
+// all-maps run takes hours, so shard it one map per browser tab
+// (index.html?audit=angels) and read the verdict off each tab's title.
+async function auditGivens(only){
   const keepMap = currentMap, keepDiff = difficulty;
   const rows = [];
   const loadImg = id => new Promise((res, rej) => {
@@ -3169,6 +3383,7 @@ async function auditGivens(){
     mapImgCache[id] = im;
   });
   for (const m of MAPS) {
+    if (only && only.length && only.indexOf(m.id) < 0) continue;
     const image = await loadImg(m.id);
     currentMap = m.id;
     SEED = mapDef(m.id).seed;
@@ -3285,6 +3500,186 @@ function auditSolvePicross(pz){
   return u;
 }
 
+// ============================================================
+//  BAKE — produce the shipped board payload (see the baked-boards block above)
+//  Run one map per tab:  index.html?bake=angels   (?bake=all for every map)
+//  It walks the SAME pipeline auditGivens does, and for the same reason: the
+//  payload has to be whatever this exact code produces, never a reimplementation
+//  of it. Output downloads as <map>.bake.json; _bake_boards.js splices it in.
+// ============================================================
+function bakeLoadImg(id){
+  return new Promise((res, rej) => {
+    const c = mapImgCache[id];
+    if (c && c.complete) return res(c);
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = mapDef(id).src;
+    mapImgCache[id] = im;
+  });
+}
+// the partition in HAND_LAYOUTS' format: organic ids verbatim (they are
+// MAP_QUOTES keys and saved region-done indices — never recompact them), plot
+// cells as the -2 sentinel applyHandPartition expects
+function captureRegionRLE(){
+  const rle = [];
+  for (let i = 0; i < N; i++){
+    const v = (zoneOf[i] >= 0 || picrossOf[i] >= 0) ? -2 : regionOf[i];
+    if (rle.length && rle[rle.length - 2] === v) rle[rle.length - 1]++;
+    else rle.push(v, 1);
+  }
+  return rle;
+}
+const bakeOrganic = i => regionOf[i] >= 0 && regionOf[i] < REG_PIX;
+
+async function bakeBoards(only, onMap){
+  const keepMap = currentMap, keepDiff = difficulty;
+  const out = [];
+  for (const m of MAPS){
+    if (only && only.length && only.indexOf(m.id) < 0) continue;
+    const image = await bakeLoadImg(m.id);
+    currentMap = m.id;
+    SEED = mapDef(m.id).seed;
+    dimsForImage(image, mapDef(m.id));
+    sampleImage(image);
+    buildLayout();
+    // only the maps that DERIVE their layout need it baked; the rest already
+    // ship a HAND_LAYOUTS entry and would just duplicate it
+    const derived = !(m.layout && HAND_LAYOUTS[m.layout]);
+    const rec = { id: m.id, compat: BOARD_COMPAT, seed: SEED, gw: GW, gh: GH, cells: N };
+    if (derived){
+      rec.regPix = REG_PIX;
+      rec.regionRLE = captureRegionRLE();
+      rec.zones   = ZONES.map(z => ({ x: z.x, y: z.y, n: z.n, boxW: z.boxW, boxH: z.boxH, jigsaw: !!z.jigsaw, givens: z.givens }));
+      rec.picross = PICROSS.map(p => ({ x: p.x, y: p.y, n: p.n }));
+    }
+    weaveTexture();
+    capturePicBase();               // shapePicross always works from these
+    rec.sol = bytesToB64(packBits(sol, N));   // PRE-shaping, so it stays tier-independent
+    rec.clue = {};
+    for (const d of DIFF_ORDER){
+      difficulty = d;
+      locked.fill(0); clue.fill(-1);
+      for (const pz of PICROSS) shapePicross(pz, d);
+      for (const pz of PICROSS) setupPicross(pz);
+      for (let r = 0; r < REG_PIX; r++) genRegionClues(r);
+      // never ship a board that hands the player free cells (CLAUDE.md §8.3)
+      let lockedN = 0; for (let i = 0; i < N; i++) if (locked[i]) lockedN++;
+      if (lockedN) throw new Error('bake ' + m.id + '/' + d + ': ' + lockedN + ' locked cells — repair regression, refusing to bake');
+      rec.clue[d] = bytesToB64(packNibbles(clue, N, bakeOrganic));
+      console.log('[bake] ' + m.id + ' ' + d + ' ok');
+    }
+    out.push(rec);
+    if (onMap) onMap(rec);
+  }
+  currentMap = keepMap; difficulty = keepDiff;
+  return out;
+}
+
+// ---- ?verifybake=1 — THE proof. Builds every map+tier for real (BAKED_OFF is
+// on under this flag) and asserts the shipped payload is byte-identical.
+async function verifyBake(only){
+  const keepMap = currentMap, keepDiff = difficulty;
+  const rows = [];
+  for (const m of MAPS){
+    if (only && only.length && only.indexOf(m.id) < 0) continue;
+    const image = await bakeLoadImg(m.id);
+    const pay = await BAKED.load(m.id, true);
+    currentMap = m.id;
+    SEED = mapDef(m.id).seed;
+    dimsForImage(image, mapDef(m.id));
+    sampleImage(image);
+    buildLayout();
+    const bad = [];
+    const derived = !(m.layout && HAND_LAYOUTS[m.layout]);
+    if (derived){
+      const L = BAKED_LAYOUT[m.id];
+      if (!L) bad.push('layout missing');
+      else {
+        if (L.regPix !== REG_PIX) bad.push('regPix ' + L.regPix + '!=' + REG_PIX);
+        const mine = captureRegionRLE(), theirs = L.regionRLE || [];
+        if (mine.length !== theirs.length || mine.some((v, k) => v !== theirs[k])) bad.push('regionRLE');
+        const geo = a => a.map(z => z.x + ',' + z.y + ',' + z.n).join(' ');
+        if (geo(L.zones || [])   !== geo(ZONES))   bad.push('zones');
+        if (geo(L.picross || []) !== geo(PICROSS)) bad.push('picross');
+      }
+    }
+    weaveTexture();
+    capturePicBase();
+    const sr = BAKED_SOL[m.id];
+    if (!sr) bad.push('sol missing');
+    else if (sr.b !== bytesToB64(packBits(sol, N))) bad.push('sol');
+    for (const d of DIFF_ORDER){
+      difficulty = d;
+      locked.fill(0); clue.fill(-1);
+      for (const pz of PICROSS) shapePicross(pz, d);
+      for (const pz of PICROSS) setupPicross(pz);
+      for (let r = 0; r < REG_PIX; r++) genRegionClues(r);
+      const want = pay && pay.clue && pay.clue[d];
+      if (!want) bad.push('clue/' + d + ' missing');
+      else if (want !== bytesToB64(packNibbles(clue, N, bakeOrganic))) bad.push('clue/' + d);
+    }
+    const row = { map: m.id, ok: !bad.length, bad: bad.join(', ') };
+    rows.push(row);
+    console.log('[verifybake] ' + JSON.stringify(row));
+  }
+  currentMap = keepMap; difficulty = keepDiff;
+  return rows;
+}
+
+// shared dev-hook renderer for the audit / bake verdict overlays
+function bakeShow(verdict, body){
+  document.title = verdict;
+  const pre = document.createElement('pre');
+  pre.id = 'auditOut';
+  pre.style.cssText = 'position:fixed;inset:0;z-index:99;background:#10091f;color:#7cfc98;overflow:auto;padding:14px;font-size:11px;margin:0';
+  pre.textContent = verdict + '\n\n' + body;
+  document.body.appendChild(pre);
+  console.log('[bake] verdict: ' + verdict);
+}
+// which maps this tab is responsible for (?bake=angels, ?bake=a,b, ?bake=all)
+function bakeArg(re){
+  const m = re.exec(location.search);
+  const v = m ? decodeURIComponent(m[1] || '') : '';
+  if (!v || v === '1' || v === 'all') return null;
+  return v.split(',').map(s => s.trim()).filter(Boolean);
+}
+if (BAKE_MODE) {
+  setTimeout(() => {
+    const only = bakeArg(/[?&]bake=([^&]*)/);
+    const links = [];
+    bakeBoards(only, rec => {
+      // Banked as each map finishes, so a long all-maps run never loses hours of
+      // work to a late error. Two routes, because a bake tab usually sits in the
+      // background and Chrome blocks automatic downloads there: POST to a local
+      // sink if one is listening (see the dev server in the plan), and always
+      // leave a clickable link behind as the manual fallback.
+      const text = JSON.stringify(rec);
+      const name = rec.id + '.bake.json';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      a.download = name;
+      a.textContent = 'download ' + name;
+      a.style.cssText = 'position:fixed;left:8px;z-index:100;color:#7cfc98;top:' + (8 + links.length * 18) + 'px';
+      document.body.appendChild(a);
+      links.push(a);
+      fetch(location.origin + '/__bake/' + name, { method: 'POST', body: text })
+        .then(r => { if (r.ok) a.textContent = 'banked ' + name; else a.click(); }, () => a.click());
+    }).then(rows => {
+      bakeShow('BAKE DONE', rows.map(r => r.id + ' ' + r.gw + 'x' + r.gh + ' cells=' + r.cells +
+        ' sol=' + r.sol.length + 'B64 tiers=' + Object.keys(r.clue).length).join('\n'));
+    }).catch(e => bakeShow('BAKE ERROR', String(e && e.stack || e)));
+  }, 0);
+}
+if (VERIFY_BAKE) {
+  setTimeout(() => {
+    verifyBake(bakeArg(/[?&]verifybake=([^&]*)/)).then(rows => {
+      const ok = rows.length && rows.every(r => r.ok);
+      bakeShow(ok ? 'BAKE VERIFY PASS' : 'BAKE VERIFY FAIL', rows.map(r => JSON.stringify(r)).join('\n'));
+    }).catch(e => bakeShow('BAKE VERIFY ERROR', String(e && e.stack || e)));
+  }, 0);
+}
+
 // index.html?audit=1 → run the audit once the game has booted and paint the
 // verdict over the page (dev/CI hook; the game itself never triggers this)
 if (/[?&]audit=/.test(location.search)) {
@@ -3298,8 +3693,8 @@ if (/[?&]audit=/.test(location.search)) {
     console.log('[audit] verdict: ' + verdict);
   };
   setTimeout(() => {
-    auditGivens().then(rows => {
-      const ok = rows.every(x => !x.locked && !x.unsolved && !x.picrossUnsolved);
+    auditGivens(bakeArg(/[?&]audit=([^&]*)/)).then(rows => {
+      const ok = rows.length && rows.every(x => !x.locked && !x.unsolved && !x.picrossUnsolved);
       auditShow(ok ? 'AUDIT PASS' : 'AUDIT FAIL', rows.map(x => JSON.stringify(x)).join('\n'));
     }).catch(e => auditShow('AUDIT ERROR', String(e && e.stack || e)));
   }, 0);
@@ -6432,6 +6827,12 @@ function closeMenu(){ if (generated) hideMenu(); }
 // load the chosen map at the current (Options/header) difficulty: first launch →
 // startGeneration; later → loadMap. pendingAfterGen then starts any co-op session.
 function menuLaunch(id){
+  // Start pulling this canvas's baked clue payload the instant it is picked, so
+  // it overlaps the menu teardown and image decode. clueCacheProbe awaits the
+  // same promise before beginGen() puts the loading screen up — without this
+  // head start, a slow connection would leave the player on a bare canvas for
+  // the length of the download.
+  BAKED.load(id);
   if (!generated) {
     currentMap = id; try { localStorage.setItem(MAP_KEY, id); } catch (e) {}
     img.onload = () => startGeneration();
@@ -6723,7 +7124,7 @@ document.querySelectorAll('.opt-navitem').forEach(b => b.onclick = () => showOpt
 // ?audit=, which drives its own pipeline). The loading panel is dismissed so the
 // menu shows; beginGen() brings it back as the generation animation once the
 // player picks a canvas.
-if (!AUDIT_MODE) {
+if (!AUDIT_MODE && !BAKE_MODE && !VERIFY_BAKE) {
   applyTheme(themeHue, false);
   document.getElementById('loader').classList.add('done');
   showMenu();

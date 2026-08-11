@@ -13,13 +13,17 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 ## 1. The shape of the project
 
 - **`index.html`** — the entire game: HTML + CSS + one big inline `<script>` (~5,050 lines). No
-  modules, no bundler, no dependencies. Open it in a browser and it runs. This is the only shipped
-  file (plus its embedded image data URIs). Boot lands on the **home menu** (§10), not a board.
+  modules, no bundler, no dependencies. Open it in a browser and it runs. Boot lands on the **home
+  menu** (§10), not a board.
+- **`boards/<map>.js`** — the only other *shipped* files: baked clue sets, loaded on demand (§7a).
+  A missing `boards/` folder costs generation time, never correctness — `index.html` alone still
+  plays.
 - **Dev tools** (not shipped; generated *from* `index.html` so they reuse its exact code):
   - `region-editor.html` ← `node _build_editor.js` (uses `index.html` + `_editor.src.js`) — author
     maps by drawing region borders; exports a `.npxsmap.json`.
   - `region-map.html` ← `node _build_inspector.js` — region inspector (borders + ids).
   - `_bake_map.js` — bakes a `.npxsmap.json` into `index.html` as a built-in map.
+  - `_bake_boards.js` — folds `?bake=` payloads into `index.html` + `boards/` (§7a).
   - `verify-puzzle.js`, `inspect-region.js` — **legacy** Castle-only Node harnesses, superseded by
     the in-browser audit (below). Their headers say so.
 - **Docs** — `README.md` (players), `CLAUDE.md` (this), `CHANGELOG.md` (per-version history).
@@ -28,10 +32,17 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 - **Play**: open `index.html`. Live: https://molnarmario.github.io/one-more-tile/
 - **`?audit=1`**: rebuilds every map × every difficulty and asserts zero pre-filled cells + full
   logical solvability; sets `document.title` to `AUDIT PASS`/`AUDIT FAIL` (headless-friendly). This
-  is *the* correctness check — run it after touching generation. Entry: `auditGivens()` (~line 2063).
+  is *the* correctness check — run it after touching generation. Entry: `auditGivens(only)`.
+- **`?verifybake=1`**: rebuilds every map × tier for real and asserts the **shipped baked payload is
+  byte-identical** (partition, plot geometry, `sol`, `clue`). Title → `BAKE VERIFY PASS`/`FAIL`.
+  Run it whenever you re-bake. Entry: `verifyBake(only)`.
+- **`?bake=<map>`**: produces the payload for those maps (§7a). Title → `BAKE DONE`.
+- ⚠ **All three take a comma-separated map list** (`?audit=angels,castle`; `1`/`all` = everything).
+  A whole-registry run takes hours — **shard it one map per tab** and read each tab's title.
 - **`?nowork=1`**: forces synchronous, worker-free clue generation (headless/debug).
-- **`?nocache=1`**: bypasses the IndexedDB board cache (§7) so you always get a real, cold build.
-  `?audit=1` disables it too — the audit must never validate cached bytes.
+- **`?nocache=1`**: bypasses the IndexedDB board cache **and the bake** (§7/§7a) so you always get a
+  real, cold build. `?audit=1`, `?bake=` and `?verifybake=` disable both for the same reason — they
+  must never validate bytes they were handed.
 - Syntax check: extract the inline `<script>` and `new vm.Script(src)` it under Node.
 
 ---
@@ -49,17 +60,18 @@ first load, `rebuildForMap` on map switch, and — minus the `sol` stages — `s
 
 ```
 sampleImage(img)      image → sol[] (light/dark) + cellCol[] (art) + edge[]
-buildLayout()         plots, regions (watershed or hand layout), nbhd[]
-clueCacheProbe(hit)   is this map+tier's clue set already banked? (§7)
-prepareSolution()     restore sol[] from cache, ELSE weaveTexture() → repairTexture() → bank it
+buildLayout()         plots, regions (hand layout / BAKED_LAYOUT / watershed), nbhd[]
+clueCacheProbe(hit)   loads boards/<map>.js, then: is this map+tier's clue set banked? (§7/§7a)
+prepareSolution()     restore sol[] from the bake, ELSE the cache, ELSE weaveTexture() → repairTexture()
 beginGen(kind, done, hit)  starts the loading animation (see §5); `hit` = short "restoring" beat
-regenClues(genClueReady)   cache hit → return at once; else spawn the clue Worker + bank the result
+regenClues(genClueReady)   bake/cache hit → return at once; else spawn the clue Worker + bank it
    … the animation plays while the worker thins clues off-thread …
 genComplete() → done()     handoff: finishSetup (load) / callbacks (map, diff)
 ```
 
-The two cache-aware seams are `prepareSolution` and `regenClues`; **`auditGivens()` calls
-`weaveTexture()` / `genRegionClues()` directly and is unaffected.**
+The precomputed-board seams are `buildLayout`, `prepareSolution` and `regenClues`, each trying
+**bake → IndexedDB cache → generate**; **`auditGivens()` / `verifyBake()` call `weaveTexture()` /
+`genRegionClues()` directly and are unaffected** (both run with `BAKED_OFF`).
 
 `finishSetup()` (~1889): `generated = true`, `loadSave()`, `applyGivens()`, re-check regions, start
 the render `loop()`, then `runPendingAfterGen()`. After this, gameplay is live and `loop()` runs
@@ -94,6 +106,8 @@ the board is ready; every completion path (`finishSetup`, `loadMap`'s rebuild ca
 | `DIFF`, `DIFF_ORDER`, `difficulty` | table/…/string | difficulty tiers (see §4); `difficulty` persisted |
 | `MAPS`, `currentMap`, `mapDef()`, `HAND_LAYOUTS`, `MAP_QUOTES` | — | maps registry, hand partitions, quotes-by-region-id |
 | `MAP_META`, `PREVIEW_RLE`, `MAP_ADDED_ORDER` | objects/array | baked per-map region/square counts + region RLE for menu card previews (watershed maps); git add-order for the sort (see §10) |
+| `BAKED_LAYOUT`, `BAKED_SOL`, `BAKED` | objects | shipped precomputed boards: partition+plots (castle/crew/fighters only), `sol` bitmaps, and the lazily-loaded clue registry (§7a) |
+| `BAKED_COMPAT`, `BAKED_OFF` | number/bool | the `BOARD_COMPAT` the inline tables were baked at / master switch (audit, bake, verify, `?nocache=1`) |
 | `GEN`, `GTL_BASE` | object/const | loading-animation state machine + base timeline (see §5) |
 | `players[]`, `dpr`, `needsDraw`, `C`, `TINTS` | — | cameras, DPR, dirty flag, palette (mutated by `buildPalette`), region tints (derived from `themeHue`) |
 | `themeHue`, `MENU`, `pendingAfterGen` | number/obj/fn | current interface hue (see §10) / menu state machine / one-shot post-generation action |
@@ -301,6 +315,46 @@ progress, _pct, _hdr}`.
 - **Quotes**: `MAP_QUOTES[map][regionId]`; `maybeShowQuote()` (~2344) fires when a region *and* its
   attached plots are done; clicking a finished region replays it.
 
+### 7a. Baked boards — the pipeline output, shipped
+
+The IndexedDB cache (above) only helps on a *revisit*; the first open of every map × tier still cost
+1.1s–35s of clue thinning plus 0.6–2.1s of weave, on every machine, for **identical bytes**. So the
+expensive half of generation now ships as data. Three artifacts, produced by `bakeBoards()`:
+
+| Artifact | Where | Scope | Encoding |
+|---|---|---|---|
+| `BAKED_LAYOUT` | inline, 10.8 KB | **castle/crew/fighters only** — the maps that derive their layout via `growRegions()`/`placePlots()`; the other six already carry a `HAND_LAYOUTS` entry | same shape as `HAND_LAYOUTS` (`regionRLE` with `-2` plot cells, `regPix`, `zones`, `picross`) so `applyHandPartition` consumes it verbatim |
+| `BAKED_SOL` | inline, 26.8 KB | per map, **pre-picross-shaping** (so it stays tier-independent, exactly like the cached `sol`) | 1 bit/cell, base64 |
+| `boards/<map>.js` | lazy, 26–122 KB (556 KB total) | per map × all 5 tiers, **organic cells only**, plus `n` = the expected clue count per tier | 4 bits/cell (`15` = no clue), base64, wrapped in `BAKED.put(id, compat, …)` |
+
+- **Loaded as a script tag, not `fetch`** (`BAKED.load`): fetch/XHR is CORS-blocked on `file://`,
+  script tags are not, so opening `index.html` straight off disk still works. `clueCacheProbe()` is
+  the warm point — it wraps every board build, so `regenClues` can then read the payload
+  synchronously. ⚠ It *awaits* that load before `beginGen()` raises the loading screen, so
+  `menuLaunch()` also kicks off `BAKED.load(id)` the moment a canvas is picked; drop that prefetch
+  and a slow connection leaves the player on a bare canvas for the length of the download.
+- **Seed vs map**: `BAKED_LAYOUT` is keyed by **map only** — the partition, region ids and plot
+  geometry are what keep `MAP_QUOTES` keys, `doneKey` masks and the menu card previews valid.
+  `BAKED_SOL`/`boards/*.js` are keyed by **map + seed**, so a non-canonical seed simply misses and
+  takes the full generation path.
+- **Every lookup fails to `null`** on a missing file, wrong dims, stale `BAKED_COMPAT` or corrupt
+  base64, and the restored clue set still goes through `clueMatchesSol()` before it is trusted. A
+  bad bake costs a wait; it cannot produce a wrong board. All three failure modes were exercised
+  by hand when this landed — tampered clue value → `clueMatchesSol` rejects; truncated set → the
+  `n` check rejects; missing `boards/<map>.js` → `BAKED.load` resolves `null` — and each fell
+  through to real generation with the inline `sol` still serving.
+- ⚠ **`clueMatchesSol()` alone is not enough**, which is why the payload carries `n`: it only proves
+  the clues *present* are correct, so a truncated set (all `-1`) passes it vacuously and would ship
+  an unsolvable board. The count check is what closes that.
+- **It also closes the pipeline's one non-deterministic seam.** `sampleImage()` depends on the
+  browser's `drawImage` downscale, and that fed both `sol` and `edge[]` → `regionOf`. With the
+  partition and solution baked, nothing about the puzzle depends on the local browser; only
+  `cellCol` (revealed artwork) is still sampled per machine.
+- **Workflow**: `?bake=<map>` per tab → `node _bake_boards.js [srcDir]` → `?verifybake=` →
+  `?audit=`. The payload is produced *in the browser* on purpose: the first pipeline stage is a
+  canvas draw, so any Node reimplementation would defeat the point that the shipped bytes are what
+  the shipped code makes.
+
 ---
 
 ## 8. Invariants & gotchas (don't break these)
@@ -325,15 +379,26 @@ progress, _pct, _hdr}`.
    with any shipped change and keep `CHANGELOG.md` in sync. Online co-op is gated on **`BOARD_COMPAT`**
    (next to it), NOT `APP_VERSION`; bump `BOARD_COMPAT` only when generation, the share/snapshot
    format (`SHARE_VER`), or the net protocol changes, and leave `LEGACY_MAP_IDS` frozen forever.
-   ⚠ **`BOARD_COMPAT` is also the board cache's invalidation key** (§7) — a generation change without
-   a bump would hand players a stale board. `clueMatchesSol()` catches most of that automatically, but
-   it *cannot* catch a clue set thinned by a **stronger** solver than the current code has (i.e. if you
-   weaken the solver). Bump it when generation output changes.
+   ⚠ **`BOARD_COMPAT` is also the board cache's and the bake's invalidation key** (§7/§7a) — a
+   generation change without a bump would hand players a stale board. `clueMatchesSol()` catches most
+   of that automatically, but it *cannot* catch a clue set thinned by a **stronger** solver than the
+   current code has (i.e. if you weaken the solver). Bump it when generation output changes.
+9. **Change generation ⇒ re-bake.** The shipped `boards/` + inline tables are pipeline *output*
+   (§7a). After any change to `sampleImage`/`buildLayout`/`weaveTexture`/`repairTexture`/
+   `genRegionClues`/`shapePicross`/`DIFF`, re-run `?bake=` for every map, `node _bake_boards.js`,
+   and then **`?verifybake=` must pass** — it is the only thing that proves the shipped bytes still
+   equal what the code produces. Bumping `BOARD_COMPAT` without re-baking is safe (the payload is
+   ignored, boards just generate slowly); re-baking without bumping is safe only when output did not
+   change. `?verifybake=` catches both mistakes.
 7. **The dev tools are generated** from `index.html` via string-marker extraction. `_build_editor.js`
    splits on Block A (`'use strict';` → `// ---------- canvas / view ----------`), Block B
    (`function sampleImage(image){` → `function weaveTexture(){`), Block C
    (`function genRegionClues(r){` → `function applyGivens(){`). If you rename those boundary
    functions, update the builders and rerun them.
+   ⚠ Block A contains `choosePlots`/`buildLayout` but **not** the baked tables (§7a), which sit down
+   in the generation section. That is why both call `bakedLayoutIfAny()` — a `typeof` guard, so a
+   generated tool falls back to growing/placing the layout instead of dying on an undefined name.
+   Adding any other cross-block dependency will break the tools the same way.
    ⚠ The checked-in `region-editor.html` / `region-map.html` are **stale relative to master** (they
    predate the Inferno map), so rerunning a builder emits a large diff that has nothing to do with
    your change — mostly `IMG_SRC_8`. Only rebuild when you actually touched a block boundary or the
@@ -354,14 +419,16 @@ progress, _pct, _hdr}`.
 | Tune picross difficulty | `DIFF[tier].pRuns`/`.pRounds` + `shapePicross`/`picrossProfile` (§4). Verify with `?audit=1` — the shaping must never make a patch unsolvable |
 | Tune the loading animation | `GTL_BASE` (timeline), the `sc` scale in `beginGen`, `drawGen`; `GTL_CACHED` for the short cache-hit beat (keep every divisor non-zero — `drawGen` divides by `regDur`/`shimIn`/`settle`) |
 | Board caching / eviction | the board-cache block just above `startGeneration` (§7); `BCACHE_CLUE_MAX`, `clueMatchesSol`, `prepareSolution`, `regenCluesFresh` |
+| Re-bake after a generation change | §7a — `?bake=<map>` per tab → `node _bake_boards.js [srcDir]` → **`?verifybake=` must pass** → `?audit=` |
+| Baked-board plumbing | §7a — the baked-boards block above the cache (`BAKED*`, `packBits`/`packNibbles`), and the seams in `buildLayout`/`prepareSolution`/`regenClues`/`clueCacheProbe` |
 | Change colours / theme | edit `:root` HSL vars (CSS chrome) **and** `buildPalette()` (canvas `C` + `TINTS`) together; both key off `--hue`/`themeHue`. Add/adjust theme swatches in `THEME_PRESETS` (§10) |
 | The home menu / map grid | §10 — `#menuScreen` markup, `showMenu`/`menuShowView`/`menuOpenGrid`/`menuPlay`, sort in `menuSortedIds` |
 | Map-card thumbnails / unlocked-region previews | §10 — `menuRenderCard`/`menuCardNode`/`menuArtCols`/`menuPlotRects`/`menuRefreshCards`, warmed by `menuPreloadCards`; the unlocked set is `doneKey()` (§7) |
 | The play timer | §10 — `timerTotal`/`timerPause`/`persistTimer`, `timerKey()` |
 | Change the clue rule | `nbhd` construction in `buildLayout` (⚠ affects everything) |
 | Solvability logic | `repairTexture`/`repairRegion`/`repairPicross` and the `genRegionClues` solver |
-| Verify a change | `?audit=1` (all maps × tiers); syntax-check the inline script under Node |
-| Ship it | bump `APP_VERSION`, add a `CHANGELOG.md` entry, rebuild dev tools if blocks changed, one clean push |
+| Verify a change | `?audit=1` (all maps × tiers, shardable per map); `?verifybake=1` if generation moved; syntax-check the inline script under Node |
+| Ship it | bump `APP_VERSION`, add a `CHANGELOG.md` entry, re-bake if generation changed, rebuild dev tools if blocks changed, one clean push |
 
 ---
 

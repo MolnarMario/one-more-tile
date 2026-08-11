@@ -4,7 +4,9 @@ A single-file browser puzzle game inspired by [Proverbs](https://store.steampowe
 **Fill-a-pix (Mosaic)** — with **sudoku** and **picross** puzzles woven directly into the same
 canvas. Solve the cross-stitch board to reveal a hidden pixel-art painting, region by region.
 
-No build, no server, no dependencies — open `index.html` in a browser and play.
+No build, no server, no dependencies — open `index.html` in a browser and play. (Keep the small
+`boards/` folder next to it for instant loading; without it the game just builds each canvas itself,
+the slow way.)
 
 **▶ Play it now: https://molnarmario.github.io/one-more-tile/**
 
@@ -73,12 +75,15 @@ in a background worker, so it's essentially free. A slim **progress bar** in the
 real clue-thinning progress, and you can **scroll to zoom** the board while it loads. Bigger maps
 (more to compute) get a slower, more deliberate reveal.
 
-**You only sit through it once.** A finished board is kept on your machine, so coming back to a
-canvas you've played takes about a second — a short **"Restoring the canvas…"** beat instead of the
-full weave. (Angels used to spend ~37 seconds building itself on *every* load.) Difficulty tiers are
-remembered separately: a tier you haven't tried yet still has to be woven, but going back to one
-you've played is instant. The restored board is identical to a freshly generated one — the game
-re-checks every clue against the solution before trusting it — and your stitches are never affected.
+**Mostly, you don't sit through it at all.** Every canvas ships **already generated**. The puzzles
+were always identical for everyone — each canvas is built deterministically from its own seed — so
+rather than have every player recompute the same bytes (between a second and *35 seconds* per canvas
+per difficulty), that work is done once, ahead of time, and shipped with the game. On the biggest
+canvas the stages it replaced now take **1.4 ms**, so the only thing you wait for is the loading
+animation itself. Boards you've played are also
+kept on your machine, which covers anything not shipped — a custom canvas, or one built before an
+update. Either way the game re-checks every clue against the solution before trusting it, so a
+restored board is identical to a freshly generated one, and your stitches are never affected.
 
 ### Quality of life
 - **Play timer** in the header — per canvas, and it *remembers your time*: leave and come back and
@@ -184,10 +189,18 @@ This inserts the image, a `HAND_LAYOUTS` partition, a `MAPS` entry and any quote
 ## Debug flags
 
 - **`?audit=1`** — run the solvability audit across all maps × tiers (see above); skips normal boot.
+- **`?bake=<map>`** — regenerate the shipped precomputed board payload for those maps (see below).
+- **`?verifybake=<map>`** — rebuild those maps for real and assert the shipped payload is
+  byte-identical. Run it after every re-bake.
 - **`?nowork=1`** — force clue generation to run synchronously on the main thread instead of in the
   Web Worker (handy for headless testing / debugging).
-- **`?nocache=1`** — bypass the stored-board cache and force a real, cold build. (`?audit=1` disables
-  the cache too, so the audit always exercises genuine generation.)
+- **`?nocache=1`** — bypass the shipped payload *and* the stored-board cache and force a real, cold
+  build. (`?audit=`, `?bake=` and `?verifybake=` do the same, so they always exercise genuine
+  generation.)
+
+`?audit=`, `?bake=` and `?verifybake=` all take a comma-separated map list (`?audit=angels,castle`;
+`1` or `all` means every map). A whole-registry run takes hours — shard it one map per browser tab
+and read the verdict off each tab's title.
 
 ## Dev tools (not shipped)
 
@@ -200,6 +213,11 @@ changing the relevant part of `index.html`:
   (`R`n region, `S`n sudoku, `P`n picross) plus each plot's home region, for assigning quotes.
   Built by `node _build_inspector.js`.
 - **`_bake_map.js`** — bakes an exported `.npxsmap.json` into `index.html` as a built-in map.
+- **`_bake_boards.js`** — folds the `?bake=` payloads into `index.html` + `boards/`, so canvases
+  ship already generated. Re-run it (and then `?verifybake=`) after **any** change to generation —
+  otherwise the shipped boards no longer match the code that makes them. The payloads are produced
+  in the browser rather than in Node on purpose: generation starts with a canvas draw, so a Node
+  reimplementation would defeat the whole point of the bake being the real output.
 - **`verify-puzzle.js` / `inspect-region.js`** — legacy Castle-only Node analysis harnesses,
   superseded by `?audit=1` (kept for reference).
 
