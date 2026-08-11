@@ -5,6 +5,49 @@ shipped to the live site.
 
 ---
 
+## [0.31.0] — 2026-08-11 — Weave a brand-new puzzle from any canvas
+
+### Added
+- **"New weave" (🎲, in the ⋯ menu).** Every canvas ships with one fixed puzzle,
+  identical for everyone. Now you can ask any canvas for a *completely different*
+  one: same painting, same regions, same plots — but a new solution, new clues,
+  and new sudoku and picross puzzles across them. This is the one board that
+  isn't shipped ready-made, so it's built on the spot; the long loading screen
+  is back for exactly this case.
+- **Your original progress is kept, not overwritten.** Each weave of a canvas
+  gets its own save slot, so you can go **Back to the original** from the same
+  dialog and pick up precisely where you left off — then switch again. Both the
+  canvas grid and the header label a rewoven board as `· new weave`, so you can
+  always tell which puzzle you're looking at.
+
+### Changed
+- **Share codes and co-op now carry the weave** (`SHARE_VER` 7, four bytes of
+  seed). A recipient rebuilds the board locally before replaying progress, so a
+  code that didn't name its weave would have them rebuild the *original* board
+  and read every one of your marks as a mistake — the same trap the per-patch
+  picross tiers closed in 0.26.0. Older codes decode as "the original weave" and
+  still import fine.
+- `BOARD_COMPAT` 4 → 5, so co-op partners on older builds are told to update
+  rather than silently disagreeing about which puzzle they're solving.
+- **Split the compatibility stamp in two.** One number was doing two unrelated
+  jobs: "can these two players talk to each other" *and* "were the shipped
+  puzzles built by this version of the puzzle-maker". So a change to the share
+  format — which is all the seed above is — marked every precomputed board
+  stale and forced a full rebuild that produced **byte-identical** puzzles.
+  `BOARD_COMPAT` now covers only the share/network side; the new `GEN_COMPAT`
+  covers the precomputed boards and the on-device cache. Nothing about the
+  puzzles changed; future protocol work just stops throwing away good ones.
+
+### Notes
+- A canvas's **layout never follows the weave**. Regions, region ids and plot
+  positions come from the shipped partition, which is keyed by canvas alone —
+  which is why proverbs, unlocked-region masks and the grid's card previews all
+  stay correct on a rewoven board. Only the puzzle itself changes.
+- Reweaving is unavailable during an online session, since everyone there shares
+  one board.
+
+---
+
 ## [0.30.0] — 2026-08-11 — Boards ship precomputed: no more waiting to start
 
 ### Added

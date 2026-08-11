@@ -46,10 +46,13 @@ const BOARDS = path.join(ROOT, 'boards');
 
 const html0 = fs.readFileSync(INDEX, 'utf8');
 
-// the shipped compat number is the single source of truth for staleness
-const compatM = /^const BOARD_COMPAT = (\d+);/m.exec(html0);
-if (!compatM) { console.error('! could not find BOARD_COMPAT in index.html'); process.exit(1); }
-const BOARD_COMPAT = +compatM[1];
+// GEN_COMPAT — NOT BOARD_COMPAT — is the staleness stamp: it changes when
+// generation output changes, while BOARD_COMPAT tracks the share/net protocol.
+// Keying the bake off the protocol number would throw away a perfectly good
+// payload every time the share format moved (see the note beside them).
+const compatM = /^const GEN_COMPAT = (\d+);/m.exec(html0);
+if (!compatM) { console.error('! could not find GEN_COMPAT in index.html'); process.exit(1); }
+const GEN_COMPAT = +compatM[1];
 
 // map ids, in MAPS order, straight out of the shipped registry
 const mapsBlock = /^const MAPS = \[([\s\S]*?)^\];/m.exec(html0);
@@ -65,8 +68,8 @@ for (const id of MAP_IDS) {
   try { rec = JSON.parse(fs.readFileSync(f, 'utf8')); }
   catch (e) { console.error('! ' + id + ': unreadable payload (' + e.message + ')'); process.exit(1); }
   if (rec.id !== id) { console.error('! ' + f + ' claims id "' + rec.id + '"'); process.exit(1); }
-  if (rec.compat !== BOARD_COMPAT) {
-    console.error('! ' + id + ': baked at BOARD_COMPAT ' + rec.compat + ', index.html is at ' + BOARD_COMPAT + ' — re-bake it');
+  if (rec.compat !== GEN_COMPAT) {
+    console.error('! ' + id + ': baked at GEN_COMPAT ' + rec.compat + ', index.html is at ' + GEN_COMPAT + ' — re-bake it');
     process.exit(1);
   }
   if (!rec.sol || !rec.clue) { console.error('! ' + id + ': payload missing sol/clue'); process.exit(1); }
@@ -106,7 +109,7 @@ for (const rec of found) {
     '// `n` = how many clues each tier should have, checked on load.\n' +
     '// Loaded on demand by BAKED.load(); a missing or stale file just means the\n' +
     '// game generates this board itself, as it did before baking existed.\n' +
-    'BAKED.put(' + JSON.stringify(rec.id) + ', ' + BOARD_COMPAT + ', ' + JSON.stringify(body) + ');\n';
+    'BAKED.put(' + JSON.stringify(rec.id) + ', ' + GEN_COMPAT + ', ' + JSON.stringify(body) + ');\n';
   const out = path.join(BOARDS, rec.id + '.js');
   fs.writeFileSync(out, js);
   clueBytes += js.length;
@@ -139,14 +142,14 @@ html = splice(html, 'BAKED_LAYOUT',
 html = splice(html, 'BAKED_SOL',
   solEntries.length ? 'const BAKED_SOL = {\n' + solEntries.join('\n') + '\n};'
                     : 'const BAKED_SOL = {};');
-html = html.replace(/^const BAKED_COMPAT = \d+;/m, 'const BAKED_COMPAT = ' + BOARD_COMPAT + ';');
+html = html.replace(/^const BAKED_COMPAT = \d+;/m, 'const BAKED_COMPAT = ' + GEN_COMPAT + ';');
 
 fs.writeFileSync(INDEX, html);
 
 // ---- report -----------------------------------------------------------------
 const missing = MAP_IDS.filter(id => !found.some(r => r.id === id));
 console.log('');
-console.log('baked ' + found.length + '/' + MAP_IDS.length + ' maps at BOARD_COMPAT ' + BOARD_COMPAT);
+console.log('baked ' + found.length + '/' + MAP_IDS.length + ' maps at GEN_COMPAT ' + GEN_COMPAT);
 console.log('  index.html  ' + (html0.length / 1024).toFixed(0) + ' KB -> ' + (html.length / 1024).toFixed(0) + ' KB' +
             '  (layout ' + layoutEntries.length + ', sol ' + solEntries.length + ')');
 console.log('  boards/     ' + (clueBytes / 1024).toFixed(0) + ' KB across ' + found.length + ' files');

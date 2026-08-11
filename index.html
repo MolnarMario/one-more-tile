@@ -529,6 +529,7 @@
   <button class="ov-item" id="btnWatch" title="Watch your partners' views" style="display:none"><span class="ov-ico">⊟</span>Watch</button>
   <button class="ov-item" id="btnShare" title="Save your progress, or share it with a friend"><span class="ov-ico">💾</span>Save or share</button>
   <button class="ov-item" id="btnOptions" title="Options: interface colour, music, difficulty, controller"><span class="ov-ico">⚙</span>Options</button>
+  <button class="ov-item" id="btnReweave" title="Weave a brand-new puzzle from this same painting"><span class="ov-ico">🎲</span>New weave</button>
   <button class="ov-item ov-danger" id="btnReset"><span class="ov-ico">↺</span>Reset this canvas</button>
 </div>
 
@@ -1022,6 +1023,22 @@
   </div>
 </div>
 
+<div class="overlay" id="reweaveModal">
+  <div class="card">
+    <h2>🎲 Weave a new puzzle?</h2>
+    <p>This keeps the painting, its regions and its plots exactly as they are, and weaves a
+       <b>completely new puzzle</b> across them — new solution, new clues, new sudoku and picross.</p>
+    <p style="font-size:13px;color:var(--muted)">Your progress on the original is <b>kept separately</b> and waiting
+       whenever you come back to it. A new weave has to be built from scratch, so expect the long
+       loading screen — this is the one board that isn't shipped ready-made.</p>
+    <div class="btns">
+      <button class="primary" id="btnConfirmReweave">Weave a new one</button>
+      <button id="btnBackToCanon" style="display:none">Back to the original</button>
+      <button id="btnCancelReweave">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="resetModal">
   <div class="card">
     <h2>Unravel everything?</h2>
@@ -1123,7 +1140,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.30.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.31.0';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -1131,18 +1148,78 @@ const APP_VERSION = '0.30.0';   // shown bottom-right; keep in sync with CHANGEL
 // 'clear' move now clears only the SENDER's mistakes, not the whole board;
 // 4 = picross patches are reshaped per difficulty (shapePicross), so peers on
 // an older build would generate different patch interiors — and share format
-// v6, which carries the per-patch tiers that keep them in step.)
-const BOARD_COMPAT = 4;
+// v6, which carries the per-patch tiers that keep them in step.
+// 5 = share format v7, which carries the board's SEED: a canvas can now be
+// rewoven at a custom seed, and a peer who rebuilt at the canonical one would
+// read every mark inside it as a mistake.)
+const BOARD_COMPAT = 5;
+
+// Does THIS build produce the same boards as the build that made the shipped
+// payload? Nothing to do with talking to other players — it stamps the baked
+// boards (§7a) and keys the IndexedDB cache (§7), and bumping it means "any
+// board built by an older version of this code is stale, rebuild it".
+//
+// These two used to be one number, which quietly conflated two jobs: BOARD_COMPAT
+// has to change whenever the share/net format changes, and that was throwing away
+// a perfectly good bake and forcing a ~35-minute re-bake that produced
+// byte-identical bytes (0.31.0 did exactly that, then verified the payloads came
+// back unchanged). Split at 0.31.0; GEN_COMPAT kept the value it had then, so no
+// re-bake was needed to make the split.
+//
+// Bump GEN_COMPAT when generation OUTPUT changes — sampleImage, buildLayout,
+// weaveTexture/repairTexture, genRegionClues, shapePicross, the DIFF table — and
+// then re-run ?bake= (CLAUDE.md §8.9). Leave it alone for share/protocol work.
+const GEN_COMPAT = 5;
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
 try { const m = localStorage.getItem(MAP_KEY); if (MAPS.some(x => x.id === m)) currentMap = m; } catch (e) {}
 function mapDef(id){ return MAPS.find(m => m.id === (id === undefined ? currentMap : id)) || MAPS[0]; }
 function mapIndex(id){ const k = MAPS.findIndex(m => m.id === (id === undefined ? currentMap : id)); return k < 0 ? 0 : k; }
+// ---------- custom seeds (reweaving a canvas) ----------
+// A canvas can be rewoven into a brand-new puzzle at a seed of the player's
+// choosing. What a seed does NOT touch is the layout: regions, region ids and
+// plot geometry all come from HAND_LAYOUTS / BAKED_LAYOUT (§7a), which are keyed
+// by map alone. So a reweave changes only the weave and the clues, and
+// MAP_QUOTES keys, doneKey masks, MAP_META counts and the menu card previews all
+// stay valid — that is what makes this cheap.
+// Off-canon boards get their own save slot (see stateKey) and miss the shipped
+// bake (bakedSol/bakedClueStr are seed-gated), so they take the full generation
+// path — the long loading screen, which is the whole point of asking for one.
+const SEED_KEY = 'proverbs2-seeds';   // { mapId: seed } — absent = the canonical seed
+let customSeeds = {};
+try { const s = JSON.parse(localStorage.getItem(SEED_KEY) || '{}'); if (s && typeof s === 'object') customSeeds = s; } catch (e) {}
+function validSeed(s){ return typeof s === 'number' && isFinite(s) && (s >>> 0) === s; }
+// the seed a map is currently woven at. Generation reads this; the audit/bake
+// harnesses deliberately do NOT (they always pin mapDef().seed).
+function seedFor(id){
+  const m = mapDef(id);
+  const s = customSeeds[m.id];
+  return validSeed(s) ? s : m.seed;
+}
+function isCustomSeed(id){ return seedFor(id) !== mapDef(id).seed; }
+// The LAYOUT is always derived from the CANONICAL seed, never a custom one.
+// Region ids are MAP_QUOTES keys and saved doneKey indices, so they must not
+// shift when a canvas is rewoven. Normally no RNG runs at all — the partition
+// comes from HAND_LAYOUTS/BAKED_LAYOUT — but growRegions()/placePlots() are the
+// fallback when a bake is missing or stale, and they must stay seed-stable too,
+// or a rewoven canvas would silently land every quote on the wrong region.
+function layoutSeed(id){ return mapDef(id).seed; }
+function setCustomSeed(id, seed){
+  if (seed === null || seed === undefined || seed === mapDef(id).seed) delete customSeeds[id];
+  else customSeeds[id] = seed >>> 0;
+  try { localStorage.setItem(SEED_KEY, JSON.stringify(customSeeds)); } catch (e) {}
+}
+function randomSeed(){ return (Math.floor(Math.random() * 0xFFFFFFFE) + 1) >>> 0; }
+
 // per-map progress keys; castle keeps its original key so old saves survive.
 // Each takes an optional map id (default: currentMap) so the menu can read another
 // map's saved progress/timer without switching boards.
-function stateKey(id){ return 'proverbs2-' + (id || currentMap) + '-v3'; }
+// A rewoven canvas gets its own slot via the seed suffix, so the canonical board's
+// save is never disturbed — and a canonical board's key is byte-for-byte what it
+// always was, so nothing needs migrating.
+function seedSuffix(id){ const s = customSeeds[id || currentMap]; return validSeed(s) ? '-s' + s : ''; }
+function stateKey(id){ const m = id || currentMap; return 'proverbs2-' + m + seedSuffix(m) + '-v3'; }
 function zonesKey(id){ return stateKey(id) + '-plots'; }
 function timerKey(id){ return stateKey(id) + '-time'; }   // accumulated active play-time (ms) for this map
 function picKey(id){ return stateKey(id) + '-pic'; }      // per-patch picross tier (see picTier / shapePicross)
@@ -1298,7 +1375,7 @@ function choosePlots(){
     // auto-placed: prefer the baked geometry so the plots stay put no matter
     // what seed the board is woven at (see bakedLayout)
     const b = bakedLayoutIfAny(m.id);
-    const pl = (b && b.zones && b.picross) ? bakedPlots(b) : placePlots(SEED);
+    const pl = (b && b.zones && b.picross) ? bakedPlots(b) : placePlots(layoutSeed());
     ZONES = pl.zones; PICROSS = pl.picross;
   }
 }
@@ -1343,7 +1420,7 @@ let REG_PIX = 0, REG_COUNT = 0;
 let regionCells = [], regionTint = [];
 
 function growRegions(){
-  const rng = mulberry32(SEED * 2 + 1);
+  const rng = mulberry32(layoutSeed() * 2 + 1);   // canonical seed — see layoutSeed
   regionOf.fill(-1);                                  // clear any previous map's growth
   for (let i = 0; i < N; i++) if (zoneOf[i] >= 0 || picrossOf[i] >= 0) regionOf[i] = -2;
 
@@ -2228,7 +2305,7 @@ const AUDIT_MODE = /[?&]audit=/.test(location.search);
 // edge[] -> regionOf. With all three baked, every player provably gets the same
 // board; only cellCol (the revealed artwork) is still sampled per machine.
 // EVERY lookup degrades to null on any problem — missing file, wrong dims,
-// stale BOARD_COMPAT, corrupt base64 — and the game falls back to generating
+// stale GEN_COMPAT, corrupt base64 — and the game falls back to generating
 // for real, exactly as it did before. A bake can make the game slower; it must
 // never make it wrong.
 const BAKE_MODE   = /[?&]bake=/.test(location.search);          // produce the payload
@@ -2236,10 +2313,10 @@ const VERIFY_BAKE = /[?&]verifybake=/.test(location.search);    // prove it equa
 // Both bake modes must generate for real — one IS the source of truth, the
 // other is checking it. ?audit=1 and ?nocache=1 opt out for the same reason.
 const BAKED_OFF = AUDIT_MODE || BAKE_MODE || VERIFY_BAKE || /[?&]nocache=/.test(location.search);
-// BOARD_COMPAT the inline tables below were baked at. A mismatch means someone
+// GEN_COMPAT the inline tables below were baked at. A mismatch means someone
 // changed generation without re-baking: ignore the tables and generate.
 // (boards/<map>.js carries its own stamp, checked in BAKED.put.)
-const BAKED_COMPAT = 4;
+const BAKED_COMPAT = 5;
 
 // ---- bit packing. sol = 1 bit/cell LSB-first; clue = 4 bits/cell, 15 = "no
 // clue" (values are -1 or 0..9, so 11 symbols fit a nibble with room to spare)
@@ -2315,7 +2392,7 @@ const BAKED = {
   clue: Object.create(null),
   _pend: Object.create(null),
   // called by boards/<map>.js
-  put(map, compat, rec){ if (compat === BOARD_COMPAT && rec) BAKED.clue[map] = rec; },
+  put(map, compat, rec){ if (compat === GEN_COMPAT && rec) BAKED.clue[map] = rec; },
   load(map, force){
     if (BAKED_OFF && !force) return Promise.resolve(null);
     if (BAKED.clue[map]) return Promise.resolve(BAKED.clue[map]);
@@ -2334,7 +2411,7 @@ const BAKED = {
 
 // ---- accessors. Each re-checks that the payload actually describes THIS
 // board before handing it over.
-function bakedInline(){ return !BAKED_OFF && BAKED_COMPAT === BOARD_COMPAT; }
+function bakedInline(){ return !BAKED_OFF && BAKED_COMPAT === GEN_COMPAT; }
 // The partition + plot geometry are pinned to the map, NOT to the seed: they
 // are what make region ids, MAP_QUOTES keys, doneKey masks and the menu card
 // previews stable. Only the puzzle itself follows the seed.
@@ -2404,10 +2481,10 @@ const BCACHE_CLUE_MAX = 12;   // LRU cap on clue sets; sol records are never evi
 // ?nocache=1 is the dev escape hatch (mirrors ?nowork=1). The audit must always
 // exercise real generation, never cached bytes — so it disables the cache too.
 const BCACHE_OFF = AUDIT_MODE || /[?&]nocache=/.test(location.search);
-// keys carry everything that can change the bytes. BOARD_COMPAT is already the
+// keys carry everything that can change the bytes. GEN_COMPAT is already the
 // "generation output changed" signal, so it doubles as the invalidation key.
-function solCacheKey(){ return 'sol|' + currentMap + '|' + SEED + '|' + GW + 'x' + GH + '|' + BOARD_COMPAT; }
-function clueCacheKey(){ return 'clue|' + currentMap + '|' + SEED + '|' + GW + 'x' + GH + '|' + difficulty + '|' + BOARD_COMPAT; }
+function solCacheKey(){ return 'sol|' + currentMap + '|' + SEED + '|' + GW + 'x' + GH + '|' + GEN_COMPAT; }
+function clueCacheKey(){ return 'clue|' + currentMap + '|' + SEED + '|' + GW + 'x' + GH + '|' + difficulty + '|' + GEN_COMPAT; }
 
 let bcacheDbp = null;
 function bcacheOpen(){
@@ -2465,9 +2542,9 @@ function bcacheTrim(){
 }
 // Stale-cache guard: every displayed clue must equal the true light-count of
 // its region-clipped 3x3 under the restored sol. ~9N ops (~2ms on the largest
-// map), and it makes a forgotten BOARD_COMPAT bump self-healing. It cannot
+// map), and it makes a forgotten GEN_COMPAT bump self-healing. It cannot
 // catch a set thinned by a STRONGER solver than the current code has — that is
-// exactly what BOARD_COMPAT is for.
+// exactly what GEN_COMPAT is for.
 function clueMatchesSol(c){
   for (let i = 0; i < N; i++){
     const r = regionOf[i];
@@ -2509,7 +2586,7 @@ function prepareSolution(done){
 }
 
 function startGeneration(){
-  SEED = mapDef().seed;
+  SEED = seedFor();      // canonical, unless this canvas has been rewoven
   dimsForImage(img, mapDef());
   sampleImage(img);     // paint + edge map (region borders flood along the edges)
   buildLayout();
@@ -2807,7 +2884,7 @@ function rebuildForMap(id, done){
     loader.classList.remove('done');
   }
   const apply = image => {
-    SEED = mapDef(id).seed;
+    SEED = seedFor(id);              // canonical, unless this canvas has been rewoven
     dimsForImage(image, mapDef(id));   // board shape from this image's aspect
     sampleImage(image);                // paint + edge map
     buildLayout();                     // regions flood along the edges; sudoku layout from seed
@@ -2829,8 +2906,15 @@ function rebuildForMap(id, done){
 function loadMap(id){
   if (id === currentMap || !MAPS.some(m => m.id === id) || solving || !generated) return;
   timerPause();   // bank the outgoing map's time before we switch away
-  rebuildForMap(id, () => {
-    state.fill(0); wrong.clear(); cellOwner.fill(null);
+  rebuildForMap(id, afterBoardSwap);
+}
+
+// Everything that has to happen once a DIFFERENT board is standing: wipe the
+// outgoing board's play state, then replay whatever this one has saved. Shared
+// by loadMap and reweaveCanvas — a reweave swaps the board just as thoroughly
+// as a map switch does, it just keeps the same painting.
+function afterBoardSwap(){
+  state.fill(0); wrong.clear(); cellOwner.fill(null);
     for (const z of ZONES) { z.entries = z.puzzle.slice(); z.owner = null; }
     regionDone.fill(false); regionDoneAt.fill(0);
     gameWon = false; mistakePromptOpen = false; resetSelections();
@@ -2843,10 +2927,27 @@ function loadMap(id){
     for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
     for (const z of ZONES) checkZone(z, true);
     updateHUD();
-    persistMenuSummary();   // refresh this map's grid card (%, unlocked regions)
-    fitView();
-    runPendingAfterGen();   // menu-queued action (start co-op / host / join)
-  });
+  persistMenuSummary();   // refresh this map's grid card (%, unlocked regions)
+  fitView();
+  runPendingAfterGen();   // menu-queued action (start co-op / host / join)
+}
+
+// Reweave the current canvas at `seed` (null = back to the canonical weave).
+// The painting, its regions and its plots are untouched — only sol[] and the
+// clues change — so quotes, region ids and the menu's card previews all still
+// line up. The outgoing weave keeps its own save (see stateKey), so this is
+// never destructive: you can walk back and forth between weaves.
+function reweaveCanvas(seed){
+  if (!generated || solving || GEN.active) { toast('One moment, the canvas is still busy.', true); return false; }
+  if (online) { toast('Leave the online session before reweaving — everyone shares one board.', true); return false; }
+  timerPause();                     // bank the outgoing weave's time under ITS key
+  setCustomSeed(currentMap, seed);  // must land before rebuildForMap: seedFor() drives generation
+  // a different weave is a fresh playthrough, so re-arm this canvas's proverbs.
+  // Regions already finished on the board being restored stay silent (checkRegion
+  // runs quietly in afterBoardSwap), so this only ever affects new completions.
+  quotesShown[currentMap] = []; saveQuotes();
+  rebuildForMap(currentMap, afterBoardSwap);
+  return true;
 }
 
 // (re)generate sudoku plots at the current difficulty: solution grids are
@@ -3546,7 +3647,7 @@ async function bakeBoards(only, onMap){
     // only the maps that DERIVE their layout need it baked; the rest already
     // ship a HAND_LAYOUTS entry and would just duplicate it
     const derived = !(m.layout && HAND_LAYOUTS[m.layout]);
-    const rec = { id: m.id, compat: BOARD_COMPAT, seed: SEED, gw: GW, gh: GH, cells: N };
+    const rec = { id: m.id, compat: GEN_COMPAT, seed: SEED, gw: GW, gh: GH, cells: N };
     if (derived){
       rec.regPix = REG_PIX;
       rec.regionRLE = captureRegionRLE();
@@ -4201,7 +4302,9 @@ function updateHUD(){
   const pct = boardPercent();
   document.getElementById('progressBar').style.width = pct + '%';
   document.getElementById('progressTxt').textContent = pct + '%';
-  document.getElementById('hudMapName').textContent = mapDef().name;
+  // flag an off-canon weave: the board looks identical to the shipped one, so
+  // without this there is no way to tell which puzzle you are actually on
+  document.getElementById('hudMapName').textContent = mapDef().name + (isCustomSeed() ? ' · new weave' : '');
   // the mistake readout (and its separator) only appears once there's something to report
   const mc = wrong.size;
   const mEl = document.getElementById('mistakes'), sEl = document.getElementById('hudMistakeSep');
@@ -4353,10 +4456,16 @@ function resetGame(){
 //         patches or every mark inside one would read as a mistake. v5 and
 //         older codes predate patch shaping and decode with no tiers, which
 //         means "shape every patch at the code's difficulty".
+//    v7 only: immediately after the map id, 4 bytes of SEED (big-endian). A
+//         canvas can be rewoven at a custom seed, and since the recipient
+//         rebuilds locally before replaying, a code that did not name its seed
+//         would have them rebuild the CANONICAL board and read every mark as a
+//         mistake — the same trap the v6 picross tiers close. Older codes carry
+//         no seed, which means "the canonical one".
 //    then state: GW*GH cells, 2 bits each, 4 per byte → ceil(N/4) bytes
 // ============================================================
 const SHARE_TAG = 'NPXS3:';
-const SHARE_VER = 6;       // v6 adds the per-patch picross tiers; v5 encoded the map by id (stable) rather than its MAPS index
+const SHARE_VER = 7;       // v7 adds the board seed; v6 added the per-patch picross tiers; v5 encoded the map by id (stable) rather than its MAPS index
 // FROZEN persistence table: v3/v4 codes stored the map as an index into MAPS as it
 // was ordered at v4. Decoding those old codes must use THIS order — never the live
 // MAPS array — so DO NOT edit or reorder this even when maps are added/reordered.
@@ -4383,12 +4492,14 @@ function exportCode(){
   let zBytes = 0;
   for (const z of ZONES) zBytes += 1 + ((z.n * z.n + 1) >> 1);   // 1 byte n + entries
   const pBytes = 1 + PICROSS.length;                             // count + one tier byte per patch
-  const buf = new Uint8Array(header + 5 + zBytes + pBytes + stBytes);   // +5 = GW(2) GH(2) zones(1)
+  const buf = new Uint8Array(header + 4 + 5 + zBytes + pBytes + stBytes);   // +4 = seed, +5 = GW(2) GH(2) zones(1)
   buf[0] = SHARE_VER;
   buf[1] = Math.max(0, DIFF_ORDER.indexOf(difficulty));
   buf[2] = idBytes.length;
   for (let k = 0; k < idBytes.length; k++) buf[3 + k] = idBytes[k];
   let o = header;
+  const sd = SEED >>> 0;                               // v7: which weave this board is
+  buf[o++] = (sd >>> 24) & 255; buf[o++] = (sd >>> 16) & 255; buf[o++] = (sd >>> 8) & 255; buf[o++] = sd & 255;
   buf[o++] = (GW >> 8) & 255; buf[o++] = GW & 255;     // GW, GH as 2 bytes each (big-endian)
   buf[o++] = (GH >> 8) & 255; buf[o++] = GH & 255;
   buf[o++] = ZONES.length;
@@ -4420,10 +4531,10 @@ function decodeCode(code){
     s = s.replace(/\s+/g, '');
     const buf = bytesFromB64(s);
     const ver = buf[0];
-    if (buf.length < 6 || ver < 3 || ver > 6) return null;   // v3 = 1-byte dims, v4 = 2-byte dims, v5 = map id, v6 = + picross tiers
+    if (buf.length < 6 || ver < 3 || ver > 7) return null;   // v3 = 1-byte dims, v4 = 2-byte dims, v5 = map id, v6 = + picross tiers, v7 = + seed
     const diff = DIFF_ORDER[buf[1]];
     if (!diff) return null;
-    let map, gw, gh, nz, o;
+    let map, gw, gh, nz, o, seed = null;
     if (ver >= 5) {
       const idLen = buf[2];
       if (idLen < 1 || idLen > 64 || buf.length < 3 + idLen + 5) return null;
@@ -4431,7 +4542,12 @@ function decodeCode(code){
       for (let k = 0; k < idLen; k++) id += String.fromCharCode(buf[3 + k]);
       if (!MAPS.some(m => m.id === id)) return null;   // unknown / newer map id
       map = id;
-      const h = 3 + idLen;
+      let h = 3 + idLen;
+      if (ver >= 7) {                                  // v7: the weave this board was built at
+        if (buf.length < h + 4 + 5) return null;
+        seed = ((buf[h] << 24) | (buf[h + 1] << 16) | (buf[h + 2] << 8) | buf[h + 3]) >>> 0;
+        h += 4;
+      }
       gw = (buf[h] << 8) | buf[h + 1]; gh = (buf[h + 2] << 8) | buf[h + 3]; nz = buf[h + 4]; o = h + 5;
     } else {
       map = LEGACY_MAP_IDS[buf[2]];                    // FROZEN v3/v4 index → id
@@ -4483,7 +4599,8 @@ function decodeCode(code){
       if (i + 3 < nn) st[i + 3] = (b >> 6) & 3;
     }
     for (let i = 0; i < nn; i++) if (st[i] > 2) return null;
-    return { diff, map, gw, gh, state: st, zones, pics };
+    // pre-v7 codes name no seed, which means the canonical weave for that map
+    return { diff, map, gw, gh, state: st, zones, pics, seed: seed === null ? mapDef(map).seed : seed };
   } catch (e) { return null; }
 }
 
@@ -4553,8 +4670,17 @@ function importCode(code, onDone, silent){
   let picsChanged = false;
   for (let k = 0; k < PICROSS.length && k < want.length; k++) if (picTier[k] !== want[k]) { picsChanged = true; break; }
 
-  if (data.map !== currentMap) {
-    // different painting: rebuild it (at the imported difficulty), then replay
+  // v7 codes name the weave they were built at. Adopt it BEFORE any rebuild,
+  // since seedFor() is what generation reads — and unlike a difficulty or patch
+  // change, a different seed means a different sol[], so regenClues alone will
+  // not do: it needs the full rebuild. (Pre-v7 codes decode as canonical, so
+  // importing one puts a rewoven canvas back on the original weave.)
+  const seedChanged = data.seed !== seedFor(data.map);
+  if (seedChanged) setCustomSeed(data.map, data.seed);
+
+  if (data.map !== currentMap || seedChanged) {
+    // different painting (or a different weave of this one): rebuild it at the
+    // imported difficulty, then replay
     importPicTier = want;            // loadPicTier picks this up inside rebuildForMap
     rebuildForMap(data.map, finish);
   } else if (diffChanged || picsChanged) {
@@ -6727,7 +6853,8 @@ function menuRefreshCards(){
     if (!played) { row.style.display = 'none'; card.querySelector('.mapCardStat').textContent = ''; continue; }
     row.style.display = '';
     card.querySelector('.mapCardBarFill').style.width = pct + '%';
-    card.querySelector('.mapCardStat').textContent = pct + '% · ' + done + '/' + (meta ? meta.regions : mask.length);
+    card.querySelector('.mapCardStat').textContent = pct + '% · ' + done + '/' + (meta ? meta.regions : mask.length) +
+      (isCustomSeed(id) ? ' · new weave' : '');   // which weave this progress belongs to
   }
 }
 // fill in (or hide) the grid's Continue card from the last solo map's saved progress
@@ -6831,8 +6958,9 @@ function menuLaunch(id){
   // it overlaps the menu teardown and image decode. clueCacheProbe awaits the
   // same promise before beginGen() puts the loading screen up — without this
   // head start, a slow connection would leave the player on a bare canvas for
-  // the length of the download.
-  BAKED.load(id);
+  // the length of the download. A rewoven canvas cannot use the shipped clues,
+  // so there is nothing worth fetching for it.
+  if (!isCustomSeed(id)) BAKED.load(id);
   if (!generated) {
     currentMap = id; try { localStorage.setItem(MAP_KEY, id); } catch (e) {}
     img.onload = () => startGeneration();
@@ -7021,6 +7149,20 @@ document.getElementById('shareFile').onchange = e => {
   reader.onload = () => { if (importCode(String(reader.result))) document.getElementById('shareModal').classList.remove('show'); };
   reader.onerror = () => toast('Could not read that file.', true);
   reader.readAsText(f);
+};
+document.getElementById('btnReweave').onclick = () => {
+  // only offer the way back when there is something to go back to
+  document.getElementById('btnBackToCanon').style.display = isCustomSeed() ? '' : 'none';
+  document.getElementById('reweaveModal').classList.add('show');
+};
+document.getElementById('btnCancelReweave').onclick = () => document.getElementById('reweaveModal').classList.remove('show');
+document.getElementById('btnConfirmReweave').onclick = () => {
+  document.getElementById('reweaveModal').classList.remove('show');
+  if (reweaveCanvas(randomSeed())) toast('Weaving a new puzzle from this painting…', true);
+};
+document.getElementById('btnBackToCanon').onclick = () => {
+  document.getElementById('reweaveModal').classList.remove('show');
+  if (reweaveCanvas(null)) toast('Back to the original weave. Your progress on it is as you left it.', true);
 };
 document.getElementById('btnReset').onclick = () => document.getElementById('resetModal').classList.add('show');
 document.getElementById('btnCancelReset').onclick = () => document.getElementById('resetModal').classList.remove('show');

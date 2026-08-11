@@ -107,9 +107,11 @@ the board is ready; every completion path (`finishSetup`, `loadMap`'s rebuild ca
 | `MAPS`, `currentMap`, `mapDef()`, `HAND_LAYOUTS`, `MAP_QUOTES` | — | maps registry, hand partitions, quotes-by-region-id |
 | `MAP_META`, `PREVIEW_RLE`, `MAP_ADDED_ORDER` | objects/array | baked per-map region/square counts + region RLE for menu card previews (watershed maps); git add-order for the sort (see §10) |
 | `BAKED_LAYOUT`, `BAKED_SOL`, `BAKED` | objects | shipped precomputed boards: partition+plots (castle/crew/fighters only), `sol` bitmaps, and the lazily-loaded clue registry (§7a) |
-| `BAKED_COMPAT`, `BAKED_OFF` | number/bool | the `BOARD_COMPAT` the inline tables were baked at / master switch (audit, bake, verify, `?nocache=1`) |
+| `BOARD_COMPAT`, `GEN_COMPAT` | numbers | **two stamps, two jobs**: co-op/share protocol vs "does this build make the same boards" (§8.6) |
+| `BAKED_COMPAT`, `BAKED_OFF` | number/bool | the `GEN_COMPAT` the inline tables were baked at / master switch (audit, bake, verify, `?nocache=1`) |
 | `GEN`, `GTL_BASE` | object/const | loading-animation state machine + base timeline (see §5) |
 | `players[]`, `dpr`, `needsDraw`, `C`, `TINTS` | — | cameras, DPR, dirty flag, palette (mutated by `buildPalette`), region tints (derived from `themeHue`) |
+| `customSeeds`, `SEED_KEY` | object/const | `{mapId: seed}` for canvases rewoven off-canon (§7b); absent = the canonical seed |
 | `themeHue`, `MENU`, `pendingAfterGen` | number/obj/fn | current interface hue (see §10) / menu state machine / one-shot post-generation action |
 | `timerBase`, `timerStart` | numbers | per-map **accumulated** play-time + current run start (see §10) |
 | `net`, `onlineRole`, `online`, `coop`, `PROTO_V` | — | multiplayer transport/role/flags |
@@ -262,9 +264,9 @@ progress, _pct, _hdr}`.
   skips the expensive stages. Measured cost of a cold build: `weaveTexture`+`repairTexture` 0.6–2.1s,
   and the clue worker 1.1s (Castle/Medium) to **35s** (Angels/Medium) — Very Hard is ~6.5× Medium.
   Everything else rebuilds in <50ms total, so **only two arrays are cached**:
-  - `sol[]` — keyed by **map** (`sol|<map>|<seed>|<GW>x<GH>|<BOARD_COMPAT>`). Frozen after
+  - `sol[]` — keyed by **map** (`sol|<map>|<seed>|<GW>x<GH>|<GEN_COMPAT>`). Frozen after
     `repairTexture`, hence identical on every tier. A hit skips `weaveTexture()`.
-  - `clue[]` — keyed by **map + difficulty** (`clue|…|<difficulty>|<BOARD_COMPAT>`). A hit skips the
+  - `clue[]` — keyed by **map + difficulty** (`clue|…|<difficulty>|<GEN_COMPAT>`). A hit skips the
     worker. `locked` is restored as all-zero (it must be); picross/sudoku clue cells are *not* taken
     from the blob — the restore loop is organic-cells-only, mirroring the worker merge.
 
@@ -274,10 +276,12 @@ progress, _pct, _hdr}`.
   `clueCacheProbe()` decides whether `beginGen` gets the short `GTL_CACHED` beat (§5).
   Every helper resolves to `null`/no-op on any failure, so blocked storage just means no cache.
   **`clueMatchesSol()` re-derives every restored clue from the restored `sol` and rejects the whole
-  entry on any mismatch** — that's what makes a forgotten `BOARD_COMPAT` bump self-healing.
+  entry on any mismatch** — that's what makes a forgotten `GEN_COMPAT` bump self-healing.
   `?nocache=1` bypasses the cache; `?audit=1` disables it (`BCACHE_OFF`) so the audit always
   exercises real generation.
-- **Share**: `exportCode()` / `importCode()` / `applyImported()` (~2558+); `SHARE_VER = 6` — v6 adds
+- **Share**: `exportCode()` / `importCode()` / `applyImported()` (~2558+); `SHARE_VER = 7` — v7 adds
+  the board's **seed** (4 bytes, big-endian, immediately after the map id) so a rewoven canvas
+  survives the round trip (§7b); pre-v7 codes decode as the canonical seed. v6 adds
   the per-patch **picross tiers** (`picTier`, §4) after the zone blocks, because the recipient
   regenerates the board locally before replaying progress. v3/v4/v5 still decode (`pics` = null →
   shape every patch at the code's own difficulty). Older note: `SHARE_VER = 5` — v5
@@ -286,8 +290,10 @@ progress, _pct, _hdr}`.
   never edit it. Exports the whole canvas as a `NPXS…` code or `.npxs` file; import replays progress.
 - **Multiplayer**: `net` transport + `onlineRole` (`'host'|'join'`); `PROTO_V = 1`;
   `netEnvelope`/`netSend`/`netEmit` (~3217). A `hello`/`hello-ack` handshake requires matching
-  **`BOARD_COMPAT`** (bumped only on generation/share/protocol changes — *not* `APP_VERSION`, so UI
-  releases don't break co-op). Host owns the canonical save; only the host may push `snapshot`/
+  **`BOARD_COMPAT`** (bumped only on share/snapshot-format or net-protocol changes — *not*
+  `APP_VERSION`, so UI releases don't break co-op, and *not* `GEN_COMPAT`, see §8.6). Since the
+  snapshot **is** `exportCode()`, a `SHARE_VER` bump is always a `BOARD_COMPAT` bump.
+  Host owns the canonical save; only the host may push `snapshot`/
   `resync` (guarded on `hostPid`). **Undo is per-player in co-op**: each player has its own
   `pl.editStack` of authored edits, and `undoOwn` reverts only that player's tiles/digits (skipping
   teammate-changed cells and already-completed regions), replaying the reverse through the normal
@@ -355,6 +361,36 @@ expensive half of generation now ships as data. Three artifacts, produced by `ba
   canvas draw, so any Node reimplementation would defeat the point that the shipped bytes are what
   the shipped code makes.
 
+### 7b. Custom seeds — reweaving a canvas
+
+`reweaveCanvas(seed)` (⋯ → **🎲 New weave**, `#reweaveModal`) rebuilds the current canvas at a
+different seed; `reweaveCanvas(null)` puts it back on the canonical one. `customSeeds` (persisted
+under `SEED_KEY`) holds the per-map override, and `seedFor(id)` is what generation reads.
+
+**The one idea that makes this cheap: a seed changes the puzzle, never the layout.**
+
+- `layoutSeed(id)` is *always* `mapDef(id).seed`. The partition normally comes from
+  `HAND_LAYOUTS`/`BAKED_LAYOUT` (keyed by map, not seed) so no RNG runs at all — but
+  `growRegions()` and the `placePlots()` fallback are pinned to `layoutSeed()` as well, so even a
+  missing or stale bake can't shift region ids. ⚠ Never wire either of them to `SEED`.
+- Because region ids, `REG_COUNT` and plot geometry are therefore identical across weaves,
+  `MAP_QUOTES` keys, `doneKey` masks, `MAP_META` counts and the menu card previews (`PREVIEW_RLE`,
+  `menuPlotRects`) all stay valid on a rewoven board with no extra work.
+- **Saves**: `stateKey()` grows a `-s<seed>` suffix via `seedSuffix()`, and the other five keys
+  derive from it — so each weave has its own slot and a canonical board's key is byte-for-byte what
+  it always was (nothing to migrate). `resetGame()` clears only the current weave's slot.
+- **The bake is seed-gated**: `bakedSol()`/`bakedClueStr()` bail when `SEED !== mapDef().seed`, so a
+  rewoven canvas misses the shipped payload and takes the full generation path — the long loading
+  screen, which is the point of asking for one. `menuLaunch` skips the prefetch for it too. The IDB
+  cache keys already carried `SEED`, so rewoven boards cache separately for free.
+- **Share/co-op**: `SHARE_VER` 7 carries the seed (4 bytes, big-endian, right after the map id).
+  A recipient rebuilds locally before replaying, so a code that didn't name its weave would have
+  them rebuild the canonical board and read every mark as a mistake. Since the co-op snapshot **is**
+  `exportCode()` (`onNetMessage` `hello-ack`), this covers online play with no protocol change of
+  its own. `importCode` adopts the seed *before* rebuilding and forces the full-rebuild branch —
+  `regenClues` alone is not enough, because a new seed means a new `sol[]`.
+- Blocked while `online`: everyone in a session shares one board.
+
 ---
 
 ## 8. Invariants & gotchas (don't break these)
@@ -375,21 +411,21 @@ expensive half of generation now ships as data. Three artifacts, produced by `ba
    worker path (the sync fallback masks it). Keep `genRegionClues` closure-free re: worker.
 5. **Hand-layout region ids are used verbatim** (not recompacted) so they align with `MAP_QUOTES`
    keys and saved region-done flags. Don't renumber them.
-6. **`APP_VERSION`** (top of the script, echoed bottom-right) marks the deployed version — bump it
-   with any shipped change and keep `CHANGELOG.md` in sync. Online co-op is gated on **`BOARD_COMPAT`**
-   (next to it), NOT `APP_VERSION`; bump `BOARD_COMPAT` only when generation, the share/snapshot
-   format (`SHARE_VER`), or the net protocol changes, and leave `LEGACY_MAP_IDS` frozen forever.
-   ⚠ **`BOARD_COMPAT` is also the board cache's and the bake's invalidation key** (§7/§7a) — a
-   generation change without a bump would hand players a stale board. `clueMatchesSol()` catches most
-   of that automatically, but it *cannot* catch a clue set thinned by a **stronger** solver than the
-   current code has (i.e. if you weaken the solver). Bump it when generation output changes.
-9. **Change generation ⇒ re-bake.** The shipped `boards/` + inline tables are pipeline *output*
-   (§7a). After any change to `sampleImage`/`buildLayout`/`weaveTexture`/`repairTexture`/
-   `genRegionClues`/`shapePicross`/`DIFF`, re-run `?bake=` for every map, `node _bake_boards.js`,
-   and then **`?verifybake=` must pass** — it is the only thing that proves the shipped bytes still
-   equal what the code produces. Bumping `BOARD_COMPAT` without re-baking is safe (the payload is
-   ignored, boards just generate slowly); re-baking without bumping is safe only when output did not
-   change. `?verifybake=` catches both mistakes.
+6. **Three version numbers, three jobs — don't conflate them.**
+   | Constant | Bump when | Gates |
+   |---|---|---|
+   | `APP_VERSION` | any shipped change | the label bottom-right; keep `CHANGELOG.md` in sync |
+   | `BOARD_COMPAT` | the **share/snapshot format** (`SHARE_VER`) or the **net protocol** changes | the online co-op handshake — peers must match |
+   | `GEN_COMPAT` | **generation output** changes: `sampleImage`, `buildLayout`, `weaveTexture`/`repairTexture`, `genRegionClues`, `shapePicross`, the `DIFF` table | the IndexedDB cache keys (§7) and the bake stamp (§7a) |
+
+   `BOARD_COMPAT` and `GEN_COMPAT` were **one number until 0.31.0**, which meant every share-format
+   change threw away a perfectly good bake and forced a ~35-minute re-bake that produced
+   byte-identical bytes. Splitting them is only safe while each keeps its own job — if you find
+   yourself bumping `BOARD_COMPAT` "to be safe" after a generation change, bump `GEN_COMPAT` instead,
+   that's the one that matters. Leave `LEGACY_MAP_IDS` frozen forever.
+   ⚠ A generation change without a `GEN_COMPAT` bump hands players a stale board. `clueMatchesSol()`
+   catches most of that automatically, but it *cannot* catch a clue set thinned by a **stronger**
+   solver than the current code has (i.e. if you weaken the solver).
 7. **The dev tools are generated** from `index.html` via string-marker extraction. `_build_editor.js`
    splits on Block A (`'use strict';` → `// ---------- canvas / view ----------`), Block B
    (`function sampleImage(image){` → `function weaveTexture(){`), Block C
@@ -406,6 +442,14 @@ expensive half of generation now ships as data. Three artifacts, produced by `ba
 8. **Pages deploys one at a time.** Don't trigger concurrent deployments (empty re-trigger commits /
    forced builds) — the deploy job fails with "Deployment failed, try again later." One clean push;
    re-run the *failed run* if it flakes.
+9. **Change generation ⇒ re-bake.** The shipped `boards/` + inline tables are pipeline *output*
+   (§7a). After any change to the functions listed under `GEN_COMPAT` above: bump `GEN_COMPAT`,
+   re-run `?bake=` for every map, `node _bake_boards.js`, and then **`?verifybake=` must pass** — it
+   is the only thing that proves the shipped bytes still equal what the code produces. Bumping
+   `GEN_COMPAT` without re-baking is safe (the payload is ignored, boards just generate slowly);
+   re-baking without bumping is safe only when output did not change. `?verifybake=` catches both
+   mistakes. A `BOARD_COMPAT` bump on its own needs **no** re-bake — that is the whole point of the
+   split.
 
 ---
 
@@ -420,6 +464,7 @@ expensive half of generation now ships as data. Three artifacts, produced by `ba
 | Tune the loading animation | `GTL_BASE` (timeline), the `sc` scale in `beginGen`, `drawGen`; `GTL_CACHED` for the short cache-hit beat (keep every divisor non-zero — `drawGen` divides by `regDur`/`shimIn`/`settle`) |
 | Board caching / eviction | the board-cache block just above `startGeneration` (§7); `BCACHE_CLUE_MAX`, `clueMatchesSol`, `prepareSolution`, `regenCluesFresh` |
 | Re-bake after a generation change | §7a — `?bake=<map>` per tab → `node _bake_boards.js [srcDir]` → **`?verifybake=` must pass** → `?audit=` |
+| Custom seeds / reweaving | §7b — `seedFor`/`layoutSeed`/`setCustomSeed`, `seedSuffix` in `stateKey`, `reweaveCanvas`, `#reweaveModal` |
 | Baked-board plumbing | §7a — the baked-boards block above the cache (`BAKED*`, `packBits`/`packNibbles`), and the seams in `buildLayout`/`prepareSolution`/`regenClues`/`clueCacheProbe` |
 | Change colours / theme | edit `:root` HSL vars (CSS chrome) **and** `buildPalette()` (canvas `C` + `TINTS`) together; both key off `--hue`/`themeHue`. Add/adjust theme swatches in `THEME_PRESETS` (§10) |
 | The home menu / map grid | §10 — `#menuScreen` markup, `showMenu`/`menuShowView`/`menuOpenGrid`/`menuPlay`, sort in `menuSortedIds` |

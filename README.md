@@ -85,6 +85,19 @@ kept on your machine, which covers anything not shipped — a custom canvas, or 
 update. Either way the game re-checks every clue against the solution before trusting it, so a
 restored board is identical to a freshly generated one, and your stitches are never affected.
 
+### Finished a canvas? Weave it again
+Every canvas ships with one fixed puzzle, the same for everyone. When you want a different one from
+the same painting, pick **🎲 New weave** in the ⋯ menu: the artwork, its regions and its plots stay
+exactly where they are, and a **completely new puzzle** is woven across them — new solution, new
+clues, new sudoku and picross. This is the one board that isn't shipped ready-made, so it's built on
+the spot and you'll see the full loading screen while it happens.
+
+Your progress on the original isn't touched — each weave keeps its own save. **Back to the original**
+in the same dialog returns you to it exactly as you left it, and you can switch back again whenever
+you like. The canvas grid and the header mark a rewoven board `· new weave` so you always know which
+puzzle you're on, and share codes carry the weave with them so a friend gets *your* board, not the
+shipped one.
+
 ### Quality of life
 - **Play timer** in the header — per canvas, and it *remembers your time*: leave and come back and
   it resumes where it stopped. It counts only active time (pauses when you open the menu, switch
