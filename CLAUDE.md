@@ -13,13 +13,21 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 ## 1. The shape of the project
 
 - **`index.html`** — the entire game: HTML + CSS + one big inline `<script>` (~5,050 lines). No
-  modules, no bundler, no dependencies. Open it in a browser and it runs. This is the only shipped
-  file (plus its embedded image data URIs). Boot lands on the **home menu** (§10), not a board.
+  modules, no bundler, no dependencies. Open it in a browser and it runs. Boot lands on the **home
+  menu** (§10), not a board.
+- **`boards/<map>.js`** — baked clue sets, loaded on demand (§7a). A missing `boards/` folder costs
+  generation time, never correctness — `index.html` alone still plays.
+- **`vendor/peerjs.js`** — peerjs 1.5.4, the project's only third-party code, loaded lazily by
+  `loadPeerJS()` and *only* when a player starts an online session. Vendored rather than imported
+  from a CDN so that no third party is inside the page at runtime (§7d); the page's CSP pins
+  `script-src` to `'self'`, which is what makes that guarantee real. A missing `vendor/` folder costs
+  online play only — solo and local co-op are untouched.
 - **Dev tools** (not shipped; generated *from* `index.html` so they reuse its exact code):
   - `region-editor.html` ← `node _build_editor.js` (uses `index.html` + `_editor.src.js`) — author
     maps by drawing region borders; exports a `.npxsmap.json`.
   - `region-map.html` ← `node _build_inspector.js` — region inspector (borders + ids).
   - `_bake_map.js` — bakes a `.npxsmap.json` into `index.html` as a built-in map.
+  - `_bake_boards.js` — folds `?bake=` payloads into `index.html` + `boards/` (§7a).
   - `verify-puzzle.js`, `inspect-region.js` — **legacy** Castle-only Node harnesses, superseded by
     the in-browser audit (below). Their headers say so.
 - **Docs** — `README.md` (players), `CLAUDE.md` (this), `CHANGELOG.md` (per-version history).
@@ -28,10 +36,17 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 - **Play**: open `index.html`. Live: https://molnarmario.github.io/one-more-tile/
 - **`?audit=1`**: rebuilds every map × every difficulty and asserts zero pre-filled cells + full
   logical solvability; sets `document.title` to `AUDIT PASS`/`AUDIT FAIL` (headless-friendly). This
-  is *the* correctness check — run it after touching generation. Entry: `auditGivens()` (~line 2063).
+  is *the* correctness check — run it after touching generation. Entry: `auditGivens(only)`.
+- **`?verifybake=1`**: rebuilds every map × tier for real and asserts the **shipped baked payload is
+  byte-identical** (partition, plot geometry, `sol`, `clue`). Title → `BAKE VERIFY PASS`/`FAIL`.
+  Run it whenever you re-bake. Entry: `verifyBake(only)`.
+- **`?bake=<map>`**: produces the payload for those maps (§7a). Title → `BAKE DONE`.
+- ⚠ **All three take a comma-separated map list** (`?audit=angels,castle`; `1`/`all` = everything).
+  A whole-registry run takes hours — **shard it one map per tab** and read each tab's title.
 - **`?nowork=1`**: forces synchronous, worker-free clue generation (headless/debug).
-- **`?nocache=1`**: bypasses the IndexedDB board cache (§7) so you always get a real, cold build.
-  `?audit=1` disables it too — the audit must never validate cached bytes.
+- **`?nocache=1`**: bypasses the IndexedDB board cache **and the bake** (§7/§7a) so you always get a
+  real, cold build. `?audit=1`, `?bake=` and `?verifybake=` disable both for the same reason — they
+  must never validate bytes they were handed.
 - Syntax check: extract the inline `<script>` and `new vm.Script(src)` it under Node.
 
 ---
@@ -49,17 +64,18 @@ first load, `rebuildForMap` on map switch, and — minus the `sol` stages — `s
 
 ```
 sampleImage(img)      image → sol[] (light/dark) + cellCol[] (art) + edge[]
-buildLayout()         plots, regions (watershed or hand layout), nbhd[]
-clueCacheProbe(hit)   is this map+tier's clue set already banked? (§7)
-prepareSolution()     restore sol[] from cache, ELSE weaveTexture() → repairTexture() → bank it
+buildLayout()         plots, regions (hand layout / BAKED_LAYOUT / watershed), nbhd[]
+clueCacheProbe(hit)   loads boards/<map>.js, then: is this map+tier's clue set banked? (§7/§7a)
+prepareSolution()     restore sol[] from the bake, ELSE the cache, ELSE weaveTexture() → repairTexture()
 beginGen(kind, done, hit)  starts the loading animation (see §5); `hit` = short "restoring" beat
-regenClues(genClueReady)   cache hit → return at once; else spawn the clue Worker + bank the result
+regenClues(genClueReady)   bake/cache hit → return at once; else spawn the clue Worker + bank it
    … the animation plays while the worker thins clues off-thread …
 genComplete() → done()     handoff: finishSetup (load) / callbacks (map, diff)
 ```
 
-The two cache-aware seams are `prepareSolution` and `regenClues`; **`auditGivens()` calls
-`weaveTexture()` / `genRegionClues()` directly and is unaffected.**
+The precomputed-board seams are `buildLayout`, `prepareSolution` and `regenClues`, each trying
+**bake → IndexedDB cache → generate**; **`auditGivens()` / `verifyBake()` call `weaveTexture()` /
+`genRegionClues()` directly and are unaffected** (both run with `BAKED_OFF`).
 
 `finishSetup()` (~1889): `generated = true`, `loadSave()`, `applyGivens()`, re-check regions, start
 the render `loop()`, then `runPendingAfterGen()`. After this, gameplay is live and `loop()` runs
@@ -94,8 +110,12 @@ the board is ready; every completion path (`finishSetup`, `loadMap`'s rebuild ca
 | `DIFF`, `DIFF_ORDER`, `difficulty` | table/…/string | difficulty tiers (see §4); `difficulty` persisted |
 | `MAPS`, `currentMap`, `mapDef()`, `HAND_LAYOUTS`, `MAP_QUOTES` | — | maps registry, hand partitions, quotes-by-region-id |
 | `MAP_META`, `PREVIEW_RLE`, `MAP_ADDED_ORDER` | objects/array | baked per-map region/square counts + region RLE for menu card previews (watershed maps); git add-order for the sort (see §10) |
+| `BAKED_LAYOUT`, `BAKED_SOL`, `BAKED` | objects | shipped precomputed boards: partition+plots (castle/crew/fighters only), `sol` bitmaps, and the lazily-loaded clue registry (§7a) |
+| `BOARD_COMPAT`, `GEN_COMPAT` | numbers | **two stamps, two jobs**: co-op/share protocol vs "does this build make the same boards" (§8.6) |
+| `BAKED_COMPAT`, `BAKED_OFF` | number/bool | the `GEN_COMPAT` the inline tables were baked at / master switch (audit, bake, verify, `?nocache=1`) |
 | `GEN`, `GTL_BASE` | object/const | loading-animation state machine + base timeline (see §5) |
 | `players[]`, `dpr`, `needsDraw`, `C`, `TINTS` | — | cameras, DPR, dirty flag, palette (mutated by `buildPalette`), region tints (derived from `themeHue`) |
+| `customSeeds`, `SEED_KEY` | object/const | `{mapId: seed}` for canvases rewoven off-canon (§7b); absent = the canonical seed |
 | `themeHue`, `MENU`, `pendingAfterGen` | number/obj/fn | current interface hue (see §10) / menu state machine / one-shot post-generation action |
 | `timerBase`, `timerStart` | numbers | per-map **accumulated** play-time + current run start (see §10) |
 | `net`, `onlineRole`, `online`, `coop`, `PROTO_V` | — | multiplayer transport/role/flags |
@@ -248,9 +268,9 @@ progress, _pct, _hdr}`.
   skips the expensive stages. Measured cost of a cold build: `weaveTexture`+`repairTexture` 0.6–2.1s,
   and the clue worker 1.1s (Castle/Medium) to **35s** (Angels/Medium) — Very Hard is ~6.5× Medium.
   Everything else rebuilds in <50ms total, so **only two arrays are cached**:
-  - `sol[]` — keyed by **map** (`sol|<map>|<seed>|<GW>x<GH>|<BOARD_COMPAT>`). Frozen after
+  - `sol[]` — keyed by **map** (`sol|<map>|<seed>|<GW>x<GH>|<GEN_COMPAT>`). Frozen after
     `repairTexture`, hence identical on every tier. A hit skips `weaveTexture()`.
-  - `clue[]` — keyed by **map + difficulty** (`clue|…|<difficulty>|<BOARD_COMPAT>`). A hit skips the
+  - `clue[]` — keyed by **map + difficulty** (`clue|…|<difficulty>|<GEN_COMPAT>`). A hit skips the
     worker. `locked` is restored as all-zero (it must be); picross/sudoku clue cells are *not* taken
     from the blob — the restore loop is organic-cells-only, mirroring the worker merge.
 
@@ -260,10 +280,12 @@ progress, _pct, _hdr}`.
   `clueCacheProbe()` decides whether `beginGen` gets the short `GTL_CACHED` beat (§5).
   Every helper resolves to `null`/no-op on any failure, so blocked storage just means no cache.
   **`clueMatchesSol()` re-derives every restored clue from the restored `sol` and rejects the whole
-  entry on any mismatch** — that's what makes a forgotten `BOARD_COMPAT` bump self-healing.
+  entry on any mismatch** — that's what makes a forgotten `GEN_COMPAT` bump self-healing.
   `?nocache=1` bypasses the cache; `?audit=1` disables it (`BCACHE_OFF`) so the audit always
   exercises real generation.
-- **Share**: `exportCode()` / `importCode()` / `applyImported()` (~2558+); `SHARE_VER = 6` — v6 adds
+- **Share**: `exportCode()` / `importCode()` / `applyImported()` (~2558+); `SHARE_VER = 7` — v7 adds
+  the board's **seed** (4 bytes, big-endian, immediately after the map id) so a rewoven canvas
+  survives the round trip (§7b); pre-v7 codes decode as the canonical seed. v6 adds
   the per-patch **picross tiers** (`picTier`, §4) after the zone blocks, because the recipient
   regenerates the board locally before replaying progress. v3/v4/v5 still decode (`pics` = null →
   shape every patch at the code's own difficulty). Older note: `SHARE_VER = 5` — v5
@@ -272,9 +294,14 @@ progress, _pct, _hdr}`.
   never edit it. Exports the whole canvas as a `NPXS…` code or `.npxs` file; import replays progress.
 - **Multiplayer**: `net` transport + `onlineRole` (`'host'|'join'`); `PROTO_V = 1`;
   `netEnvelope`/`netSend`/`netEmit` (~3217). A `hello`/`hello-ack` handshake requires matching
-  **`BOARD_COMPAT`** (bumped only on generation/share/protocol changes — *not* `APP_VERSION`, so UI
-  releases don't break co-op). Host owns the canonical save; only the host may push `snapshot`/
-  `resync` (guarded on `hostPid`). **Undo is per-player in co-op**: each player has its own
+  **`BOARD_COMPAT`** (bumped only on share/snapshot-format or net-protocol changes — *not*
+  `APP_VERSION`, so UI releases don't break co-op, and *not* `GEN_COMPAT`, see §8.6). Since the
+  snapshot **is** `exportCode()`, a `SHARE_VER` bump is always a `BOARD_COMPAT` bump.
+  Host owns the canonical save; only the host may push `snapshot`/
+  `resync` (guarded on `hostPid`).
+- ⚠ **Peer identity is the connection, never `msg.pid`** — see §7d. Every authorisation
+  decision in `onNetMessage` reads `netOrigin(msg, from)`; `msg.pid` is a display hint that the
+  sender controls and must never be used for a guard. **Undo is per-player in co-op**: each player has its own
   `pl.editStack` of authored edits, and `undoOwn` reverts only that player's tiles/digits (skipping
   teammate-changed cells and already-completed regions), replaying the reverse through the normal
   move channel — solo keeps the whole-board snapshot `undoStack`. `saveCoopToLocal()` (~3342) lets a
@@ -301,6 +328,176 @@ progress, _pct, _hdr}`.
 - **Quotes**: `MAP_QUOTES[map][regionId]`; `maybeShowQuote()` (~2344) fires when a region *and* its
   attached plots are done; clicking a finished region replays it.
 
+### 7a. Baked boards — the pipeline output, shipped
+
+The IndexedDB cache (above) only helps on a *revisit*; the first open of every map × tier still cost
+1.1s–35s of clue thinning plus 0.6–2.1s of weave, on every machine, for **identical bytes**. So the
+expensive half of generation now ships as data. Three artifacts, produced by `bakeBoards()`:
+
+| Artifact | Where | Scope | Encoding |
+|---|---|---|---|
+| `BAKED_LAYOUT` | inline, 10.8 KB | **castle/crew/fighters only** — the maps that derive their layout via `growRegions()`/`placePlots()`; the other six already carry a `HAND_LAYOUTS` entry | same shape as `HAND_LAYOUTS` (`regionRLE` with `-2` plot cells, `regPix`, `zones`, `picross`) so `applyHandPartition` consumes it verbatim |
+| `BAKED_SOL` | inline, 26.8 KB | per map, **pre-picross-shaping** (so it stays tier-independent, exactly like the cached `sol`) | 1 bit/cell, base64 |
+| `boards/<map>.js` | lazy, 26–122 KB (556 KB total) | per map × all 5 tiers, **organic cells only**, plus `n` = the expected clue count per tier | 4 bits/cell (`15` = no clue), base64, wrapped in `BAKED.put(id, compat, …)` |
+
+- **Loaded as a script tag, not `fetch`** (`BAKED.load`): fetch/XHR is CORS-blocked on `file://`,
+  script tags are not, so opening `index.html` straight off disk still works. `clueCacheProbe()` is
+  the warm point — it wraps every board build, so `regenClues` can then read the payload
+  synchronously. ⚠ It *awaits* that load before `beginGen()` raises the loading screen, so
+  `menuLaunch()` also kicks off `BAKED.load(id)` the moment a canvas is picked; drop that prefetch
+  and a slow connection leaves the player on a bare canvas for the length of the download.
+- **Seed vs map**: `BAKED_LAYOUT` is keyed by **map only** — the partition, region ids and plot
+  geometry are what keep `MAP_QUOTES` keys, `doneKey` masks and the menu card previews valid.
+  `BAKED_SOL`/`boards/*.js` are keyed by **map + seed**, so a non-canonical seed simply misses and
+  takes the full generation path.
+- **Every lookup fails to `null`** on a missing file, wrong dims, stale `BAKED_COMPAT` or corrupt
+  base64, and the restored clue set still goes through `clueMatchesSol()` before it is trusted. A
+  bad bake costs a wait; it cannot produce a wrong board. All three failure modes were exercised
+  by hand when this landed — tampered clue value → `clueMatchesSol` rejects; truncated set → the
+  `n` check rejects; missing `boards/<map>.js` → `BAKED.load` resolves `null` — and each fell
+  through to real generation with the inline `sol` still serving.
+- ⚠ **`clueMatchesSol()` alone is not enough**, which is why the payload carries `n`: it only proves
+  the clues *present* are correct, so a truncated set (all `-1`) passes it vacuously and would ship
+  an unsolvable board. The count check is what closes that.
+- **It also closes the pipeline's one non-deterministic seam.** `sampleImage()` depends on the
+  browser's `drawImage` downscale, and that fed both `sol` and `edge[]` → `regionOf`. With the
+  partition and solution baked, nothing about the puzzle depends on the local browser; only
+  `cellCol` (revealed artwork) is still sampled per machine.
+- **Workflow**: `?bake=<map>` per tab → `node _bake_boards.js [srcDir]` → `?verifybake=` →
+  `?audit=`. The payload is produced *in the browser* on purpose: the first pipeline stage is a
+  canvas draw, so any Node reimplementation would defeat the point that the shipped bytes are what
+  the shipped code makes.
+
+### 7b. Custom seeds — reweaving a canvas
+
+`reweaveCanvas(seed)` (⋯ → **🎲 New weave**, `#reweaveModal`) rebuilds the current canvas at a
+different seed; `reweaveCanvas(null)` puts it back on the canonical one. `customSeeds` (persisted
+under `SEED_KEY`) holds the per-map override, and `seedFor(id)` is what generation reads.
+
+**The one idea that makes this cheap: a seed changes the puzzle, never the layout.**
+
+- `layoutSeed(id)` is *always* `mapDef(id).seed`. The partition normally comes from
+  `HAND_LAYOUTS`/`BAKED_LAYOUT` (keyed by map, not seed) so no RNG runs at all — but
+  `growRegions()` and the `placePlots()` fallback are pinned to `layoutSeed()` as well, so even a
+  missing or stale bake can't shift region ids. ⚠ Never wire either of them to `SEED`.
+- Because region ids, `REG_COUNT` and plot geometry are therefore identical across weaves,
+  `MAP_QUOTES` keys, `doneKey` masks, `MAP_META` counts and the menu card previews (`PREVIEW_RLE`,
+  `menuPlotRects`) all stay valid on a rewoven board with no extra work.
+- **Saves**: `stateKey()` grows a `-s<seed>` suffix via `seedSuffix()`, and the other five keys
+  derive from it — so each weave has its own slot and a canonical board's key is byte-for-byte what
+  it always was (nothing to migrate). `resetGame()` clears only the current weave's slot.
+- **The bake is seed-gated**: `bakedSol()`/`bakedClueStr()` bail when `SEED !== mapDef().seed`, so a
+  rewoven canvas misses the shipped payload and takes the full generation path — the long loading
+  screen, which is the point of asking for one. `menuLaunch` skips the prefetch for it too. The IDB
+  cache keys already carried `SEED`, so rewoven boards cache separately for free.
+- **Share/co-op**: `SHARE_VER` 7 carries the seed (4 bytes, big-endian, right after the map id).
+  A recipient rebuilds locally before replaying, so a code that didn't name its weave would have
+  them rebuild the canonical board and read every mark as a mistake. Since the co-op snapshot **is**
+  `exportCode()` (`onNetMessage` `hello-ack`), this covers online play with no protocol change of
+  its own. `importCode` adopts the seed *before* rebuilding and forces the full-rebuild branch —
+  `regenClues` alone is not enough, because a new seed means a new `sol[]`.
+- **An adopted weave is never recorded as yours.** `setCustomSeed(id, seed, adopted)` skips the
+  `SEED_KEY` write when the weave came off the wire (a co-op `snapshot`/`resync` passes
+  `importCode(..., { adopted: true })`) or during a match. The in-memory write must still happen —
+  `seedFor()` drives generation — but persisting it would give every per-map key the peer's
+  `-s<seed>` suffix, so the player's own save for that canvas would silently stop resolving
+  (0.33.0 fixed exactly that). `persistSeeds()` is the deliberate commit, and `saveCoopToLocal()`
+  is the one place that calls it: that *is* the player claiming the board.
+- Blocked while `online`: everyone in a session shares one board.
+
+### 7c. Versus (PVP) — competitive matches
+
+Two shapes, chosen to fit each transport's *information model*. All state hangs off the **`PVP`**
+global (declared next to `gameWon`, so it is in scope for `setCell`/`checkRegion` far above the rest
+of the feature). `PVP.active` is the master gate; `pvpLive()` = active **and** `phase === 'live'`.
+
+| | Shape | Why |
+|---|---|---|
+| `PVP.mode === 'local'` | **Territory** on ONE shared board; each region claimed by whoever placed the most correct tiles | You cannot stop someone reading the other half of a shared screen, so the same canvas is the *design*, not a leak. Also avoids duplicating the global board arrays. |
+| `PVP.mode === 'online'` | **Race** on SEPARATE boards, same puzzle | Every client already builds identical bytes from map+seed+difficulty+picTier, so this is nearly free: stop calling `netEmit`, exchange summaries instead. |
+
+- **Local versus rides on `coop = true`** (`startPvpLocal` → `startCoop` → `pvpBegin`). Seats, panes,
+  per-seat undo and the `'L'+id` owner tokens are already exactly what territory scoring needs, so
+  nothing else in the codebase has to learn about a third mode. A pad joining mid-match re-derives
+  `PVP.seats`; tokens are only ever **appended**, so the indices in `PVP.claim` stay valid.
+- **Scoring** (`regionOwnerTally` → `claimRegion`, hooked into **both** `checkRegion` *and*
+  `checkZone` behind `!silent`): most correct tiles takes the region, a tie goes to `lastEditOwner`
+  (steal-on-the-last-stitch). Wrong tiles count for nobody, so sabotage earns nothing.
+  `ownerCorrectCount` is O(N) and is called from the **2Hz `pvpTick`**, never per stitch.
+- **Online protocol** (`BOARD_COMPAT` 6): `pvp-setup` / `pvp-ready` / `pvp-start` / `pvp-progress` /
+  `pvp-done` / `pvp-result` / `pvp-cancel`. Board agreement reuses `exportCode()` — a v7 code already
+  *is* a complete board identity — imported with the new **`importCode(code, cb, silent, {blank:true})`**
+  option, which zeroes the decoded payload so the recipient adopts map/weave/tier/patch-tiers and
+  starts empty. No `SHARE_VER` bump.
+  ⚠ **Every host→guest case repeats the `snapshot` guard** (`onlineRole === 'join' && msg.pid ===
+  hostPid`). `PeerNet` is a star that rebroadcasts guest frames verbatim, so without it any guest
+  could forge a `pvp-result` at every other guest.
+- **The host is the referee.** A guest that meets the rule sends `pvp-done` and *waits*;
+  only `pvpDeclare` (host) mints `pvp-result`, and a client displays nothing else. There is no clock
+  sync anywhere in this codebase, so **`pvp-start` carries `durationMs`, never an absolute time** —
+  each peer runs its own countdown for display and the host's expiry is what ends the match.
+- **The decided mask never encodes colour.** `pvpEncodeMask` keys on `state[i] !== 0` alone
+  (bitmask → varint RLE → base64, falling back to raw packed bits so a frame can't exceed the raw
+  size; ~772B for a mid-game 57,600-cell board). `pvpRenderMini` paints it over `regionOf`/
+  `regionTint` and **never reads `sol` or `cellCol`** — that is the whole leak-proof argument.
+  Cursor presence is suppressed in a match for the same reason (`maybeSendPresence`).
+- **A match never persists** — the single most important property. `pvpBegin` banks
+  `PVP.restore = {code: exportCode(), timerBase, timerStart, quotes}` *before* `clearBoardState()`
+  (an in-memory-only wipe factored out of `resetGame`), and `pvpTeardown` replays it. Every write
+  path bails on `PVP.active`: `saveNow`, `scheduleSave`, `persistMenuSummary`, `persistTimer`,
+  `saveQuotes`, `saveCoopToLocal`, `resetGame`, plus the `timerStart` assignment in `setCell`.
+  Two subtle ones: `setCustomSeed` skips **only** the `SEED_KEY` write (the in-memory `customSeeds`
+  write must still happen — `seedFor()` drives generation), and `importCode` skips the `DIFF_KEY`
+  write while keeping the in-memory tier change.
+- **Gated during a match**: `startSolve`, `reweaveCanvas`, `setDifficulty`/`setDefaultDifficulty`,
+  `loadMap`, `resetGame`, `netEmit`/`netResync`, `maybeSendPresence`, `saveCoopToLocal`, and
+  `setCell` outside `phase === 'live'`. `body.versus` hides the matching controls — that is the
+  courtesy half; the JS guard is the real one. Quotes route to a toast (`dispatchQuote`).
+- **UI**: `#pvpBar` (shared scoreboard strip), `#pvpPanel` + `#pvpMini` (online opponents +
+  minimap), `#pvpLobbyModal`, `#pvpResultModal` — all **static markup**, because the `.overlay`
+  scrim listener runs once at parse time. Claimed-region outlines are drawn in `drawViewport`
+  after the neutral border pass, deliberately leaving the revealed artwork alone.
+
+### 7d. The online trust model — who is allowed to say what
+
+Added in 0.33.0, after a review found that every "only the host may do this" guard was checking a
+field the sender wrote. The rule now, in one line: **identity is the connection a frame arrived on.**
+
+- **`netEnvelope` still ships `pid`**, but it is a display hint only. `netOrigin(msg, from)` is the
+  authority and every guard reads it. ⚠ Any new message type must do the same — a single
+  `msg.pid` comparison re-opens the whole class.
+- **The host is the identity authority**, because it is the only node with a direct connection to
+  everyone. It talks to each guest directly, so for the host `origin === from`, full stop.
+- **A guest hears everything over its one connection to the host**, so `from` alone cannot separate
+  "the host said this" from "the host forwarded this from another guest". `PeerNet.wire` therefore
+  **stamps `src = c.peer` on every frame the host relays**, overwriting whatever the sender put
+  there. A stamped frame is by definition not the host's own. This stamp is the linchpin: remove it
+  and every host-only guard silently passes for any guest. `LoopbackNet` is a broadcast bus with no
+  relay, so `from` is already the true sender and no frame carries `src`.
+- **`hostPid` is bound once**, at the first *unrelayed* `hello`, to that connection — never
+  reassigned. It used to be set by any `hello` at any time, which was a one-frame takeover.
+- **The roster (`coopPeers`) is only written for real connections.** The host requires
+  `coopPeers[origin]` to already exist (created in `net.on('peer')`); a guest accepts only
+  host-attested origins, capped at `NET_MAX_PEERS`. `peerLabel()` keeps its numbering in a separate
+  `peerNums` map so that *naming* a peer can never enrol it.
+- **A versus match refuses `move`/`resync`/`snapshot`** — the boards are independent, so nothing
+  about them may cross the wire. The send side (`netEmit`/`netResync`) was always gated; the receive
+  side is now too.
+- **What this does not fix, and cannot**: online versus scoring. Each client scores its own board
+  and reports it (`pvp-done`/`pvp-progress`), and the host has nothing to check that against — every
+  client already holds `sol[]`, which is what makes independent generation possible in the first
+  place. The lobby says so out loud. Don't add a check that looks like verification but isn't.
+- Bounds live next to the constants: `NET_MAX_CODE` (board payloads, checked before `atob`),
+  `NET_MAX_PENDING` (moves buffered while a joiner imports), `NET_MAX_PEERS`.
+- **The page carries a CSP** (meta tag, top of `<head>`) pinning `script-src` to `'self'` +
+  `'unsafe-inline'` + `blob:`. `'unsafe-inline'` is forced by the single inline script block and
+  there is no build step to replace it with a nonce — but `'self'` is the half that matters: it is
+  why peerjs is vendored under `vendor/` instead of imported from esm.sh at connect time, which
+  would have handed that CDN full reach over every save key. ⚠ If you ever add a remote
+  subresource, the CSP will block it silently in production and work fine in your editor — add the
+  directive in the same commit. Today the page fetches nothing off-origin except peerjs signalling
+  (`*.peerjs.com`), and all artwork is `data:`.
+
 ---
 
 ## 8. Invariants & gotchas (don't break these)
@@ -321,19 +518,30 @@ progress, _pct, _hdr}`.
    worker path (the sync fallback masks it). Keep `genRegionClues` closure-free re: worker.
 5. **Hand-layout region ids are used verbatim** (not recompacted) so they align with `MAP_QUOTES`
    keys and saved region-done flags. Don't renumber them.
-6. **`APP_VERSION`** (top of the script, echoed bottom-right) marks the deployed version — bump it
-   with any shipped change and keep `CHANGELOG.md` in sync. Online co-op is gated on **`BOARD_COMPAT`**
-   (next to it), NOT `APP_VERSION`; bump `BOARD_COMPAT` only when generation, the share/snapshot
-   format (`SHARE_VER`), or the net protocol changes, and leave `LEGACY_MAP_IDS` frozen forever.
-   ⚠ **`BOARD_COMPAT` is also the board cache's invalidation key** (§7) — a generation change without
-   a bump would hand players a stale board. `clueMatchesSol()` catches most of that automatically, but
-   it *cannot* catch a clue set thinned by a **stronger** solver than the current code has (i.e. if you
-   weaken the solver). Bump it when generation output changes.
+6. **Three version numbers, three jobs — don't conflate them.**
+   | Constant | Bump when | Gates |
+   |---|---|---|
+   | `APP_VERSION` | any shipped change | the label bottom-right; keep `CHANGELOG.md` in sync |
+   | `BOARD_COMPAT` | the **share/snapshot format** (`SHARE_VER`) or the **net protocol** changes | the online co-op handshake — peers must match |
+   | `GEN_COMPAT` | **generation output** changes: `sampleImage`, `buildLayout`, `weaveTexture`/`repairTexture`, `genRegionClues`, `shapePicross`, the `DIFF` table | the IndexedDB cache keys (§7) and the bake stamp (§7a) |
+
+   `BOARD_COMPAT` and `GEN_COMPAT` were **one number until 0.31.0**, which meant every share-format
+   change threw away a perfectly good bake and forced a ~35-minute re-bake that produced
+   byte-identical bytes. Splitting them is only safe while each keeps its own job — if you find
+   yourself bumping `BOARD_COMPAT` "to be safe" after a generation change, bump `GEN_COMPAT` instead,
+   that's the one that matters. Leave `LEGACY_MAP_IDS` frozen forever.
+   ⚠ A generation change without a `GEN_COMPAT` bump hands players a stale board. `clueMatchesSol()`
+   catches most of that automatically, but it *cannot* catch a clue set thinned by a **stronger**
+   solver than the current code has (i.e. if you weaken the solver).
 7. **The dev tools are generated** from `index.html` via string-marker extraction. `_build_editor.js`
    splits on Block A (`'use strict';` → `// ---------- canvas / view ----------`), Block B
    (`function sampleImage(image){` → `function weaveTexture(){`), Block C
    (`function genRegionClues(r){` → `function applyGivens(){`). If you rename those boundary
    functions, update the builders and rerun them.
+   ⚠ Block A contains `choosePlots`/`buildLayout` but **not** the baked tables (§7a), which sit down
+   in the generation section. That is why both call `bakedLayoutIfAny()` — a `typeof` guard, so a
+   generated tool falls back to growing/placing the layout instead of dying on an undefined name.
+   Adding any other cross-block dependency will break the tools the same way.
    ⚠ The checked-in `region-editor.html` / `region-map.html` are **stale relative to master** (they
    predate the Inferno map), so rerunning a builder emits a large diff that has nothing to do with
    your change — mostly `IMG_SRC_8`. Only rebuild when you actually touched a block boundary or the
@@ -341,6 +549,19 @@ progress, _pct, _hdr}`.
 8. **Pages deploys one at a time.** Don't trigger concurrent deployments (empty re-trigger commits /
    forced builds) — the deploy job fails with "Deployment failed, try again later." One clean push;
    re-run the *failed run* if it flakes.
+9. **Change generation ⇒ re-bake.** The shipped `boards/` + inline tables are pipeline *output*
+   (§7a). After any change to the functions listed under `GEN_COMPAT` above: bump `GEN_COMPAT`,
+   re-run `?bake=` for every map, `node _bake_boards.js`, and then **`?verifybake=` must pass** — it
+   is the only thing that proves the shipped bytes still equal what the code produces. Bumping
+   `GEN_COMPAT` without re-baking is safe (the payload is ignored, boards just generate slowly);
+   re-baking without bumping is safe only when output did not change. `?verifybake=` catches both
+   mistakes. A `BOARD_COMPAT` bump on its own needs **no** re-bake — that is the whole point of the
+   split.
+10. **`msg.pid` is not an identity.** Every guard in `onNetMessage` must read
+   `netOrigin(msg, from)` (§7d). `pid` is written by the sender, so a single comparison against it
+   re-opens guest-impersonates-host for the whole protocol. The host's relay stamp (`src` in
+   `PeerNet.wire`) is what makes `netOrigin` work on the guest side — don't drop it when touching the
+   transport, and don't add a transport that relays without it.
 
 ---
 
@@ -354,14 +575,22 @@ progress, _pct, _hdr}`.
 | Tune picross difficulty | `DIFF[tier].pRuns`/`.pRounds` + `shapePicross`/`picrossProfile` (§4). Verify with `?audit=1` — the shaping must never make a patch unsolvable |
 | Tune the loading animation | `GTL_BASE` (timeline), the `sc` scale in `beginGen`, `drawGen`; `GTL_CACHED` for the short cache-hit beat (keep every divisor non-zero — `drawGen` divides by `regDur`/`shimIn`/`settle`) |
 | Board caching / eviction | the board-cache block just above `startGeneration` (§7); `BCACHE_CLUE_MAX`, `clueMatchesSol`, `prepareSolution`, `regenCluesFresh` |
+| Re-bake after a generation change | §7a — `?bake=<map>` per tab → `node _bake_boards.js [srcDir]` → **`?verifybake=` must pass** → `?audit=` |
+| Custom seeds / reweaving | §7b — `seedFor`/`layoutSeed`/`setCustomSeed`, `seedSuffix` in `stateKey`, `reweaveCanvas`, `#reweaveModal` |
+| Baked-board plumbing | §7a — the baked-boards block above the cache (`BAKED*`, `packBits`/`packNibbles`), and the seams in `buildLayout`/`prepareSolution`/`regenClues`/`clueCacheProbe` |
 | Change colours / theme | edit `:root` HSL vars (CSS chrome) **and** `buildPalette()` (canvas `C` + `TINTS`) together; both key off `--hue`/`themeHue`. Add/adjust theme swatches in `THEME_PRESETS` (§10) |
 | The home menu / map grid | §10 — `#menuScreen` markup, `showMenu`/`menuShowView`/`menuOpenGrid`/`menuPlay`, sort in `menuSortedIds` |
 | Map-card thumbnails / unlocked-region previews | §10 — `menuRenderCard`/`menuCardNode`/`menuArtCols`/`menuPlotRects`/`menuRefreshCards`, warmed by `menuPreloadCards`; the unlocked set is `doneKey()` (§7) |
 | The play timer | §10 — `timerTotal`/`timerPause`/`persistTimer`, `timerKey()` |
+| Versus rules / scoring | §7c — `PVP`, `regionOwnerTally`/`claimRegion` (hooked in `checkRegion` **and** `checkZone`), `pvpEvaluate`, `pvpTick` |
+| Versus protocol | §7c — the `pvp-*` cases in `onNetMessage` (⚠ keep the `origin !== hostPid` guard on every host→guest type), `pvpEncodeMask`/`pvpDecodeMask`, `pvpHostArbitrate` |
+| Any new net message type | §7d — authorise on `netOrigin(msg, from)`, **never** `msg.pid`; decide whether it is legal during a match; bound anything it can make grow |
+| Versus UI | §7c — `#pvpBar`/`#pvpPanel`/`#pvpLobbyModal`/`#pvpResultModal` (static markup — the scrim listener runs once at parse time), `buildPvpBar`/`pvpRenderMini`/`openPvpLobby` |
+| Anything that writes localStorage | add a `PVP.active` bail, or a match will clobber the player's real save (§7c) |
 | Change the clue rule | `nbhd` construction in `buildLayout` (⚠ affects everything) |
 | Solvability logic | `repairTexture`/`repairRegion`/`repairPicross` and the `genRegionClues` solver |
-| Verify a change | `?audit=1` (all maps × tiers); syntax-check the inline script under Node |
-| Ship it | bump `APP_VERSION`, add a `CHANGELOG.md` entry, rebuild dev tools if blocks changed, one clean push |
+| Verify a change | `?audit=1` (all maps × tiers, shardable per map); `?verifybake=1` if generation moved; syntax-check the inline script under Node |
+| Ship it | bump `APP_VERSION`, add a `CHANGELOG.md` entry, re-bake if generation changed, rebuild dev tools if blocks changed, one clean push |
 
 ---
 

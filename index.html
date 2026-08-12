@@ -3,6 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- No script may come from anywhere but this origin. The game is one big inline
+     script block, so 'unsafe-inline' is unavoidable without a build step (there is
+     no build step, on purpose) — but 'self' is what matters here: it is why the
+     WebRTC library is vendored under vendor/ instead of imported from a CDN at
+     runtime, which would otherwise put a third party inside the page with full
+     access to every save key. blob: is for the clue Worker (makeClueWorker), data:
+     for the map artwork, and *.peerjs.com for co-op signalling — that broker sees
+     room ids only, never a board. See CLAUDE.md §7d. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' blob:;
+  worker-src 'self' blob:;
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data:;
+  media-src 'self';
+  connect-src 'self' https://*.peerjs.com wss://*.peerjs.com;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'none'">
 <title>One More Tile: The Emergent Canvas</title>
 <style>
   :root{
@@ -291,6 +310,69 @@
   .coopNote .note-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 4px;line-height:1}
   body.generating #paneCards,body.generating #coopNotes{opacity:0;pointer-events:none}
 
+  /* ---------- versus (PVP) ---------- */
+  /* One scoreboard strip for both shapes: local territory play shares a board so a
+     single shared strip is the honest surface, and online reads the same for
+     symmetry. Sits directly under #hud, click-through except for its own chips. */
+  #pvpBar{position:fixed;top:52px;left:0;right:0;z-index:12;display:flex;justify-content:center;
+    gap:10px;padding:7px 12px;pointer-events:none;flex-wrap:wrap}
+  .pvpSeat{display:flex;align-items:center;gap:8px;pointer-events:auto;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:20px;
+    padding:5px 13px 5px 9px;font-size:13px;color:var(--text);
+    box-shadow:0 6px 18px rgba(40,28,80,.18)}
+  .pvpSeat .ps-dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .pvpSeat .ps-name{font-weight:700}
+  .pvpSeat .ps-num{font-variant-numeric:tabular-nums}
+  .pvpSeat .ps-sub{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+  .pvpSeat.lead{border-color:var(--accent);box-shadow:0 6px 20px hsl(var(--hue) 60% 50% / .32)}
+  .pvpSeat.mine{outline:2px solid var(--accent);outline-offset:1px}
+  #pvpClock{display:flex;align-items:center;pointer-events:auto;font-variant-numeric:tabular-nums;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:20px;
+    padding:5px 15px;font-size:13px;font-weight:700;color:var(--text)}
+  #pvpClock.urgent{color:#c0392b;border-color:#c0392b}
+
+  /* online only: opponent pace + the decided-tiles minimap */
+  #pvpPanel{position:fixed;right:14px;bottom:58px;z-index:39;width:248px;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:12px;
+    box-shadow:0 10px 30px rgba(40,28,80,.3);font-size:13px;color:var(--text);overflow:hidden}
+  .pvpPanelHead{display:flex;align-items:center;justify-content:space-between;
+    padding:8px 10px 8px 13px;border-bottom:1px solid var(--panel-border)}
+  .pvpPanelHead button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 5px}
+  #pvpPanelBody{padding:9px 11px 11px}
+  #pvpPanel.collapsed #pvpPanelBody{display:none}
+  .pvpOpp{display:flex;align-items:center;gap:7px;margin-bottom:7px;cursor:pointer}
+  .pvpOpp .ps-dot{width:10px;height:10px;border-radius:50%;flex:none}
+  .pvpOpp .po-name{flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pvpOpp .po-num{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
+  .pvpOpp.sel .po-name{color:hsl(var(--hue) 88% 45%)}
+  #pvpMini{display:block;width:100%;height:auto;border-radius:7px;margin-top:4px;
+    border:1px solid var(--panel-border);image-rendering:pixelated}
+  .pvpMiniCap{margin:6px 0 0;font-size:11px;color:var(--muted);line-height:1.35}
+  body.generating #pvpBar,body.generating #pvpPanel{opacity:0;pointer-events:none}
+  /* The visible half of the match gates (each is also blocked in JS, so hiding the
+     control is a courtesy, not the guard). Watch mode is hidden because mirroring a
+     rival's viewport is meaningless across independent boards; the rest would
+     either decide the match for you or throw away the board mid-race. */
+  body.versus #btnSolve,body.versus #btnShare,body.versus #btnReset,
+  body.versus #btnReweave,body.versus #btnWatch,body.versus #btnMP,
+  body.versus #selDiff{display:none !important}
+
+  .pvpWarn{margin-top:10px;padding:8px 11px;border-radius:9px;font-size:12.5px;
+    background:hsl(38 90% 55% / .16);border:1px solid hsl(38 70% 45% / .35);color:var(--text)}
+  .pvpSeatRow{display:flex;align-items:center;gap:9px;padding:6px 2px;font-size:13px}
+  .pvpSeatRow .ps-dot{width:10px;height:10px;border-radius:50%;flex:none}
+  .pvpSeatRow .psr-name{flex:1;font-weight:600}
+  .pvpSeatRow .psr-state{font-size:12px;color:var(--muted)}
+  .pvpSeatRow .psr-state.ok{color:hsl(150 55% 38%);font-weight:600}
+  #pvpStandings{margin-top:10px}
+  .pvpStandRow{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;
+    margin-bottom:6px;background:rgba(255,255,255,.55);border:1px solid var(--panel-border);font-size:14px}
+  .pvpStandRow.win{border-color:var(--accent);background:hsl(var(--hue) 80% 60% / .12);font-weight:700}
+  .pvpStandRow .ps-dot{width:12px;height:12px;border-radius:50%;flex:none}
+  .pvpStandRow .psr-name{flex:1;text-align:left}
+  .pvpStandRow .psr-sc{font-variant-numeric:tabular-nums}
+  .pvpStandRow .psr-sub{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px;min-width:5.5em;text-align:right}
+
   /* ---------- home menu ---------- */
   /* z-index 35: above the HUD/board (10/11) but below dialog overlays (40) and
      the loader (50), so Help/Online modals and the generation animation appear
@@ -341,7 +423,7 @@
   .menuChoice:hover{background:var(--panel);transform:translateY(-3px);box-shadow:0 18px 44px rgba(70,48,130,.24);border-color:var(--accent)}
   .menuChoice .mc-ico{font-size:34px;line-height:1}
   .menuChoice .mc-t{font-size:18px;font-weight:700;color:var(--text);letter-spacing:.5px}
-  .menuChoice .mc-s{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.4;padding:0 10px}
+  .menuChoice .mc-s{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.4;padding:0 10px;white-space:normal}
   /* vertical stacked main-menu buttons (same size, one under another) */
   .menuStack{display:flex;flex-direction:column;gap:14px;width:100%;max-width:360px;margin-top:2px}
   .menuStackBtn{width:100%;padding:16px 20px;border-radius:14px;border:none;cursor:pointer;
@@ -397,7 +479,16 @@
   .menuStep{display:flex;align-items:center;gap:10px;padding:6px 14px 6px 18px;border-radius:22px;
     background:rgba(255,255,255,.6);border:1px solid var(--panel-border)}
   .menuStep b{font-size:15px;min-width:1.2em;text-align:center;color:var(--text)}
-  .menuStep button{width:28px;padding:4px 0;border-radius:14px}
+  .menuStep button:not(.rulePill){width:28px;padding:4px 0;border-radius:14px}
+  /* versus rule picker — same chip language as the mode pills, inside a menuStep */
+  .menuStep.pvpRule{gap:6px;padding:6px 10px 6px 16px}
+  .rulePill{padding:5px 13px;border-radius:16px;font-size:12.5px;font-weight:600;cursor:pointer;
+    font-family:inherit;color:var(--text);background:rgba(255,255,255,.55);border:1px solid var(--panel-border);width:auto}
+  .rulePill:hover{background:rgba(255,255,255,.9)}
+  .rulePill.active{background:var(--grad-primary);color:#fff;border:none}
+  .menuStepInline{display:flex;align-items:center;gap:7px;margin-left:4px;padding-left:10px;
+    border-left:1px solid var(--panel-border)}
+  .menuStepInline .menuOptLbl{margin-right:0}
   .mapGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px;width:100%;margin-top:24px}
   .mapCard{padding:0;overflow:hidden;border-radius:14px;background:var(--panel);border:1px solid var(--panel-border);
     cursor:pointer;position:relative;text-align:left;box-shadow:0 8px 24px hsl(var(--hue) 46% 35% / .12);
@@ -529,6 +620,7 @@
   <button class="ov-item" id="btnWatch" title="Watch your partners' views" style="display:none"><span class="ov-ico">⊟</span>Watch</button>
   <button class="ov-item" id="btnShare" title="Save your progress, or share it with a friend"><span class="ov-ico">💾</span>Save or share</button>
   <button class="ov-item" id="btnOptions" title="Options: interface colour, music, difficulty, controller"><span class="ov-ico">⚙</span>Options</button>
+  <button class="ov-item" id="btnReweave" title="Weave a brand-new puzzle from this same painting"><span class="ov-ico">🎲</span>New weave</button>
   <button class="ov-item ov-danger" id="btnReset"><span class="ov-ico">↺</span>Reset this canvas</button>
 </div>
 
@@ -547,6 +639,7 @@
         <button class="menuStackBtn" id="menuContinue" style="display:none">Continue<small></small></button>
         <button class="menuStackBtn secondary" id="menuSolo">Single Player<small></small></button>
         <button class="menuStackBtn secondary" id="menuCoop">Co-op<small>Split-screen for 2–4, or online with a code</small></button>
+        <button class="menuStackBtn secondary" id="menuPvp">Versus<small>Race a friend for the canvas, split-screen or online</small></button>
         <div class="menuOptCredRow">
           <button class="menuRowBtn" id="menuOptions">⚙ Options</button>
           <button class="menuRowBtn" id="menuCredits">Credits</button>
@@ -577,6 +670,24 @@
       </div>
     </div>
 
+    <div class="menuView" id="menuPvpMode" style="display:none">
+      <button class="menuBack" data-back="home">← Back</button>
+      <h2 class="menuH2">⚔ Versus</h2>
+      <div class="menuBig">
+        <button class="menuChoice" id="menuPvpLocal"><span class="mc-ico">🖥</span><span class="mc-t">Local versus</span><span class="mc-s">2–4 on one screen, sharing one canvas: every region goes to whoever stitched most of it</span></button>
+        <button class="menuChoice" id="menuPvpOnline"><span class="mc-ico">🌐</span><span class="mc-t">Online versus</span><span class="mc-s">Same puzzle, separate canvases, over the internet. You see their pace, never their answers</span></button>
+      </div>
+    </div>
+
+    <div class="menuView" id="menuPvpOnlineChoice" style="display:none">
+      <button class="menuBack" data-back="pvpMode">← Back</button>
+      <h2 class="menuH2">🌐 Online versus</h2>
+      <div class="menuBig">
+        <button class="menuChoice" id="menuPvpHostPick"><span class="mc-ico">📡</span><span class="mc-t">Host a match</span><span class="mc-s">Pick the canvas and the rules, get a code to share</span></button>
+        <button class="menuChoice" id="menuPvpJoinPick"><span class="mc-ico">🔑</span><span class="mc-t">Join a match</span><span class="mc-s">Enter a friend's code and race them on their canvas</span></button>
+      </div>
+    </div>
+
     <div class="menuView" id="menuOnlineChoice" style="display:none">
       <button class="menuBack" data-back="onlineAuto">← Back</button>
       <h2 class="menuH2">🌐 Online co-op</h2>
@@ -599,11 +710,25 @@
         <button class="modePill" data-mode="solo">Single player</button>
         <button class="modePill" data-mode="local">🖥 Local co-op</button>
         <button class="modePill" data-mode="online">🌐 Online co-op</button>
+        <button class="modePill" data-mode="pvpLocal">⚔ Local versus</button>
+        <button class="modePill" data-mode="pvpOnline">⚔ Online versus</button>
         <div class="menuStep" id="menuPlayerStep" style="display:none">
           <span class="menuOptLbl" id="menuStepLbl">Players</span>
           <button id="menuStepMinus">−</button>
           <b id="menuStepVal">2</b>
           <button id="menuStepPlus">+</button>
+        </div>
+        <div class="menuStep pvpRule" id="menuRuleStep" style="display:none">
+          <span class="menuOptLbl">Win by</span>
+          <button class="rulePill" data-rule="full" title="Play the canvas out; whoever holds the most regions wins">Full canvas</button>
+          <button class="rulePill" data-rule="regions" title="First to this many regions">Regions</button>
+          <button class="rulePill" data-rule="timed" title="Most regions when the clock runs out">Timed</button>
+          <span class="menuStepInline" id="menuTargetWrap">
+            <button id="menuTargetMinus">−</button>
+            <b id="menuTargetVal">5</b>
+            <span class="menuOptLbl" id="menuTargetUnit">regions</span>
+            <button id="menuTargetPlus">+</button>
+          </span>
         </div>
         <span class="menuSpacer"></span>
         <select id="mapSort">
@@ -636,7 +761,7 @@
       <div id="loadBarWrap"><div id="loadBar"></div></div>
       <span id="genPct">0%</span>
     </div>
-    <div class="skiphint">scroll to zoom · this canvas is kept, so next time is instant</div>
+    <div class="skiphint">scroll to zoom</div>
   </div>
 </div>
 
@@ -809,6 +934,43 @@
     <div class="btns">
       <button id="btnAdmire">Admire the canvas</button>
       <button class="primary" id="btnPlayAgain">Stitch it again</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pvpLobbyModal">
+  <div class="card" style="max-width:min(520px, calc(100vw - 24px))">
+    <h2>⚔ <span id="pvpLobbyTitle">Match</span></h2>
+    <p id="pvpLobbyBlurb" style="opacity:.85"></p>
+    <div id="pvpLobbyOnline" style="display:none;text-align:left">
+      <label id="pvpLoopWrap" style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin:6px 0 10px">
+        <input type="checkbox" id="pvpLoopback"> Test in tabs of this browser (no internet)
+      </label>
+      <div id="pvpLobbyRoom" style="display:none">
+        <p style="margin:10px 0 4px"><b>Your code</b>, send it to whoever you're racing</p>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="pvpLobbyCode" readonly style="flex:1;font-family:ui-monospace,monospace">
+          <button id="pvpCopyCode">📋</button>
+        </div>
+        <p style="margin:12px 0 6px"><b>Players</b></p>
+        <div id="pvpLobbySeats"></div>
+      </div>
+    </div>
+    <p id="pvpLobbyWarn" class="pvpWarn" style="display:none"></p>
+    <div class="btns" style="margin-top:14px">
+      <button id="pvpLobbyCancel">Cancel</button>
+      <button class="primary" id="pvpLobbyStart">Start the match</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pvpResultModal">
+  <div class="card" style="max-width:min(520px, calc(100vw - 24px))">
+    <h2 id="pvpResultTitle">Match over</h2>
+    <p id="pvpResultRule" style="opacity:.75;margin-top:-4px"></p>
+    <div id="pvpStandings"></div>
+    <div class="btns" style="margin-top:16px">
+      <button class="primary" id="pvpResultClose">Back to my canvas</button>
     </div>
   </div>
 </div>
@@ -1022,6 +1184,22 @@
   </div>
 </div>
 
+<div class="overlay" id="reweaveModal">
+  <div class="card">
+    <h2>🎲 Weave a new puzzle?</h2>
+    <p>This keeps the painting, its regions and its plots exactly as they are, and weaves a
+       <b>completely new puzzle</b> across them — new solution, new clues, new sudoku and picross.</p>
+    <p style="font-size:13px;color:var(--muted)">Your progress on the original is <b>kept separately</b> and waiting
+       whenever you come back to it. A new weave has to be built from scratch, so expect the long
+       loading screen — this is the one board that isn't shipped ready-made.</p>
+    <div class="btns">
+      <button class="primary" id="btnConfirmReweave">Weave a new one</button>
+      <button id="btnBackToCanon" style="display:none">Back to the original</button>
+      <button id="btnCancelReweave">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="resetModal">
   <div class="card">
     <h2>Unravel everything?</h2>
@@ -1069,6 +1247,15 @@
 <div id="version"></div>
 <div id="toast"></div>
 <!-- co-op: pane-confined cards (local split-screen) + corner notices (online) -->
+<div id="pvpBar" style="display:none"></div>
+<div id="pvpPanel" style="display:none">
+  <div class="pvpPanelHead"><b>Opponents</b><button id="pvpPanelToggle" title="Collapse">▾</button></div>
+  <div id="pvpPanelBody">
+    <div id="pvpOppRows"></div>
+    <canvas id="pvpMini" width="10" height="10"></canvas>
+    <p class="pvpMiniCap" id="pvpMiniCap"></p>
+  </div>
+</div>
 <div id="paneCards"></div>
 <div id="coopNotes"></div>
 
@@ -1123,7 +1310,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.29.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.33.0';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -1131,18 +1318,99 @@ const APP_VERSION = '0.29.0';   // shown bottom-right; keep in sync with CHANGEL
 // 'clear' move now clears only the SENDER's mistakes, not the whole board;
 // 4 = picross patches are reshaped per difficulty (shapePicross), so peers on
 // an older build would generate different patch interiors — and share format
-// v6, which carries the per-patch tiers that keep them in step.)
-const BOARD_COMPAT = 4;
+// v6, which carries the per-patch tiers that keep them in step.
+// 5 = share format v7, which carries the board's SEED: a canvas can now be
+// rewoven at a custom seed, and a peer who rebuilt at the canonical one would
+// read every mark inside it as a mistake.
+// 6 = versus: seven new pvp-* message types, and a versus session deliberately
+// does NOT sync moves (each player owns an independent board), so an older peer
+// would sit waiting for stitches that never come.
+// 7 = peer identity moved from the sender-supplied `pid` to the connection a
+// frame arrived on, and the host now stamps `src` on every frame it relays. An
+// older host does not stamp, so a 7 guest would read its relayed frames as the
+// host's own — exactly the confusion the stamp exists to prevent.)
+const BOARD_COMPAT = 7;
+
+// Does THIS build produce the same boards as the build that made the shipped
+// payload? Nothing to do with talking to other players — it stamps the baked
+// boards (§7a) and keys the IndexedDB cache (§7), and bumping it means "any
+// board built by an older version of this code is stale, rebuild it".
+//
+// These two used to be one number, which quietly conflated two jobs: BOARD_COMPAT
+// has to change whenever the share/net format changes, and that was throwing away
+// a perfectly good bake and forcing a ~35-minute re-bake that produced
+// byte-identical bytes (0.31.0 did exactly that, then verified the payloads came
+// back unchanged). Split at 0.31.0; GEN_COMPAT kept the value it had then, so no
+// re-bake was needed to make the split.
+//
+// Bump GEN_COMPAT when generation OUTPUT changes — sampleImage, buildLayout,
+// weaveTexture/repairTexture, genRegionClues, shapePicross, the DIFF table — and
+// then re-run ?bake= (CLAUDE.md §8.9). Leave it alone for share/protocol work.
+const GEN_COMPAT = 5;
 try { document.getElementById('version').textContent = 'v' + APP_VERSION; } catch (e) {}
 const MAP_KEY = 'proverbs2-map';
 let currentMap = 'castle';
 try { const m = localStorage.getItem(MAP_KEY); if (MAPS.some(x => x.id === m)) currentMap = m; } catch (e) {}
 function mapDef(id){ return MAPS.find(m => m.id === (id === undefined ? currentMap : id)) || MAPS[0]; }
 function mapIndex(id){ const k = MAPS.findIndex(m => m.id === (id === undefined ? currentMap : id)); return k < 0 ? 0 : k; }
+// ---------- custom seeds (reweaving a canvas) ----------
+// A canvas can be rewoven into a brand-new puzzle at a seed of the player's
+// choosing. What a seed does NOT touch is the layout: regions, region ids and
+// plot geometry all come from HAND_LAYOUTS / BAKED_LAYOUT (§7a), which are keyed
+// by map alone. So a reweave changes only the weave and the clues, and
+// MAP_QUOTES keys, doneKey masks, MAP_META counts and the menu card previews all
+// stay valid — that is what makes this cheap.
+// Off-canon boards get their own save slot (see stateKey) and miss the shipped
+// bake (bakedSol/bakedClueStr are seed-gated), so they take the full generation
+// path — the long loading screen, which is the whole point of asking for one.
+const SEED_KEY = 'proverbs2-seeds';   // { mapId: seed } — absent = the canonical seed
+let customSeeds = {};
+try { const s = JSON.parse(localStorage.getItem(SEED_KEY) || '{}'); if (s && typeof s === 'object') customSeeds = s; } catch (e) {}
+function validSeed(s){ return typeof s === 'number' && isFinite(s) && (s >>> 0) === s; }
+// the seed a map is currently woven at. Generation reads this; the audit/bake
+// harnesses deliberately do NOT (they always pin mapDef().seed).
+function seedFor(id){
+  const m = mapDef(id);
+  const s = customSeeds[m.id];
+  return validSeed(s) ? s : m.seed;
+}
+function isCustomSeed(id){ return seedFor(id) !== mapDef(id).seed; }
+// The LAYOUT is always derived from the CANONICAL seed, never a custom one.
+// Region ids are MAP_QUOTES keys and saved doneKey indices, so they must not
+// shift when a canvas is rewoven. Normally no RNG runs at all — the partition
+// comes from HAND_LAYOUTS/BAKED_LAYOUT — but growRegions()/placePlots() are the
+// fallback when a bake is missing or stale, and they must stay seed-stable too,
+// or a rewoven canvas would silently land every quote on the wrong region.
+function layoutSeed(id){ return mapDef(id).seed; }
+// `adopted` = this weave arrived from a peer rather than from the player choosing
+// it. The in-memory write always happens — seedFor() is what generation reads,
+// and stateKey() derives from it — but an adopted weave must NOT be recorded as
+// this player's own. If it were, every per-map save key would pick up the peer's
+// -s<seed> suffix and the player's own progress on that canvas would read as
+// empty until they happened to reweave back. A versus match is adopted by the
+// same argument, hence the PVP.active case.
+function setCustomSeed(id, seed, adopted){
+  if (seed === null || seed === undefined || seed === mapDef(id).seed) delete customSeeds[id];
+  else customSeeds[id] = seed >>> 0;
+  if (PVP.active || adopted) return;
+  persistSeeds();
+}
+// Commit the in-memory weave map to disk. Split out because an adopted weave is
+// held in memory only until the player deliberately claims the board as theirs
+// (saveCoopToLocal), which is the one moment it has to become real.
+function persistSeeds(){
+  try { localStorage.setItem(SEED_KEY, JSON.stringify(customSeeds)); } catch (e) {}
+}
+function randomSeed(){ return (Math.floor(Math.random() * 0xFFFFFFFE) + 1) >>> 0; }
+
 // per-map progress keys; castle keeps its original key so old saves survive.
 // Each takes an optional map id (default: currentMap) so the menu can read another
 // map's saved progress/timer without switching boards.
-function stateKey(id){ return 'proverbs2-' + (id || currentMap) + '-v3'; }
+// A rewoven canvas gets its own slot via the seed suffix, so the canonical board's
+// save is never disturbed — and a canonical board's key is byte-for-byte what it
+// always was, so nothing needs migrating.
+function seedSuffix(id){ const s = customSeeds[id || currentMap]; return validSeed(s) ? '-s' + s : ''; }
+function stateKey(id){ const m = id || currentMap; return 'proverbs2-' + m + seedSuffix(m) + '-v3'; }
 function zonesKey(id){ return stateKey(id) + '-plots'; }
 function timerKey(id){ return stateKey(id) + '-time'; }   // accumulated active play-time (ms) for this map
 function picKey(id){ return stateKey(id) + '-pic'; }      // per-patch picross tier (see picTier / shapePicross)
@@ -1295,9 +1563,25 @@ function choosePlots(){
     ZONES = CASTLE_ZONES.map((z, k) => Object.assign({ idx: k, name: 'Plot ' + ROMAN[k] }, z));
     PICROSS = CASTLE_PICROSS.map((p, k) => Object.assign({ idx: k, name: 'Patch ' + ROMAN[k] }, p));
   } else {
-    const pl = placePlots(SEED);
+    // auto-placed: prefer the baked geometry so the plots stay put no matter
+    // what seed the board is woven at (see bakedLayout)
+    const b = bakedLayoutIfAny(m.id);
+    const pl = (b && b.zones && b.picross) ? bakedPlots(b) : placePlots(layoutSeed());
     ZONES = pl.zones; PICROSS = pl.picross;
   }
+}
+// The baked tables and bakedLayout() live down in the generation section, which
+// is OUTSIDE the "Block A" range that _build_editor.js / _build_inspector.js
+// extract to build the dev tools (CLAUDE.md §8.7). Guarding the lookup keeps a
+// rebuilt tool working: in the game this always resolves, and in a generated
+// tool it falls through to growing/placing the layout exactly as before.
+function bakedLayoutIfAny(id){ return typeof bakedLayout === 'function' ? bakedLayout(id) : null; }
+// rehydrate baked plot descriptors into what placePlots would have returned
+function bakedPlots(b){
+  return {
+    zones:   b.zones.map((z, k) => Object.assign({}, z, { idx: k, name: 'Plot ' + ROMAN[k] })),
+    picross: b.picross.map((p, k) => Object.assign({}, p, { idx: k, name: 'Patch ' + ROMAN[k] })),
+  };
 }
 
 // (re)compute zoneOf/picrossOf + each plot's cell list for the current layout
@@ -1327,7 +1611,7 @@ let REG_PIX = 0, REG_COUNT = 0;
 let regionCells = [], regionTint = [];
 
 function growRegions(){
-  const rng = mulberry32(SEED * 2 + 1);
+  const rng = mulberry32(layoutSeed() * 2 + 1);   // canonical seed — see layoutSeed
   regionOf.fill(-1);                                  // clear any previous map's growth
   for (let i = 0; i < N; i++) if (zoneOf[i] >= 0 || picrossOf[i] >= 0) regionOf[i] = -2;
 
@@ -1550,8 +1834,10 @@ function attachPlots(){
 function buildLayout(){
   choosePlots();
   fillPlotCells();
-  const L = mapDef().layout && HAND_LAYOUTS[mapDef().layout];
-  if (L) applyHandPartition(L); else growRegions();   // hand-drawn partition, or the watershed
+  // hand-drawn partition, else the baked one (same format — see bakedLayout),
+  // else grow it with the watershed
+  const L = (mapDef().layout && HAND_LAYOUTS[mapDef().layout]) || bakedLayoutIfAny();
+  if (L && L.regionRLE) applyHandPartition(L); else growRegions();
   healRegions();   // guarantee every region is one connected blob (no stray cells to hunt)
   attachPlots();
   picrossByRegion.clear();
@@ -1660,6 +1946,42 @@ let gameWon = false, generated = false;
 // pause when the tab is hidden/closed, so closed/background time is never counted.
 let timerBase = 0;
 let timerStart = -1;
+
+// ============================================================
+// VERSUS (PVP) — competitive match state
+// ============================================================
+// Two shapes, chosen to fit each transport's information model:
+//
+//   local  — TERRITORY on ONE shared board. Every seat stitches the same canvas
+//            and each region is CLAIMED by whoever placed the most correct tiles
+//            in it. On a shared screen you cannot stop someone reading the other
+//            half, so we make that a non-issue: it is the same canvas by design.
+//   online — RACE on SEPARATE boards. Every client already builds its own
+//            identical board (map+seed+difficulty+picTier ⇒ identical bytes), so
+//            we simply stop syncing moves and exchange progress summaries instead.
+//            An opponent is only ever shown lossy data — never a solution bit.
+//
+// A match NEVER persists: `backup` holds an exportCode() of the pre-match board
+// and every save path bails while `active`, so a versus session cannot clobber
+// the player's solo progress on that canvas.
+const PVP = {
+  active: false,
+  mode: null,          // 'local' | 'online'
+  matchId: 0,          // host-minted; stamped on every frame so a rematch drops stale ones
+  rule: 'full',        // 'full' | 'regions' | 'timed'
+  target: 5,           // 'regions': regions to win. 'timed': match seconds. unused for 'full'.
+  phase: 'off',        // 'off' | 'lobby' | 'countdown' | 'live' | 'over'
+  startAt: 0,          // performance.now() when the match went live
+  endsAt: 0,           // performance.now() deadline for 'timed', else 0
+  claim: null,         // Int16Array(REG_COUNT): index into PVP.seats, -1 = unclaimed
+  seats: [],           // ordered owner tokens in play ('L0','L1',… locally; 'me'+pids online)
+  scores: {},          // ownerToken -> { regions, tiles }
+  opp: {},             // online only: pid -> { pct, regions, mask, at }
+  ready: {},           // online lobby: ownerToken -> true once that peer's board is built
+  backup: null,        // exportCode() of the board to restore on teardown
+  result: null,        // { winner, scores } once decided (online: only ever from the host)
+};
+function pvpLive(){ return PVP.active && PVP.phase === 'live'; }
 
 let resizeTimer = null;
 function resize(){
@@ -2190,6 +2512,181 @@ const AUDIT_MODE = /[?&]audit=/.test(location.search);
 // map; menuLaunch() then loads that map's image and runs startGeneration().
 // ?audit=1 still bypasses everything and lets auditGivens() drive the pipeline.
 
+// ---------- baked boards (precomputed generation output) ----------
+// The whole pipeline is deterministic from SEED, so the expensive half of it
+// ships as DATA rather than being recomputed on every machine: a cold build
+// costs 0.6-2.1s of weave+repair plus 1.1s (Castle/Medium) to ~35s
+// (Angels/Medium) of clue thinning, and every player was paying it for the
+// same bytes. Three artifacts are baked (see bakeBoards / ?bake=):
+//   BAKED_LAYOUT — the region partition + plot geometry, but ONLY for the maps
+//       that derive them at runtime (castle/crew/fighters go through
+//       growRegions()/placePlots(); the rest already ship a HAND_LAYOUTS entry).
+//       Inline: tiny, and needed before anything else runs.
+//   BAKED_SOL   — sol[] at 1 bit/cell, pre-picross-shaping (exactly what the
+//       IndexedDB cache stores, so it stays tier-independent). Inline: ~27KB
+//       for all nine maps.
+//   boards/<map>.js — clue[] at 4 bits/cell for all five tiers, ~26-125KB per
+//       map, loaded lazily for the map actually being played.
+// Baking also closes the pipeline's one non-deterministic seam: sampleImage()
+// depends on the browser's drawImage downscale, and that feeds both sol and
+// edge[] -> regionOf. With all three baked, every player provably gets the same
+// board; only cellCol (the revealed artwork) is still sampled per machine.
+// EVERY lookup degrades to null on any problem — missing file, wrong dims,
+// stale GEN_COMPAT, corrupt base64 — and the game falls back to generating
+// for real, exactly as it did before. A bake can make the game slower; it must
+// never make it wrong.
+const BAKE_MODE   = /[?&]bake=/.test(location.search);          // produce the payload
+const VERIFY_BAKE = /[?&]verifybake=/.test(location.search);    // prove it equals a real build
+// Both bake modes must generate for real — one IS the source of truth, the
+// other is checking it. ?audit=1 and ?nocache=1 opt out for the same reason.
+const BAKED_OFF = AUDIT_MODE || BAKE_MODE || VERIFY_BAKE || /[?&]nocache=/.test(location.search);
+// GEN_COMPAT the inline tables below were baked at. A mismatch means someone
+// changed generation without re-baking: ignore the tables and generate.
+// (boards/<map>.js carries its own stamp, checked in BAKED.put.)
+const BAKED_COMPAT = 5;
+
+// ---- bit packing. sol = 1 bit/cell LSB-first; clue = 4 bits/cell, 15 = "no
+// clue" (values are -1 or 0..9, so 11 symbols fit a nibble with room to spare)
+function bytesToB64(u8){
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function b64ToBytes(s){
+  let bin;
+  try { bin = atob(s); } catch (e) { return null; }
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function packBits(src, n){
+  const out = new Uint8Array((n + 7) >> 3);
+  for (let i = 0; i < n; i++) if (src[i]) out[i >> 3] |= 1 << (i & 7);
+  return out;
+}
+function unpackBits(b, n){
+  const out = new Uint8Array(n);
+  for (let i = 0; i < n; i++) out[i] = (b[i >> 3] >> (i & 7)) & 1;
+  return out;
+}
+// `keep(i)` gates which cells carry a clue at all — the plot cells are rebuilt
+// at load time by setupPicross/regenZones, so only organic cells are stored
+// (this mirrors the organic-cells-only merge in regenClues)
+function packNibbles(src, n, keep){
+  const out = new Uint8Array((n + 1) >> 1);
+  for (let i = 0; i < n; i++){
+    const v = (keep(i) && src[i] >= 0 && src[i] <= 9) ? src[i] : 15;
+    if (i & 1) out[i >> 1] |= v << 4; else out[i >> 1] |= v;
+  }
+  return out;
+}
+function unpackNibbles(b, n){
+  const out = new Int8Array(n);
+  for (let i = 0; i < n; i++){
+    const v = (i & 1) ? (b[i >> 1] >> 4) & 15 : b[i >> 1] & 15;
+    out[i] = v === 15 ? -1 : v;
+  }
+  return out;
+}
+
+// ---- the inline tables. Spliced in by _bake_boards.js between these markers;
+// hand-editing them is pointless — re-run the bake instead.
+/* BAKED_LAYOUT:BEGIN */
+const BAKED_LAYOUT = {
+  "castle": {"gw":120,"gh":64,"regPix":18,"zones":[{"x":57,"y":4,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":18,"y":38,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":86,"y":44,"n":9,"boxW":3,"boxH":3,"jigsaw":true,"givens":38},{"x":100,"y":10,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":4,"y":14,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15},{"x":52,"y":50,"n":9,"boxW":3,"boxH":3,"jigsaw":false,"givens":36},{"x":26,"y":16,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":28,"y":52,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15}],"picross":[{"x":30,"y":8,"n":8},{"x":70,"y":20,"n":7},{"x":43,"y":41,"n":7},{"x":102,"y":24,"n":8},{"x":40,"y":26,"n":6},{"x":66,"y":42,"n":6},{"x":12,"y":26,"n":7},{"x":108,"y":40,"n":6}],"regionRLE":[0,23,1,43,2,33,3,21,0,25,1,41,2,34,3,20,0,26,1,39,2,35,3,20,0,26,1,33,2,41,3,20,0,26,1,31,-2,4,2,40,3,19,0,26,1,31,-2,4,2,8,4,4,2,28,3,19,0,26,1,31,-2,4,4,15,2,26,3,18,0,26,1,31,-2,4,4,15,2,26,3,18,0,26,1,4,-2,8,1,23,4,15,2,25,3,19,0,26,1,4,-2,8,1,25,4,13,2,25,3,19,0,26,1,4,-2,8,1,26,4,14,2,22,-2,4,3,16,0,26,1,4,-2,8,1,25,4,15,2,22,-2,4,3,16,0,26,1,4,-2,8,1,23,4,17,2,22,-2,4,3,16,0,26,1,4,-2,8,1,22,4,18,2,22,-2,4,3,16,0,4,-2,6,0,16,1,4,-2,8,1,20,4,20,2,24,3,18,0,4,-2,6,0,16,1,4,-2,8,1,20,4,20,2,23,3,19,0,4,-2,6,0,16,-2,6,5,6,1,19,4,20,6,5,2,18,3,20,0,4,-2,6,0,16,-2,6,5,7,1,1,5,1,1,16,4,19,6,7,2,17,3,20,0,4,-2,6,0,16,-2,6,5,10,1,15,4,18,6,11,2,12,6,2,3,20,0,4,-2,6,0,15,7,1,-2,6,5,13,1,12,4,17,6,14,2,9,6,4,3,19,0,19,7,2,0,3,7,2,-2,6,5,15,1,10,4,13,-2,7,6,13,2,6,6,6,3,18,0,16,7,10,-2,6,5,16,1,9,4,1,8,5,4,5,8,2,-2,7,6,14,2,4,6,7,3,18,0,15,7,13,9,5,5,16,1,1,5,1,1,5,8,8,4,2,8,4,-2,7,6,14,2,2,6,1,2,1,6,7,3,15,10,3,0,14,7,14,9,5,5,19,8,18,-2,7,6,25,3,12,10,6,0,13,7,14,9,7,5,18,8,18,-2,7,6,25,-2,8,3,3,10,7,0,12,7,15,9,9,5,16,8,18,-2,7,6,25,-2,8,3,1,10,9,0,12,-2,7,7,7,9,11,5,3,-2,6,5,5,8,19,-2,7,6,25,-2,8,10,10,0,12,-2,7,7,7,9,13,5,1,-2,6,5,4,8,24,6,27,11,1,-2,8,10,10,0,12,-2,7,7,6,9,15,-2,6,5,3,8,24,6,26,11,3,-2,8,10,10,0,12,-2,7,7,6,9,15,-2,6,8,27,6,25,11,4,-2,8,10,10,0,12,-2,7,7,7,9,14,-2,6,8,27,6,23,11,6,-2,8,10,10,7,3,0,9,-2,7,7,9,9,12,-2,6,8,26,6,18,12,5,11,7,-2,8,10,10,7,4,0,8,-2,7,7,9,9,18,13,3,8,23,6,16,12,8,11,11,10,13,7,5,0,1,7,1,0,7,7,14,9,18,13,3,8,23,6,14,12,11,11,11,10,12,7,8,0,2,7,11,9,4,7,3,9,18,13,6,8,20,6,9,12,13,11,15,10,11,7,20,9,6,7,2,9,18,13,8,8,17,6,6,12,16,11,17,10,10,7,21,9,5,7,2,9,14,14,2,9,1,13,11,8,15,6,2,12,19,11,18,10,10,7,20,9,7,7,1,9,13,14,3,13,12,8,15,6,1,12,18,11,21,10,9,7,18,-2,6,9,17,14,4,13,11,8,16,12,15,11,24,10,9,7,18,-2,6,9,17,14,4,13,11,8,15,12,15,11,14,12,2,11,5,12,1,11,3,10,9,7,18,-2,6,9,14,14,7,13,11,8,15,12,16,11,10,12,6,11,1,12,4,-2,6,15,6,7,18,-2,6,9,14,14,5,-2,7,13,6,8,16,12,36,-2,6,15,6,16,3,7,15,-2,6,9,14,14,5,-2,7,13,6,8,10,-2,6,12,36,-2,6,15,6,16,5,7,13,-2,6,9,14,14,5,-2,7,13,8,8,7,13,1,-2,6,12,36,-2,6,15,6,16,6,7,15,14,3,9,13,14,6,-2,7,13,8,8,5,13,3,-2,6,12,14,-2,9,12,13,-2,6,15,6,16,8,7,2,16,3,7,6,14,6,9,7,14,3,9,2,14,6,-2,7,13,9,8,3,13,4,-2,6,12,14,-2,9,12,13,-2,6,15,6,16,14,7,4,14,9,9,2,14,1,9,3,14,10,-2,7,13,16,-2,6,12,14,-2,9,12,16,15,9,16,14,7,3,14,26,-2,7,13,16,-2,6,12,14,-2,9,12,17,15,8,16,17,14,27,17,3,13,24,12,15,-2,9,12,18,15,7,16,18,14,25,17,10,13,18,12,15,-2,9,12,17,15,8,16,18,14,24,17,10,-2,9,13,10,12,15,-2,9,12,17,15,8,16,18,14,16,17,1,14,2,17,15,-2,9,13,10,12,15,-2,9,12,17,15,8,16,28,-2,6,17,18,-2,9,13,10,12,15,-2,9,12,19,15,6,16,28,-2,6,17,18,-2,9,13,11,12,44,15,4,16,27,17,1,-2,6,17,18,-2,9,13,11,12,44,15,4,16,25,17,3,-2,6,17,18,-2,9,13,12,12,42,15,5,16,13,17,15,-2,6,17,18,-2,9,13,13,12,40,15,6,16,9,17,19,-2,6,17,18,-2,9,13,14,12,39,15,6,16,8,17,44,-2,9,13,15,12,36,15,8,16,6,17,50,13,21,12,31,15,12,16,4,17,52,13,22,12,29,15,13,16,4,17,52,13,22,12,25,15,2,12,1,15,14,16,4,17,52,13,22,12,19,15,23,16,4,17,52,13,24,12,16,15,24]},
+  "crew": {"gw":146,"gh":53,"regPix":11,"zones":[{"x":104,"y":30,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":10,"y":15,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":26,"y":10,"n":9,"boxW":3,"boxH":3,"jigsaw":true,"givens":38},{"x":62,"y":35,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":84,"y":45,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15},{"x":113,"y":40,"n":9,"boxW":3,"boxH":3,"jigsaw":false,"givens":36},{"x":123,"y":33,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":98,"y":0,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15}],"picross":[{"x":130,"y":21,"n":8},{"x":63,"y":42,"n":7},{"x":37,"y":27,"n":7},{"x":21,"y":32,"n":8},{"x":118,"y":25,"n":6},{"x":97,"y":7,"n":6},{"x":113,"y":9,"n":7},{"x":81,"y":4,"n":6}],"regionRLE":[0,19,1,79,-2,6,2,42,0,20,1,78,-2,6,2,42,0,22,1,76,-2,6,2,42,0,22,1,2,0,1,1,73,-2,6,2,42,0,25,1,56,-2,6,1,11,-2,6,2,42,0,32,1,49,-2,6,1,10,2,1,-2,6,2,42,0,33,1,48,-2,6,1,10,2,49,0,33,1,48,-2,6,1,9,3,1,-2,6,2,43,0,34,1,47,-2,6,1,8,3,2,-2,6,2,43,0,35,1,46,-2,6,1,7,3,3,-2,6,2,10,-2,7,2,26,0,26,-2,9,1,57,3,5,-2,6,2,10,-2,7,2,26,0,26,-2,9,1,56,3,6,-2,6,2,10,-2,7,2,26,0,26,-2,9,1,55,3,7,-2,6,2,10,-2,7,2,26,0,26,-2,9,1,53,3,15,2,10,-2,7,2,26,0,18,4,1,0,7,-2,9,1,17,5,3,1,32,3,21,2,5,-2,7,2,26,0,10,-2,6,4,4,0,3,4,3,-2,9,1,15,5,6,1,30,3,22,2,5,-2,7,2,26,0,10,-2,6,4,4,0,1,4,5,-2,9,1,13,5,8,1,29,3,24,2,37,0,10,-2,6,4,10,-2,9,1,11,5,11,1,25,3,28,2,36,0,10,-2,6,4,10,-2,9,1,10,5,13,1,24,3,27,2,11,6,1,2,1,6,1,2,3,6,1,2,19,0,10,-2,6,4,9,5,9,1,10,5,14,1,23,3,28,2,10,6,14,2,13,0,2,4,6,0,2,-2,6,4,9,5,10,1,8,5,16,1,21,3,30,2,9,6,14,2,13,0,1,4,24,5,12,1,3,5,19,1,15,3,36,6,2,2,7,6,11,-2,8,2,8,4,25,5,35,1,13,3,31,6,1,3,1,6,1,3,1,6,5,2,4,6,13,-2,8,2,8,4,26,5,34,1,14,3,29,6,12,2,1,6,14,-2,8,2,8,4,21,5,2,4,3,5,34,1,14,3,30,6,26,-2,8,2,8,4,20,5,4,4,1,5,34,1,14,3,32,6,13,-2,6,6,6,-2,8,2,8,4,20,5,39,1,12,3,33,6,14,-2,6,6,6,-2,8,6,1,2,7,4,19,7,1,5,17,-2,7,5,4,8,3,5,7,8,1,1,11,3,28,6,3,3,2,6,15,-2,6,6,6,-2,8,6,2,2,6,4,18,7,3,5,16,-2,7,5,3,8,5,5,4,8,4,1,9,3,29,6,20,-2,6,6,6,-2,8,6,2,2,6,4,16,7,6,5,14,7,1,-2,7,5,2,8,14,1,8,3,29,6,21,-2,6,6,15,2,7,4,16,7,7,5,7,7,2,5,3,7,2,-2,7,8,15,1,8,3,29,6,8,-2,4,6,10,-2,6,6,14,2,8,4,16,7,7,5,7,7,7,-2,7,8,15,1,7,3,28,6,10,-2,4,6,29,2,9,4,16,7,5,-2,8,7,8,-2,7,8,14,1,7,3,29,6,10,-2,4,6,28,2,10,4,17,7,4,-2,8,7,8,-2,7,8,14,1,7,3,29,9,4,6,6,-2,4,6,15,-2,6,6,7,2,10,4,17,7,4,-2,8,7,12,8,18,1,5,3,29,9,7,6,23,-2,6,6,6,2,11,4,18,7,3,-2,8,7,12,8,20,1,1,-2,4,3,27,9,6,6,24,-2,6,6,5,2,12,4,18,7,3,-2,8,7,13,8,20,-2,4,3,27,9,6,6,24,-2,6,6,5,2,12,4,18,7,3,-2,8,7,12,8,21,-2,4,3,19,9,1,3,7,9,5,6,25,-2,6,6,4,2,13,4,13,7,3,4,1,7,4,-2,8,7,12,8,21,-2,4,3,19,9,4,3,3,9,6,6,25,-2,6,6,5,2,12,4,12,7,9,-2,8,7,13,8,22,3,21,9,13,6,37,2,11,4,11,7,31,8,12,7,3,8,12,3,16,9,13,6,15,-2,9,6,14,2,10,4,11,7,32,8,10,7,4,8,13,3,15,9,13,6,15,-2,9,6,14,2,10,4,11,7,33,8,7,7,6,8,6,-2,7,3,15,9,13,6,15,-2,9,6,12,10,3,2,9,4,14,7,33,8,2,7,8,8,6,-2,7,3,15,9,13,6,15,-2,9,6,8,10,7,2,9,4,15,7,42,8,6,-2,7,3,16,9,12,6,15,-2,9,6,8,10,7,2,9,4,16,7,40,8,7,-2,7,3,14,-2,6,9,9,6,14,-2,9,6,8,10,8,2,8,4,17,7,40,8,6,-2,7,3,14,-2,6,9,10,6,13,-2,9,6,8,10,8,2,8,4,18,7,39,8,6,-2,7,3,14,-2,6,9,11,6,12,-2,9,6,8,10,8,2,8,4,18,7,41,8,4,-2,7,3,14,-2,6,6,1,9,7,6,15,-2,9,6,9,10,8,2,7,4,18,7,42,8,10,3,14,-2,6,6,41,10,9,2,6,4,18,7,42,8,10,3,14,-2,6,6,41,10,11,2,4,4,18,7,43,8,2,7,1,8,5,3,19,6,44,10,11,2,3,4,18,7,50,3,20,6,44,10,11,2,3]},
+  "fighters": {"gw":117,"gh":66,"regPix":13,"zones":[{"x":99,"y":14,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":101,"y":3,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":28,"y":25,"n":9,"boxW":3,"boxH":3,"jigsaw":true,"givens":38},{"x":98,"y":47,"n":4,"boxW":2,"boxH":2,"jigsaw":false,"givens":7},{"x":86,"y":54,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15},{"x":100,"y":54,"n":9,"boxW":3,"boxH":3,"jigsaw":false,"givens":36},{"x":57,"y":7,"n":6,"boxW":2,"boxH":3,"jigsaw":true,"givens":15},{"x":75,"y":4,"n":6,"boxW":2,"boxH":3,"jigsaw":false,"givens":15}],"picross":[{"x":98,"y":19,"n":8},{"x":44,"y":19,"n":7},{"x":69,"y":12,"n":7},{"x":29,"y":14,"n":8},{"x":89,"y":6,"n":6},{"x":13,"y":54,"n":6},{"x":75,"y":26,"n":7},{"x":7,"y":23,"n":6}],"regionRLE":[0,11,1,20,2,86,0,12,1,20,2,85,0,13,1,14,2,1,1,5,2,33,3,1,2,50,0,14,1,13,2,2,1,4,2,31,3,4,2,33,-2,6,2,10,0,15,1,11,2,26,3,4,2,3,3,16,-2,6,2,20,-2,6,2,10,0,12,1,14,2,27,3,5,2,1,3,16,-2,6,2,20,-2,6,2,10,0,12,1,14,2,28,3,21,-2,6,2,8,-2,6,2,6,-2,6,2,10,0,12,1,14,2,28,3,3,-2,6,3,12,-2,6,2,8,-2,6,2,6,-2,6,2,10,0,12,1,13,2,28,3,4,-2,6,3,12,-2,6,2,8,-2,6,2,6,-2,6,2,9,4,1,0,11,1,14,2,24,3,8,-2,6,3,6,2,1,3,1,2,1,3,3,-2,6,2,8,-2,6,2,20,4,2,0,12,1,13,2,23,3,9,-2,6,3,5,2,21,-2,6,2,19,4,3,0,12,1,12,2,24,3,9,-2,6,3,5,2,21,-2,6,2,18,4,4,5,2,0,10,1,13,2,23,3,9,-2,6,3,5,2,1,-2,7,2,37,4,4,5,3,0,11,1,12,2,22,3,21,-2,7,2,37,4,4,5,3,0,12,1,13,2,1,-2,8,2,10,3,22,-2,7,2,23,-2,4,2,10,4,4,5,3,0,14,1,12,-2,8,2,7,3,14,6,1,3,10,-2,7,2,23,-2,4,2,9,4,5,5,3,0,14,1,12,-2,8,2,5,6,2,3,13,6,3,3,7,6,2,-2,7,2,23,-2,4,2,9,4,5,5,3,0,11,7,3,1,12,-2,8,2,3,6,5,3,12,6,3,3,6,6,3,-2,7,2,20,4,3,-2,4,2,9,4,5,5,3,0,10,7,5,1,4,7,5,1,2,-2,8,2,2,6,5,3,12,6,5,3,4,6,4,-2,7,2,20,4,5,2,10,4,6,5,4,0,8,7,7,1,2,7,7,1,1,-2,8,2,1,6,6,-2,7,3,4,6,7,3,2,6,10,2,21,4,3,-2,8,2,5,4,6,5,4,0,6,7,19,-2,8,6,7,-2,7,3,1,8,2,6,21,2,2,6,1,2,16,4,4,-2,8,2,5,4,6,5,5,0,4,7,20,-2,8,6,7,-2,7,8,4,6,24,2,12,4,7,-2,8,9,2,2,2,4,7,5,6,0,3,7,24,6,11,-2,7,8,3,6,24,2,11,4,9,-2,8,9,3,4,8,5,6,0,1,-2,6,7,20,6,11,-2,7,8,3,6,25,2,9,4,10,-2,8,9,6,4,5,5,7,-2,6,7,21,6,10,-2,7,8,3,6,25,2,8,4,11,-2,8,9,6,4,5,5,7,-2,6,7,15,-2,9,6,7,-2,7,8,3,6,25,2,8,4,11,-2,8,9,5,4,6,5,7,-2,6,5,1,7,14,-2,9,6,10,8,7,6,21,-2,7,2,5,4,11,-2,8,9,5,4,6,5,7,-2,6,5,1,7,14,-2,9,6,11,8,7,6,20,-2,7,4,1,2,4,4,19,9,6,4,5,5,7,-2,6,5,2,7,13,-2,9,6,12,8,7,6,19,-2,7,4,3,2,1,4,20,9,6,4,5,5,15,7,13,-2,9,6,1,10,1,6,11,8,7,6,18,-2,7,4,2,2,2,4,20,9,6,4,5,5,15,7,13,-2,9,10,3,6,10,8,7,6,18,-2,7,4,3,2,1,4,21,9,5,4,5,5,14,7,14,-2,9,10,3,6,11,8,7,6,17,-2,7,4,24,9,6,4,5,5,14,7,14,-2,9,10,3,6,10,8,7,6,18,-2,7,4,24,9,6,4,5,5,14,7,2,11,1,7,11,-2,9,10,3,6,11,8,4,6,28,4,24,9,5,4,5,5,13,11,5,7,16,10,6,6,43,4,25,9,4,4,5,5,13,11,5,7,16,10,7,6,41,4,27,9,3,4,5,5,12,11,6,7,16,10,8,6,41,4,34,5,11,11,8,7,14,10,10,6,42,4,32,5,10,11,9,7,13,10,11,6,42,4,32,5,9,11,9,7,15,10,10,6,43,4,31,5,7,11,10,7,17,10,8,6,43,4,32,5,7,11,12,7,14,10,4,6,1,10,1,6,46,4,32,5,3,11,1,5,2,11,13,7,17,6,49,4,32,5,3,11,16,7,17,6,48,4,33,5,2,11,17,7,18,6,46,4,34,5,3,11,15,7,18,6,46,4,35,5,5,11,13,7,18,6,46,4,35,5,5,11,14,7,18,6,47,4,11,6,2,4,1,-2,4,4,15,5,5,11,14,7,17,6,49,4,9,6,4,-2,4,4,15,5,4,11,14,7,18,6,49,4,9,6,4,-2,4,4,15,5,4,11,14,7,18,6,49,4,10,6,3,-2,4,4,15,5,4,11,13,7,20,6,49,4,9,6,6,4,16,5,4,11,13,7,15,12,2,7,1,6,51,4,10,6,4,4,17,5,4,11,13,7,14,12,4,6,52,4,9,6,4,4,17,5,4,11,9,-2,6,7,12,12,4,6,51,-2,6,4,3,6,5,-2,9,4,8,5,4,11,9,-2,6,7,5,12,2,7,5,12,4,6,51,-2,6,4,2,6,6,-2,9,4,8,5,4,11,9,-2,6,7,5,12,3,7,1,12,2,7,1,12,4,6,51,-2,6,4,1,6,7,-2,9,4,8,5,4,11,9,-2,6,7,4,12,4,7,1,12,7,6,51,-2,6,6,8,-2,9,4,8,5,4,11,9,-2,6,12,17,6,50,-2,6,6,8,-2,9,4,8,5,6,11,7,-2,6,12,17,6,50,-2,6,6,8,-2,9,4,8,5,6,11,12,12,19,6,63,-2,9,4,8,5,7,11,6,12,4,11,1,12,19,6,63,-2,9,4,8,5,13,12,24,6,63,-2,9,4,8,5,14,12,23,6,69,4,11,5,14,12,26,6,66,4,11,5,15,12,25,6,66,4,11]},
+};
+/* BAKED_LAYOUT:END */
+/* BAKED_SOL:BEGIN */
+const BAKED_SOL = {
+  "portal": {"gw":237,"gh":158,"b":"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"},
+  "inferno": {"gw":184,"gh":164,"b":"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"},
+  "angels": {"gw":204,"gh":136,"b":"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"},
+  "amigos": {"gw":144,"gh":95,"b":"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"},
+  "blinding-lights": {"gw":111,"gh":200,"b":"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"},
+  "zenitsu": {"gw":117,"gh":66,"b":"gQtAhAgsQEIAgRWsAABADagVJBRQFiMbPcqI2ikBAF5QIIRgJA4BDMSAFCSDrkHIgrkc5QlyEKNuMADiQ3gZkg8NJhDP4cABsEDw4QIEweXDhUA7EQwAoEwAQJBEDS4alLjJgzlIhR0ZCPqAkwcXgCdhwACwmAlQAIppWKQwCBcIPEwiMQgGyAEkGCwEkZCTOwSBIACmXQDBACuAPRbSYUgdEgiYHxApYgkUiAG0gAAIBjBsD3IWHhxo4sFBiiBCB8eAw78IALgT2jUAgAQRZDZgvBMRwz0RHiCADEIIECPtI4j0UQxIxiEIgEII0YAdAQPm05wKwQAICICkTPoB5WE0kigxCwAEqgNEgDcAfgAQYzBXqCwAYo2g3CZrHxRgxHBYEaMKgoMGkyH8IxgIQgOAqQgoAoh1UN0PDjcJIJgAQAAQYBIGTi3IBSBVBpoHFB0QFNPABxsODASAABIlGJYADDxA0GcQARAcRAMCgW0gBgJJ/z0LAdMgvySWItGhlA32nfUFAIhgixIAJCULGADr+2uQlSQGgkEcIACQEWXr9a9AEH5EsMwvIkA8KP4W2wMAww4KAtyIBgIDQP/7FyhmDEIAaAwAIEok7T//4OPHWRGQwBcBAHT4fzMGfuQ9gJgAkIgk4o/dL/+o3/ADygGAEIKk/qJZ83L4bT4YHjxQDAFkdT9/9+s/AAYM5wVQQYnop/7ktz8J5BEZSIsHAda3+Dvbu/E4gLMIQ3hwgNV3AI7uNzEgAEIkBsikQL4H4gXfBgDUIAQBMhQAmtUo2wDfC3QMIA54ABJA4U+AAcTP5B0AggCbLGYgGXgYgOU/sUAQKSA/KECgEL9ZQGE9jqifAIAAjBwB9T1AGE+DA/yDBNCga0gK/Bf44YDgROWAYAS4BgSCSywBCQAY/vwHKAMbBBbxh3FDsAHkDwQA4GpHChBnBgLBAGAvgCENGBEURKAE4AkgRrAkOIF4yUSaidSQOrAvDA8EgDilFAEIxKlIQr/9UwAAiAMIAFMkvEGC5r/vH4gsEAAABRDAGXUALCI8RJwBECh4ABj/4QWkKSMZEGAAAAIfevANWEFBogABAAwQAMAAJjDAAABABoQf+QBoYnqYEwpgkJDJAdiQN4AKAgbj8APQSYhwML8TZ6ioQXBA8AAQAAcMcAP52EALlVcQPBAB6B9THwhAMgJI5OAIJ5B6/HGgRQIAKEAGgMCILAMAcQIfHjAFEiQCwkIykXACCBxCCASAAksrBrBmQKIAliGGQBosEOAK5ICcgQIAYBJEAQAA"},
+  "castle": {"gw":120,"gh":64,"b":"3w1w/w7y9wy873uEP/j3Zn0C2+UBPACIfz1KKP6ymOkGfPuDP/zvrx98+/1/8P834G//h+/v/w9/3/s6Yd//Fv997f6/f8P/qf8dw/u///jXf//zBQD8f8uHB+637we6//8f8L9/P3SBDdi/f1uHwQcEjn7ng9/4f4Dd///zbUCoX9s9wD/C/wbg73//aX9I+P8fdP9h3/8B9P/83d8A/38B/9+w//IYgPXz/7kD9A34+3/8v5XfwwX8t3/w/wf/+wXt9v3//fkA4BcA/+Ng/8+f+Hs/v/AMBAL+gBj43w3/gO+f3bD/IMwhQCLnYC8WAcD/f2E7jwAI+RIA4A2E/yvAf4HfwxMA72EIvp74FABJbVP4P4Dxd8bi3Vri/wfgZgMwAACmOZn/ZxtK2v8/cUXCkLV9LgC+s01A/3bDuY0ADf+X9YDxzJYg+N8PiYYJ/gNmOjwwMwUSAH4AQBpT8gCcHQAOz/DAv6FntDq0DDpl6gB5IgD8dB/wD6kgcfyAFdOAL0D+7xMDJqIh4eFhKmB8AIDv8P/wF8AOxogHlXADFP95AQBAgJmxDBCHCvyY4v/zPsD+AwBYGWEchd8A+D9pAB9A0QdgMoYw6nel7F9ieAAcmgXgIRwA+REAewwEYPcDGAUVQTjyAGS8vqwicSpfHAcgk3KMkAB/nyBBJPXdV75AHOTgZ8BtC0AaAXMZGAQKZpiRTH670qCAgkCGnVS8wTOLbP9fU0AgAUgQUAUoQWCo7hsaFICggAQRGOQvAADQr/wLhKYgApKcFRw7QCDu5n8FoAqAkQC2EpwuAYDv7i8QfFtTRoy/EBguDACQJAACAABsEMG+Ahgs/v/AUaCmAAAASKQHKAE8QPIBgCA8/wcIISIWPAw8/D8CCsCDQPpgiphuDz1+KPAH4CAAHOETIAIEqHB9eGYH4CkAkBABReAgE0L+gIHyEyzAF8hAQIiCEID6VABQ/wgQBYBPIqUQYxrUIZr0AhAAKDAAhQAGkALACQCAvkYAglQLEAsACBCMAAD8BQAAAQKgiQgACBQABOz//x/PggCPYAYq2AAQAACAtIAoAASCEgAQCCAJyPz///8gAAAeBlDHBQgQBAAA/MdvbwEPIA8IBSAAAID/AwAAAEiBAPCBAMR8/n8A/P//52M/l74HQAAAAAD+AwAAAICDwe+Z5/P/XwgAfP//nqUgeL8AEAEAAP////8dIAEQAQBAyMzn/wAgLQgAGAhC5BkSEmAkobj////zQcJNAoCgYAYKBAAAQAAAABAA"},
+  "crew": {"gw":146,"gh":53,"b":"XiyQxXgFwEoKDAByAKIABgzsQwDSkhwke4AARSpDCWBYhZn6KQTJBwCAAUAAJhARYKAQBFH8ZxlQGwDBqiBSAYAhgIMJgiBQ6wEAZMsDAAIAAAQAQQ6+BwDgPwJB4JUaCAAoSBIEAhL4fpvI/i81EwtcBggIAAEAEEjh678FKh+EAhj8xEDJgsBIgAWg733bj8BC0AR8hgACBIATAAAB/v9tuoAjAOCiD7DEhMILPIIDMvp32XsGANhn/AZQAqIDfkDTBxrA9891EyRd8a0hYQJEfgmAHzRA2KdFQLDGxnkhI8SQAEAOflkAfLgeC8x7BnwVACQcCWAHaAE6IPTohEAxNn4rQgeIB+WOwLMyERIfcAjyH/gITH1nAOAfgeqHBgAiPoAWzoEgCLhSAKIHUvhZG1pSISVwGABAYPkPIKAzAGQNbIkCBFAvYAKAAES3FMB3AJge089UgEQawAMECAKAEYJqgktsiTenLYF+Do+DMREBRkL+AbqwGU/dFQkO+FjIIDGpIZ6JiAIIRArY9wBXpXSAFEzUrejFh2BFEBH59wdCEMHraRQGYctdpgAIAKLR7z8jKqSMBAGIQKe9FDUnASSki/4MAghxqhxJJE8jiAAAEUy8zucHJyAQCfgBAnwBLwCEgWS4/I9/cGAGBogBoGPQA0qQj42k/jf+hAFAagQZgM0KL2kBj7Sa/3/6vwwm9QhpQO/CcKkAmWlBvgOcNRgFsQ/5AD2DU4Cv0MYCiv0fPCOS0Gq/Ab6fSUA64K0giP8tYhaGqDfOCIAXBAZ5EC4gEPf9A7FACAqYBwA7MAPgCfgQh9r/L8ELNeBhfORjyhoQAMR/vuDfH+CfCODD8WMvAEgSOQmkZZL9f3BuAAISx90uaHDAwKSM9RO8++avKQRaXAwHVsmnDZ8ZnwZy/YO8glQ5cPB5WQlOr2UMf5gR1o+tQzPIwfDCAINC/BT7+ytQ/j1nTwQQiTRAJiRAqhlH2wcNIAB4HwjQAR0kUIZPrgO18z89wCHQm6AgkjSehUA/HACQ/G/wAIfkTZCCIABedLwvO/iHdPCrAQC0rwAB+ID2B4ONyeCDgP8BDwAsINRFwoF6FziPA4AsB/4YfgIQAIAwUAswL+BnAAA2jHDwPQoAAhRACDygAsEO0wl4QMB62lAAAIhiCKBnAAFCnA/gJAoO/ikABAgfCIkPgYRAIn1kIQD8BwBaoI8KliAnBkGkgeAbBxg4rUhSgABDAovcAURKAqmYfDDywJQBgZmoAF3oakBApAAcG/jBmQdQogA4SQI="},
+  "fighters": {"gw":117,"gh":66,"b":"KYiav4AIfn+IMARESCEGSYYCQ4qg3SZYYCVEKCECfgQAAwDg/xEAABCQAIGAL6AFZYAZ8kgmAYAAACL997+3939C+76Pdh9f/f/+p/f2tS/ot/v5X+/fs//3vvbY+g3br/++f/rP+oHBxx/9v0T3+7/+v/9vfwj+BLDPP2C/+/d+Pa/Hb78/VPtHCtzfv9b/72+q/+8jwf4DAv5z7/8z7kzqB2xx8jeJwPFa/H/t9tg3/3Xw0JkI6P+vb2f/f3eb9tnn568IwP/7f3j/rr3xPf7188AI/Pd/j29fivrg1pzbJEzADxW95flD8LG8wvjHoC1gUO47Hv+O/s9W45dswAUPgLtjgtXZN2zXb38f1/WB8rtT93v6zu3+n/Cb3yUA7V/svU/fBLjfcPvn/ebmvxbyxBoHIc6O/U6r/H36BXDoXVckFb/w/9EcHCvfAg2g6wZUhIXWB/Zjg/Hn/sFVNEBAAINvmDuSfX9MH3CHDwJMYHgBFCiws6Xci+7I4cETBHqhBE7C+cWVyrYZLjjhYAaYwBEwIvJrpgLnA84w5BMHHMMFZqCQ1+nc0wGAHO2BsfyQiIm0kR09jgEI43l5mx8UWQIuYv/SCwDrOrbv58ClAINi/X3QABhXCdV4IDobAOKm90GKHs8buWCME2YXxN6wkevi5yxvABCD1mwA2V4PGBx/DeNJUngGx10QduUJi8mvYTQBIKuQw2XgpBYftvC3mAuV+eDYOEBVzGMHAr9GgKN2A0BYo6qDaZ7gUGmEIdoPgCRh1m2YhwFVuDQOx3tVAOqHa/3iVMECn1PxfDsOAHxYrd4qgA/IYxKX7PaVJYOvB2mbv5XsANhx4d12MvLylLX9u5GPKbMeP5l9fwzEkfRACwO8BIaEMcPHBwA+mmtEg9EIQH7hBL35LOXM8WmscLiChA8doSxfAIxJMARK3icAwMiR+PeDP9FXNkncbg7GLPoQeij8jxxIgAzjk4ERgz6IBRbWtQccUHkitAI6pJJ7XOIfsoSDLw8BX0xXRR7Bj2ZyIDrgzBLHUSpZDwfIQxyQAw84AsoBQBWT5AM0hAfyp2gDgHkYRCtejKCHtAH8fABwBu0AuI4LBIDAexdoTwDc8UxAyYlzFA7+H/h/RSAdngGaKHGu1KH7Iz5IAiiHVpIsx4sAYBBlwA4tmcCxRBDkMAEITAQI/L4QSjh9iCAmADFAQYCBwWP/UcOCA2WNRzEwD7D3x/w+uHhlMvwiAACmg/T6n94mOBRa0i/uM+cegPoB4PRiyaNHCA8BAACQCUAC"},
+};
+/* BAKED_SOL:END */
+
+// ---- the lazily-loaded clue payloads. Injected as a script tag rather than
+// fetched: fetch/XHR is blocked on file:// by CORS, script tags are not, so
+// opening index.html straight off disk keeps working (the project's premise).
+const BAKED = {
+  clue: Object.create(null),
+  _pend: Object.create(null),
+  // called by boards/<map>.js
+  put(map, compat, rec){ if (compat === GEN_COMPAT && rec) BAKED.clue[map] = rec; },
+  load(map, force){
+    if (BAKED_OFF && !force) return Promise.resolve(null);
+    if (BAKED.clue[map]) return Promise.resolve(BAKED.clue[map]);
+    if (BAKED._pend[map]) return BAKED._pend[map];
+    return BAKED._pend[map] = new Promise(res => {
+      let s;
+      try { s = document.createElement('script'); } catch (e) { res(null); return; }
+      s.src = 'boards/' + map + '.js';
+      s.async = true;
+      s.onload  = () => res(BAKED.clue[map] || null);
+      s.onerror = () => res(null);   // not shipped / offline / blocked -> generate
+      document.head.appendChild(s);
+    });
+  },
+};
+
+// ---- accessors. Each re-checks that the payload actually describes THIS
+// board before handing it over.
+function bakedInline(){ return !BAKED_OFF && BAKED_COMPAT === GEN_COMPAT; }
+// The partition + plot geometry are pinned to the map, NOT to the seed: they
+// are what make region ids, MAP_QUOTES keys, doneKey masks and the menu card
+// previews stable. Only the puzzle itself follows the seed.
+function bakedLayout(id){
+  if (!bakedInline()) return null;
+  const L = BAKED_LAYOUT[id || currentMap];
+  return (L && L.gw === GW && L.gh === GH) ? L : null;
+}
+// sol/clue are the puzzle, so they DO key off the seed — a non-canonical seed
+// simply misses and takes the full generation path.
+function bakedSol(){
+  if (!bakedInline() || SEED !== mapDef().seed) return null;
+  const rec = BAKED_SOL[currentMap];
+  if (!rec || rec.gw !== GW || rec.gh !== GH) return null;
+  const b = b64ToBytes(rec.b);
+  return (b && b.length === ((N + 7) >> 3)) ? unpackBits(b, N) : null;
+}
+// split from bakedClue so clueCacheProbe can test availability without paying
+// for a full decode
+function bakedClueStr(){
+  if (BAKED_OFF || SEED !== mapDef().seed) return null;
+  const rec = BAKED.clue[currentMap];
+  if (!rec || rec.gw !== GW || rec.gh !== GH) return null;
+  return (rec.clue && rec.clue[difficulty]) || null;
+}
+// `clueMatchesSol()` verifies that every clue PRESENT is correct — but a clue
+// set that lost most of its entries would sail through it and hand the player an
+// unsolvable board (all -1 vacuously "matches"). So the payload also carries the
+// number of clues each tier should have, and we check it before trusting the
+// bytes. Cheap, and it is the difference between "shipped a slow board" and
+// "shipped a board nobody can finish".
+function bakedClue(){
+  const s = bakedClueStr();
+  if (!s) return null;
+  const b = b64ToBytes(s);
+  if (!b || b.length !== ((N + 1) >> 1)) return null;
+  const out = unpackNibbles(b, N);
+  const want = (BAKED.clue[currentMap].n || {})[difficulty];
+  if (typeof want !== 'number') return null;
+  let have = 0;
+  for (let i = 0; i < N; i++) if (out[i] >= 0) have++;
+  if (have !== want){
+    console.warn('[bake] ' + currentMap + '/' + difficulty + ': ' + have + ' clues, expected ' + want + ' — discarding');
+    return null;
+  }
+  return out;
+}
+
 // ---------- generated-board cache (IndexedDB) ----------
 // Rebuilding a board is expensive and used to happen on EVERY page load: the
 // clue worker alone runs ~1.1s on Castle and ~35s on Angels at Medium (Very
@@ -2211,10 +2708,10 @@ const BCACHE_CLUE_MAX = 12;   // LRU cap on clue sets; sol records are never evi
 // ?nocache=1 is the dev escape hatch (mirrors ?nowork=1). The audit must always
 // exercise real generation, never cached bytes — so it disables the cache too.
 const BCACHE_OFF = AUDIT_MODE || /[?&]nocache=/.test(location.search);
-// keys carry everything that can change the bytes. BOARD_COMPAT is already the
+// keys carry everything that can change the bytes. GEN_COMPAT is already the
 // "generation output changed" signal, so it doubles as the invalidation key.
-function solCacheKey(){ return 'sol|' + currentMap + '|' + SEED + '|' + GW + 'x' + GH + '|' + BOARD_COMPAT; }
-function clueCacheKey(){ return 'clue|' + currentMap + '|' + SEED + '|' + GW + 'x' + GH + '|' + difficulty + '|' + BOARD_COMPAT; }
+function solCacheKey(){ return 'sol|' + currentMap + '|' + SEED + '|' + GW + 'x' + GH + '|' + GEN_COMPAT; }
+function clueCacheKey(){ return 'clue|' + currentMap + '|' + SEED + '|' + GW + 'x' + GH + '|' + difficulty + '|' + GEN_COMPAT; }
 
 let bcacheDbp = null;
 function bcacheOpen(){
@@ -2272,9 +2769,9 @@ function bcacheTrim(){
 }
 // Stale-cache guard: every displayed clue must equal the true light-count of
 // its region-clipped 3x3 under the restored sol. ~9N ops (~2ms on the largest
-// map), and it makes a forgotten BOARD_COMPAT bump self-healing. It cannot
+// map), and it makes a forgotten GEN_COMPAT bump self-healing. It cannot
 // catch a set thinned by a STRONGER solver than the current code has — that is
-// exactly what BOARD_COMPAT is for.
+// exactly what GEN_COMPAT is for.
 function clueMatchesSol(c){
   for (let i = 0; i < N; i++){
     const r = regionOf[i];
@@ -2289,12 +2786,20 @@ function clueMatchesSol(c){
 // Is this map+tier's clue set already banked? That — not the sol half — is what
 // decides the animation: the shimmer phase exists to mask worker time, and on a
 // clue hit there is none to mask.
+// This is also where the baked clue payload gets warmed: it wraps every board
+// build (startGeneration, rebuildForMap, setDifficulty), so resolving that
+// script load here means regenClues can read the result synchronously.
 function clueCacheProbe(cb){
-  if (BCACHE_OFF) { cb(false); return; }
-  bcacheHas(clueCacheKey()).then(cb, () => cb(false));
+  BAKED.load(currentMap).then(() => {
+    if (bakedClueStr()) { cb(true); return; }   // shipped: no worker time to mask
+    if (BCACHE_OFF) { cb(false); return; }
+    bcacheHas(clueCacheKey()).then(cb, () => cb(false));
+  }, () => cb(false));
 }
-// restore sol[] from the cache, else weave it and bank the result
+// restore sol[] from the bake or the cache, else weave it and bank the result
 function prepareSolution(done){
+  const baked = bakedSol();
+  if (baked){ sol.set(baked, 0); capturePicBase(); done(); return; }
   const key = solCacheKey();
   bcacheGet(key).then(rec => {
     if (rec && rec.buf && rec.buf.byteLength === N){ sol.set(new Uint8Array(rec.buf), 0); capturePicBase(); done(); return; }
@@ -2308,7 +2813,7 @@ function prepareSolution(done){
 }
 
 function startGeneration(){
-  SEED = mapDef().seed;
+  SEED = seedFor();      // canonical, unless this canvas has been rewoven
   dimsForImage(img, mapDef());
   sampleImage(img);     // paint + edge map (region borders flood along the edges)
   buildLayout();
@@ -2606,7 +3111,7 @@ function rebuildForMap(id, done){
     loader.classList.remove('done');
   }
   const apply = image => {
-    SEED = mapDef(id).seed;
+    SEED = seedFor(id);              // canonical, unless this canvas has been rewoven
     dimsForImage(image, mapDef(id));   // board shape from this image's aspect
     sampleImage(image);                // paint + edge map
     buildLayout();                     // regions flood along the edges; sudoku layout from seed
@@ -2627,9 +3132,17 @@ function rebuildForMap(id, done){
 // dropdown handler: load a map and replay its own saved progress
 function loadMap(id){
   if (id === currentMap || !MAPS.some(m => m.id === id) || solving || !generated) return;
+  if (PVP.active) { toast('Finish or leave the match before switching canvas.', true); return; }
   timerPause();   // bank the outgoing map's time before we switch away
-  rebuildForMap(id, () => {
-    state.fill(0); wrong.clear(); cellOwner.fill(null);
+  rebuildForMap(id, afterBoardSwap);
+}
+
+// Everything that has to happen once a DIFFERENT board is standing: wipe the
+// outgoing board's play state, then replay whatever this one has saved. Shared
+// by loadMap and reweaveCanvas — a reweave swaps the board just as thoroughly
+// as a map switch does, it just keeps the same painting.
+function afterBoardSwap(){
+  state.fill(0); wrong.clear(); cellOwner.fill(null);
     for (const z of ZONES) { z.entries = z.puzzle.slice(); z.owner = null; }
     regionDone.fill(false); regionDoneAt.fill(0);
     gameWon = false; mistakePromptOpen = false; resetSelections();
@@ -2642,10 +3155,28 @@ function loadMap(id){
     for (const p of PICROSS) checkRegion(p.region, true);   // reveal solved picross patches too
     for (const z of ZONES) checkZone(z, true);
     updateHUD();
-    persistMenuSummary();   // refresh this map's grid card (%, unlocked regions)
-    fitView();
-    runPendingAfterGen();   // menu-queued action (start co-op / host / join)
-  });
+  persistMenuSummary();   // refresh this map's grid card (%, unlocked regions)
+  fitView();
+  runPendingAfterGen();   // menu-queued action (start co-op / host / join)
+}
+
+// Reweave the current canvas at `seed` (null = back to the canonical weave).
+// The painting, its regions and its plots are untouched — only sol[] and the
+// clues change — so quotes, region ids and the menu's card previews all still
+// line up. The outgoing weave keeps its own save (see stateKey), so this is
+// never destructive: you can walk back and forth between weaves.
+function reweaveCanvas(seed){
+  if (!generated || solving || GEN.active) { toast('One moment, the canvas is still busy.', true); return false; }
+  if (online) { toast('Leave the online session before reweaving — everyone shares one board.', true); return false; }
+  if (PVP.active) { toast('You cannot reweave the canvas during a match.', true); return false; }
+  timerPause();                     // bank the outgoing weave's time under ITS key
+  setCustomSeed(currentMap, seed);  // must land before rebuildForMap: seedFor() drives generation
+  // a different weave is a fresh playthrough, so re-arm this canvas's proverbs.
+  // Regions already finished on the board being restored stay silent (checkRegion
+  // runs quietly in afterBoardSwap), so this only ever affects new completions.
+  quotesShown[currentMap] = []; saveQuotes();
+  rebuildForMap(currentMap, afterBoardSwap);
+  return true;
 }
 
 // (re)generate sudoku plots at the current difficulty: solution grids are
@@ -2716,6 +3247,16 @@ function regenClues(done, retier){
   regenZones();
   if (clueWorker) { clueWorker.terminate(); clueWorker = null; }   // cancel a superseded run (fast difficulty/map switches)
   const key = clueCacheKey();
+  // shipped bake -> IndexedDB -> generate. Both cached sources go through the
+  // same organic-cells-only merge and the same clueMatchesSol() verification,
+  // so a stale payload costs a regeneration and never a wrong board.
+  const baked = bakedClue();
+  if (baked){
+    for (let i = 0; i < N; i++) if (regionOf[i] >= 0 && regionOf[i] < REG_PIX) clue[i] = baked[i];
+    if (clueMatchesSol(clue)){ GEN.progress = 1; done(); return; }
+    clue.fill(-1);
+    console.warn('[bake] ' + currentMap + '/' + difficulty + ' clue set does not match sol — re-baking is overdue; generating instead');
+  }
   bcacheGet(key).then(rec => {
     if (token !== regenToken) return;   // a newer map/difficulty switch overtook us
     const c = (rec && rec.buf && rec.buf.byteLength === N) ? new Int8Array(rec.buf) : null;
@@ -2759,6 +3300,9 @@ function regenCluesFresh(token, done0){
 
 function setDifficulty(d){
   if (!generated || solving || d === difficulty || !DIFF[d]) return false;
+  // Everyone in a match was dealt the same tier; re-thinning the clues for one
+  // player only would hand them a different puzzle mid-race.
+  if (PVP.active) { toast('The difficulty is fixed for the length of a match.', true); return false; }
   difficulty = d;
   try { localStorage.setItem(DIFF_KEY, d); } catch (e) {}
   updateDiffSel();
@@ -2990,7 +3534,7 @@ function finishSetup(){
 let loopStarted = false;
 function startLoop(){ if (loopStarted) return; loopStarted = true; requestAnimationFrame(loop); }
 
-const GEN = { active:false, t0:0, clueReadyAt:-1, done:null, kind:'load', tl:null, progress:0, cached:false, _pct:-1, _hdr:'' };
+const GEN = { active:false, t0:0, clueReadyAt:-1, done:null, kind:'load', tl:null, progress:0, cached:false, artificial:false, _pct:-1, _hdr:'' };
 let genRankX = null, genRankY = null;
 // base timeline (ms). The INITIAL phases (bloom + shimmer ramp) are scaled up
 // per-run by board size — see beginGen — so heavier maps (which have more
@@ -3001,6 +3545,18 @@ const GTL_BASE = { bloomWin:850, regDur:340, shimDelay:110, shimIn:300, shimHold
 // so it collapses to a flicker here — but never to 0, since drawGen divides by
 // shimIn/regDur/settle. Deliberately NOT scaled by board size.
 const GTL_CACHED = { bloomWin:320, regDur:120, shimDelay:0, shimIn:1, shimHold:0, thinWin:260, settle:120, hold:80 };
+// Opening a canvas whose clues are already baked/cached has nothing left to hide
+// behind GTL_CACHED's ~0.9s beat — the board just appears, which reads as
+// "nothing happened" rather than as a fast load. So a fresh 'load'/'map' open
+// deliberately re-plays GTL_BASE's own shape (the show players already like),
+// uniformly time-compressed to a short, size-scaled target instead of GTL_BASE's
+// natural ~3.4s–5.6s: GEN_ARTIFICIAL_MIN_MS for the smallest map, …MAX_MS for the
+// largest (same sc used elsewhere), interpolated for the rest. A difficulty
+// switch (kind:'diff') is excluded on purpose — it's a frequent, already-quick
+// in-game action, not a "canvas opening" moment, and keeps GTL_CACHED's short beat.
+const GEN_ARTIFICIAL_MIN_MS = 3000, GEN_ARTIFICIAL_MAX_MS = 4000;
+const GTL_BASE_TOTAL = GTL_BASE.bloomWin + GTL_BASE.regDur + GTL_BASE.shimDelay + GTL_BASE.shimIn
+  + GTL_BASE.shimHold + GTL_BASE.thinWin + GTL_BASE.settle + GTL_BASE.hold;
 const genClamp = v => v < 0 ? 0 : v > 1 ? 1 : v;
 const genEase  = v => { v = genClamp(v); return v * v * (3 - 2 * v); };
 // a stable per-cell pseudo-random digit that reshuffles ~every 85ms
@@ -3021,7 +3577,9 @@ function genPrep(){
 // time to hide behind the show — see GTL_CACHED.
 function beginGen(kind, done, cached){
   GEN.active = true; GEN.clueReadyAt = -1; GEN.done = done; GEN.kind = kind;
-  GEN.cached = !!cached; GEN.progress = cached ? 1 : 0;
+  GEN.cached = !!cached;
+  GEN.artificial = !!cached && kind !== 'diff';
+  GEN.progress = (cached && !GEN.artificial) ? 1 : 0;   // artificial run ramps its own fake progress instead (see drawGen)
   GEN._pct = -1; GEN._hdr = '';   // force the header to repaint on the first frame
   genPrep();
   if (kind !== 'diff') fitView();   // a difficulty switch keeps the player's camera (same board)
@@ -3032,10 +3590,18 @@ function beginGen(kind, done, cached){
   // ~2.5×). The thinning/settle phases stay at base — they're gated on the
   // real clue data, which arrives when it arrives.
   const sc = Math.min(2.5, Math.max(1, (GW * GH) / 7680));   // castle (7,680 cells) = 1× baseline
-  GEN.tl = cached ? Object.assign({}, GTL_CACHED)   // no sc scaling: a cached Inferno is no slower than a cached Castle
-    : { bloomWin: GTL_BASE.bloomWin * sc, regDur: GTL_BASE.regDur * sc, shimDelay: GTL_BASE.shimDelay,
-        shimIn: GTL_BASE.shimIn * sc, shimHold: GTL_BASE.shimHold, thinWin: GTL_BASE.thinWin,
-        settle: GTL_BASE.settle, hold: GTL_BASE.hold };
+  if (GEN.artificial) {
+    const target = GEN_ARTIFICIAL_MIN_MS + (GEN_ARTIFICIAL_MAX_MS - GEN_ARTIFICIAL_MIN_MS) * (sc - 1) / 1.5;
+    const k = target / GTL_BASE_TOTAL;
+    GEN.tl = { bloomWin: GTL_BASE.bloomWin * k, regDur: GTL_BASE.regDur * k, shimDelay: GTL_BASE.shimDelay * k,
+        shimIn: GTL_BASE.shimIn * k, shimHold: GTL_BASE.shimHold * k, thinWin: GTL_BASE.thinWin * k,
+        settle: GTL_BASE.settle * k, hold: GTL_BASE.hold * k };
+  } else {
+    GEN.tl = cached ? Object.assign({}, GTL_CACHED)   // diff switch: no sc scaling, a cached Inferno is no slower than a cached Castle
+      : { bloomWin: GTL_BASE.bloomWin * sc, regDur: GTL_BASE.regDur * sc, shimDelay: GTL_BASE.shimDelay,
+          shimIn: GTL_BASE.shimIn * sc, shimHold: GTL_BASE.shimHold, thinWin: GTL_BASE.thinWin,
+          settle: GTL_BASE.settle, hold: GTL_BASE.hold };
+  }
   GEN.t0 = now - (skipBloom ? (GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay) : 0);
   const loader = document.getElementById('loader');
   if (loader){
@@ -3121,10 +3687,19 @@ function drawGen(now){
   }
   // ---- phase caption ----
   // ---- header (DOM): phase + live % + bar, in the readable top card ----
-  const phase = GEN.cached ? 'Restoring your canvas'
+  // a diff switch's cache hit stays on the short, un-narrated GTL_CACHED beat;
+  // everything else (including an artificial-elongated cache hit) narrates
+  // normally, since it now has time to.
+  const phase = (GEN.cached && !GEN.artificial) ? 'Restoring your canvas'
     : (GEN.kind !== 'diff' && rel < GEN.tl.bloomWin + GEN.tl.regDur) ? 'Growing the territories'
     : (rel < thinBegin ? 'Counting every square' : 'Thinning to the real clues');
-  genUpdateHeader(phase, Math.round(genClamp(GEN.progress) * 100));
+  // an artificial run's real GEN.progress jumps to 1 as soon as the (already-known)
+  // clue set resolves, which would snap the bar to 100% on frame one — so it shows
+  // fake, time-based progress across its own stretched timeline instead.
+  const pct = GEN.artificial
+    ? genClamp(rel / (GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay + GEN.tl.shimIn + GEN.tl.shimHold + GEN.tl.thinWin + GEN.tl.settle + GEN.tl.hold)) * 100
+    : genClamp(GEN.progress) * 100;
+  genUpdateHeader(phase, Math.round(pct));
 }
 // phase text (from drawGen's own generation-progress reasoning) → which of the
 // three trail items lights up. A cache-hit run never leaves 'territories' — its
@@ -3156,7 +3731,10 @@ function genUpdateHeader(phase, pct){
 // Run from the console:  await auditGivens()  — or open index.html?audit=1
 // (renders the report and sets the title to AUDIT PASS/FAIL, headless-
 // friendly). Rebuilds the player's map when done; saves are never touched.
-async function auditGivens(){
+// `only` = an array of map ids to audit, or null/empty for all of them. The
+// all-maps run takes hours, so shard it one map per browser tab
+// (index.html?audit=angels) and read the verdict off each tab's title.
+async function auditGivens(only){
   const keepMap = currentMap, keepDiff = difficulty;
   const rows = [];
   const loadImg = id => new Promise((res, rej) => {
@@ -3169,6 +3747,7 @@ async function auditGivens(){
     mapImgCache[id] = im;
   });
   for (const m of MAPS) {
+    if (only && only.length && only.indexOf(m.id) < 0) continue;
     const image = await loadImg(m.id);
     currentMap = m.id;
     SEED = mapDef(m.id).seed;
@@ -3285,6 +3864,186 @@ function auditSolvePicross(pz){
   return u;
 }
 
+// ============================================================
+//  BAKE — produce the shipped board payload (see the baked-boards block above)
+//  Run one map per tab:  index.html?bake=angels   (?bake=all for every map)
+//  It walks the SAME pipeline auditGivens does, and for the same reason: the
+//  payload has to be whatever this exact code produces, never a reimplementation
+//  of it. Output downloads as <map>.bake.json; _bake_boards.js splices it in.
+// ============================================================
+function bakeLoadImg(id){
+  return new Promise((res, rej) => {
+    const c = mapImgCache[id];
+    if (c && c.complete) return res(c);
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = mapDef(id).src;
+    mapImgCache[id] = im;
+  });
+}
+// the partition in HAND_LAYOUTS' format: organic ids verbatim (they are
+// MAP_QUOTES keys and saved region-done indices — never recompact them), plot
+// cells as the -2 sentinel applyHandPartition expects
+function captureRegionRLE(){
+  const rle = [];
+  for (let i = 0; i < N; i++){
+    const v = (zoneOf[i] >= 0 || picrossOf[i] >= 0) ? -2 : regionOf[i];
+    if (rle.length && rle[rle.length - 2] === v) rle[rle.length - 1]++;
+    else rle.push(v, 1);
+  }
+  return rle;
+}
+const bakeOrganic = i => regionOf[i] >= 0 && regionOf[i] < REG_PIX;
+
+async function bakeBoards(only, onMap){
+  const keepMap = currentMap, keepDiff = difficulty;
+  const out = [];
+  for (const m of MAPS){
+    if (only && only.length && only.indexOf(m.id) < 0) continue;
+    const image = await bakeLoadImg(m.id);
+    currentMap = m.id;
+    SEED = mapDef(m.id).seed;
+    dimsForImage(image, mapDef(m.id));
+    sampleImage(image);
+    buildLayout();
+    // only the maps that DERIVE their layout need it baked; the rest already
+    // ship a HAND_LAYOUTS entry and would just duplicate it
+    const derived = !(m.layout && HAND_LAYOUTS[m.layout]);
+    const rec = { id: m.id, compat: GEN_COMPAT, seed: SEED, gw: GW, gh: GH, cells: N };
+    if (derived){
+      rec.regPix = REG_PIX;
+      rec.regionRLE = captureRegionRLE();
+      rec.zones   = ZONES.map(z => ({ x: z.x, y: z.y, n: z.n, boxW: z.boxW, boxH: z.boxH, jigsaw: !!z.jigsaw, givens: z.givens }));
+      rec.picross = PICROSS.map(p => ({ x: p.x, y: p.y, n: p.n }));
+    }
+    weaveTexture();
+    capturePicBase();               // shapePicross always works from these
+    rec.sol = bytesToB64(packBits(sol, N));   // PRE-shaping, so it stays tier-independent
+    rec.clue = {};
+    for (const d of DIFF_ORDER){
+      difficulty = d;
+      locked.fill(0); clue.fill(-1);
+      for (const pz of PICROSS) shapePicross(pz, d);
+      for (const pz of PICROSS) setupPicross(pz);
+      for (let r = 0; r < REG_PIX; r++) genRegionClues(r);
+      // never ship a board that hands the player free cells (CLAUDE.md §8.3)
+      let lockedN = 0; for (let i = 0; i < N; i++) if (locked[i]) lockedN++;
+      if (lockedN) throw new Error('bake ' + m.id + '/' + d + ': ' + lockedN + ' locked cells — repair regression, refusing to bake');
+      rec.clue[d] = bytesToB64(packNibbles(clue, N, bakeOrganic));
+      console.log('[bake] ' + m.id + ' ' + d + ' ok');
+    }
+    out.push(rec);
+    if (onMap) onMap(rec);
+  }
+  currentMap = keepMap; difficulty = keepDiff;
+  return out;
+}
+
+// ---- ?verifybake=1 — THE proof. Builds every map+tier for real (BAKED_OFF is
+// on under this flag) and asserts the shipped payload is byte-identical.
+async function verifyBake(only){
+  const keepMap = currentMap, keepDiff = difficulty;
+  const rows = [];
+  for (const m of MAPS){
+    if (only && only.length && only.indexOf(m.id) < 0) continue;
+    const image = await bakeLoadImg(m.id);
+    const pay = await BAKED.load(m.id, true);
+    currentMap = m.id;
+    SEED = mapDef(m.id).seed;
+    dimsForImage(image, mapDef(m.id));
+    sampleImage(image);
+    buildLayout();
+    const bad = [];
+    const derived = !(m.layout && HAND_LAYOUTS[m.layout]);
+    if (derived){
+      const L = BAKED_LAYOUT[m.id];
+      if (!L) bad.push('layout missing');
+      else {
+        if (L.regPix !== REG_PIX) bad.push('regPix ' + L.regPix + '!=' + REG_PIX);
+        const mine = captureRegionRLE(), theirs = L.regionRLE || [];
+        if (mine.length !== theirs.length || mine.some((v, k) => v !== theirs[k])) bad.push('regionRLE');
+        const geo = a => a.map(z => z.x + ',' + z.y + ',' + z.n).join(' ');
+        if (geo(L.zones || [])   !== geo(ZONES))   bad.push('zones');
+        if (geo(L.picross || []) !== geo(PICROSS)) bad.push('picross');
+      }
+    }
+    weaveTexture();
+    capturePicBase();
+    const sr = BAKED_SOL[m.id];
+    if (!sr) bad.push('sol missing');
+    else if (sr.b !== bytesToB64(packBits(sol, N))) bad.push('sol');
+    for (const d of DIFF_ORDER){
+      difficulty = d;
+      locked.fill(0); clue.fill(-1);
+      for (const pz of PICROSS) shapePicross(pz, d);
+      for (const pz of PICROSS) setupPicross(pz);
+      for (let r = 0; r < REG_PIX; r++) genRegionClues(r);
+      const want = pay && pay.clue && pay.clue[d];
+      if (!want) bad.push('clue/' + d + ' missing');
+      else if (want !== bytesToB64(packNibbles(clue, N, bakeOrganic))) bad.push('clue/' + d);
+    }
+    const row = { map: m.id, ok: !bad.length, bad: bad.join(', ') };
+    rows.push(row);
+    console.log('[verifybake] ' + JSON.stringify(row));
+  }
+  currentMap = keepMap; difficulty = keepDiff;
+  return rows;
+}
+
+// shared dev-hook renderer for the audit / bake verdict overlays
+function bakeShow(verdict, body){
+  document.title = verdict;
+  const pre = document.createElement('pre');
+  pre.id = 'auditOut';
+  pre.style.cssText = 'position:fixed;inset:0;z-index:99;background:#10091f;color:#7cfc98;overflow:auto;padding:14px;font-size:11px;margin:0';
+  pre.textContent = verdict + '\n\n' + body;
+  document.body.appendChild(pre);
+  console.log('[bake] verdict: ' + verdict);
+}
+// which maps this tab is responsible for (?bake=angels, ?bake=a,b, ?bake=all)
+function bakeArg(re){
+  const m = re.exec(location.search);
+  const v = m ? decodeURIComponent(m[1] || '') : '';
+  if (!v || v === '1' || v === 'all') return null;
+  return v.split(',').map(s => s.trim()).filter(Boolean);
+}
+if (BAKE_MODE) {
+  setTimeout(() => {
+    const only = bakeArg(/[?&]bake=([^&]*)/);
+    const links = [];
+    bakeBoards(only, rec => {
+      // Banked as each map finishes, so a long all-maps run never loses hours of
+      // work to a late error. Two routes, because a bake tab usually sits in the
+      // background and Chrome blocks automatic downloads there: POST to a local
+      // sink if one is listening (see the dev server in the plan), and always
+      // leave a clickable link behind as the manual fallback.
+      const text = JSON.stringify(rec);
+      const name = rec.id + '.bake.json';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      a.download = name;
+      a.textContent = 'download ' + name;
+      a.style.cssText = 'position:fixed;left:8px;z-index:100;color:#7cfc98;top:' + (8 + links.length * 18) + 'px';
+      document.body.appendChild(a);
+      links.push(a);
+      fetch(location.origin + '/__bake/' + name, { method: 'POST', body: text })
+        .then(r => { if (r.ok) a.textContent = 'banked ' + name; else a.click(); }, () => a.click());
+    }).then(rows => {
+      bakeShow('BAKE DONE', rows.map(r => r.id + ' ' + r.gw + 'x' + r.gh + ' cells=' + r.cells +
+        ' sol=' + r.sol.length + 'B64 tiers=' + Object.keys(r.clue).length).join('\n'));
+    }).catch(e => bakeShow('BAKE ERROR', String(e && e.stack || e)));
+  }, 0);
+}
+if (VERIFY_BAKE) {
+  setTimeout(() => {
+    verifyBake(bakeArg(/[?&]verifybake=([^&]*)/)).then(rows => {
+      const ok = rows.length && rows.every(r => r.ok);
+      bakeShow(ok ? 'BAKE VERIFY PASS' : 'BAKE VERIFY FAIL', rows.map(r => JSON.stringify(r)).join('\n'));
+    }).catch(e => bakeShow('BAKE VERIFY ERROR', String(e && e.stack || e)));
+  }, 0);
+}
+
 // index.html?audit=1 → run the audit once the game has booted and paint the
 // verdict over the page (dev/CI hook; the game itself never triggers this)
 if (/[?&]audit=/.test(location.search)) {
@@ -3298,8 +4057,8 @@ if (/[?&]audit=/.test(location.search)) {
     console.log('[audit] verdict: ' + verdict);
   };
   setTimeout(() => {
-    auditGivens().then(rows => {
-      const ok = rows.every(x => !x.locked && !x.unsolved && !x.picrossUnsolved);
+    auditGivens(bakeArg(/[?&]audit=([^&]*)/)).then(rows => {
+      const ok = rows.length && rows.every(x => !x.locked && !x.unsolved && !x.picrossUnsolved);
       auditShow(ok ? 'AUDIT PASS' : 'AUDIT FAIL', rows.map(x => JSON.stringify(x)).join('\n'));
     }).catch(e => auditShow('AUDIT ERROR', String(e && e.stack || e)));
   }, 0);
@@ -3318,6 +4077,9 @@ let lastCell = -1;          // last board/plot cell the player acted on
 // the token stored in cellOwner[] / zone.owner[].
 let coopActor = null;
 let remoteOwner = null;
+// who authored the most recent edit of any kind (tile or sudoku digit). Versus
+// uses it to break a tied region claim in favour of whoever laid the last piece.
+let lastEditOwner = null;
 function ownerForEdit(){
   if (applyingRemote) return remoteOwner || 'peer';
   if (coop) return 'L' + ((coopActor || players[0]).id);
@@ -3326,11 +4088,15 @@ function ownerForEdit(){
 
 function setCell(i, s){
   if (regionDone[regionOf[i]] || gameWon || locked[i] || zoneOf[i] >= 0) return;
-  if (timerStart < 0 && !solving) timerStart = Date.now();   // start the session clock on the first genuine user stitch
+  if (PVP.active && PVP.phase !== 'live') return;   // no stitching before the go, or after the whistle
+  // start the session clock on the first genuine user stitch. A versus match runs
+  // its own clock and never persists, so it must not inflate this canvas's play time.
+  if (timerStart < 0 && !solving && !PVP.active) timerStart = Date.now();
   lastTouchedRegion = regionOf[i];
   lastCell = i;
   state[i] = s;
   cellOwner[i] = (s === 0) ? null : ownerForEdit();
+  if (s !== 0) lastEditOwner = cellOwner[i];
   if (s === 0) wrong.delete(i);
   else if ((s === 1) !== (sol[i] === 1)) wrong.add(i);
   else wrong.delete(i);
@@ -3362,6 +4128,7 @@ function checkRegion(r, silent){
   for (const i of cells) wrong.delete(i);
   regionDone[r] = true;
   regionDoneAt[r] = performance.now();
+  if (!silent) claimRegion(r);       // versus: award it before any UI fires
   if (!silent) {
     if (!solving) {
       const pp = picrossByRegion.get(r);
@@ -3386,6 +4153,7 @@ function checkZone(zone, silent){
   regionDone[zone.region] = true;
   regionDoneAt[zone.region] = performance.now();
   for (const pl of players) if (pl.selZ === zone.idx) { pl.selZ = -1; pl.selP = -1; }
+  if (!silent) claimRegion(zone.region);   // versus: award it before any UI fires
   if (!silent) {
     if (!solving) toast(`${zone.name} is solved, its piece joins the canvas.`, true);
     maybeShowQuote();    // region+attached plots done -> quote (also during auto-solve)
@@ -3399,6 +4167,9 @@ function checkZone(zone, silent){
 function checkWin(){
   if (regionDone.every(Boolean) && !gameWon) {
     gameWon = true;
+    // versus: the match rule decides the ending, not the solo "you finished it"
+    // modal. gameWon still latches, so setCell stops accepting stitches.
+    if (PVP.active) { pvpCheckEnd(); return; }
     scheduleSave();
     setTimeout(() => {
       document.getElementById('winImg').src = mapDef().src;
@@ -3445,7 +4216,9 @@ const MAP_QUOTES = {
 let quotesShown = {};
 try { quotesShown = JSON.parse(localStorage.getItem('proverbs2-quotes') || '{}') || {}; } catch (e) {}
 function shownSet(){ return quotesShown[currentMap] || (quotesShown[currentMap] = []); }
-function saveQuotes(){ try { localStorage.setItem('proverbs2-quotes', JSON.stringify(quotesShown)); } catch (e) {} }
+// A versus match re-arms this map's quotes in memory so regions still speak, but
+// must never burn them from the player's real record.
+function saveQuotes(){ if (PVP.active) return; try { localStorage.setItem('proverbs2-quotes', JSON.stringify(quotesShown)); } catch (e) {} }
 const quoteQueue = [];
 
 // a "home region" is fully done once its own tiles and every plot/patch
@@ -3484,6 +4257,10 @@ function regionContributors(r){
 // contributors get the modal; teammates get a small "…finished a region" notice
 // with a button to read it themselves.
 function dispatchQuote(r, text){
+  // Versus: a modal over the board is a real time penalty in a race, and in
+  // territory play it would cover the very region someone is contesting. The
+  // proverb still lands, as a toast you can read without stopping.
+  if (PVP.active) { toast(text); return; }
   if (coop) {
     const owners = regionContributors(r);
     let any = false;
@@ -3499,6 +4276,71 @@ function dispatchQuote(r, text){
   quoteQueue.push(text); if (!charModalOpen()) showNextQuote();   // solo
 }
 function charModalOpen(){ return document.getElementById('charModal').classList.contains('show'); }
+
+// ---- versus scoring ----
+// Every claimable unit is a region id: pixel regions, sudoku zones and picross
+// patches all have one, so the whole scoreboard is "who owns which region id".
+// A sudoku region scores off zone.owner[]/zone.entries[]; everything else scores
+// off cellOwner[]/state[] — in both cases counting only tiles that are CORRECT,
+// so sabotage earns nothing.
+function zoneForRegion(r){ for (const z of ZONES) if (z.region === r) return z; return null; }
+function regionOwnerTally(r){
+  const tally = new Map();
+  const bump = o => { if (o != null) tally.set(o, (tally.get(o) || 0) + 1); };
+  const z = zoneForRegion(r);
+  if (z) {
+    if (z.owner) for (let p = 0; p < z.n * z.n; p++) if (z.entries[p] === z.solution[p]) bump(z.owner[p]);
+  } else {
+    const cells = regionCells[r];
+    if (cells) for (const i of cells) if (state[i] !== 0 && (state[i] === 1) === (sol[i] === 1)) bump(cellOwner[i]);
+  }
+  return tally;
+}
+// award a just-completed region. Most correct tiles takes it; a tie goes to
+// whoever laid the final piece, so a contested region can be stolen on the last
+// stitch. Unattributed regions (auto-solve, imported marks) stay unclaimed.
+function claimRegion(r){
+  if (!PVP.active || !PVP.claim || r < 0 || r >= PVP.claim.length) return;
+  if (PVP.claim[r] >= 0) return;
+  const tally = regionOwnerTally(r);
+  let best = null, bestN = 0, tied = 0;
+  for (const [o, n] of tally) if (n > bestN) { best = o; bestN = n; }
+  for (const n of tally.values()) if (n === bestN) tied++;
+  if (tied > 1 && lastEditOwner != null && tally.get(lastEditOwner) === bestN) best = lastEditOwner;
+  PVP.claim[r] = (best == null) ? -1 : PVP.seats.indexOf(best);
+  if (PVP.claim[r] >= 0) recomputeScores();
+  pvpCheckEnd();      // even an unclaimed region can be the one that finishes the canvas
+  needsDraw = true;
+}
+// correct tiles authored by one owner token, board + sudoku digits. O(N); called
+// on a claim and on the scoreboard's 2Hz refresh, never per stitch.
+function ownerCorrectCount(owner){
+  let c = 0;
+  for (let i = 0; i < N; i++) {
+    if (zoneOf[i] >= 0) continue;
+    if (cellOwner[i] === owner && state[i] !== 0 && (state[i] === 1) === (sol[i] === 1)) c++;
+  }
+  for (const z of ZONES) if (z.owner)
+    for (let p = 0; p < z.n * z.n; p++) if (z.owner[p] === owner && z.entries[p] === z.solution[p]) c++;
+  return c;
+}
+function recomputeScores(){
+  const s = {};
+  for (const o of PVP.seats) s[o] = { regions: 0, tiles: 0 };
+  if (PVP.claim) for (let r = 0; r < PVP.claim.length; r++) {
+    const o = PVP.seats[PVP.claim[r]];
+    if (o != null && s[o]) s[o].regions++;
+  }
+  for (const o of PVP.seats) s[o].tiles = ownerCorrectCount(o);
+  PVP.scores = s;
+}
+// rank seats: regions first, correct tiles break the tie
+function pvpRanking(){
+  return PVP.seats.slice().sort((a, b) => {
+    const A = PVP.scores[a] || { regions: 0, tiles: 0 }, B = PVP.scores[b] || { regions: 0, tiles: 0 };
+    return (B.regions - A.regions) || (B.tiles - A.tiles);
+  });
+}
 
 // ============================================================
 //  CO-OP AUDIENCE UI — pane cards (local split-screen) + notices (online)
@@ -3741,9 +4583,12 @@ function updateUndoBtn(){
   if (!b) return;
   b.disabled = coopMode() ? !((players[0].editStack || []).length) : undoStack.length === 0;
 }
-function undo(){
+function undo(pl){
   if (solving || !generated) return;
-  if (coopMode()) { undoOwn(players[0]); return; }   // co-op: each player undoes only their own contributions
+  // co-op/versus: each player undoes only their own contributions. The seat matters
+  // — without it seats 2-4 could only ever undo P1's work, which in a versus match
+  // is both useless to them and destructive to a rival.
+  if (coopMode()) { undoOwn(pl || mousePlayer()); return; }
   if (!undoStack.length) { toast('Nothing to undo.', true); return; }
   const snap = undoStack.pop();
   state.set(snap.state);
@@ -3806,7 +4651,9 @@ function updateHUD(){
   const pct = boardPercent();
   document.getElementById('progressBar').style.width = pct + '%';
   document.getElementById('progressTxt').textContent = pct + '%';
-  document.getElementById('hudMapName').textContent = mapDef().name;
+  // flag an off-canon weave: the board looks identical to the shipped one, so
+  // without this there is no way to tell which puzzle you are actually on
+  document.getElementById('hudMapName').textContent = mapDef().name + (isCustomSeed() ? ' · new weave' : '');
   // the mistake readout (and its separator) only appears once there's something to report
   const mc = wrong.size;
   const mEl = document.getElementById('mistakes'), sEl = document.getElementById('hudMistakeSep');
@@ -3830,7 +4677,7 @@ function timerPause(){ if (timerStart >= 0) { timerBase = timerTotal(); timerSta
 // persist the current map's total. Skipped before a board exists (else we'd zero a
 // saved value from the menu) and for online joiners (who don't own the save).
 function persistTimer(){
-  if (!generated || (net && onlineRole === 'join')) return;
+  if (!generated || (net && onlineRole === 'join') || PVP.active) return;
   try { localStorage.setItem(timerKey(), String(timerTotal())); } catch (e) {}
 }
 let timerShown = '';
@@ -3858,6 +4705,7 @@ function doneMaskStr(){
 // switch (state[] can still hold the old map's paint) or before a board exists.
 function saveNow(){
   if (net && onlineRole === 'join') return;
+  if (PVP.active) return;    // a versus match is scratch work — never let it touch the solo save
   if (!generated || GEN.active) return;
   try {
     localStorage.setItem(stateKey(), Array.from(state.subarray(0, N)).join(''));
@@ -3876,6 +4724,7 @@ function saveNow(){
 // creates keys for a map that has no save, so an untouched map stays untouched.
 function persistMenuSummary(){
   if (net && onlineRole === 'join') return;
+  if (PVP.active) return;
   try {
     if (localStorage.getItem(stateKey()) === null) return;
     localStorage.setItem(progressKey(), String(boardPercent()));
@@ -3887,6 +4736,7 @@ function scheduleSave(){
   // the joiner's). The joiner never writes localStorage, so its solo progress for
   // this map is left untouched and restored on disconnect.
   if (net && onlineRole === 'join') return;
+  if (PVP.active) return;   // see saveNow
   if (GEN.active) return;   // never persist mid-switch: state[] can still be the old map's paint
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, 400);   // debounced; saveNow re-checks the guards when it fires
@@ -3916,9 +4766,13 @@ function loadSave(){
     timerShown = '';   // force a repaint to the resumed value
   } catch (e) {}
 }
-function resetGame(){
+// wipe the board back to blank IN MEMORY ONLY — no localStorage is touched. Both
+// resetGame (which then clears the keys) and a versus match start (which must
+// leave the player's saved canvas alone) run through here.
+function clearBoardState(){
   solveQueue.length = 0; solving = false;
   state.fill(0); wrong.clear(); cellOwner.fill(null);
+  lastEditOwner = null;
   for (const z of ZONES) { z.entries = z.puzzle.slice(); z.owner = null; }
   resetSelections();
   applyGivens();
@@ -3929,10 +4783,413 @@ function resetGame(){
   quotesShown[currentMap] = []; saveQuotes(); quoteQueue.length = 0;   // re-arm this map's quotes
   timerBase = 0; timerStart = -1; timerShown = '';                     // and reset the clock
   clearTimeout(saveTimer);   // drop any debounced save still in flight, or it lands right after and re-creates the keys
+}
+function resetGame(){
+  // The one function that deletes save keys outright. During a match the board on
+  // screen is scratch work laid over a canvas whose real save we are holding in
+  // PVP.restore — wiping the keys here would destroy progress the player never
+  // agreed to lose.
+  if (PVP.active) { toast('Leave the match before clearing this canvas.', true); return; }
+  clearBoardState();
   // clear every per-map key, including the menu's summaries (%, unlocked regions) —
   // otherwise a reset map keeps showing its old progress on the map grid
   try { localStorage.removeItem(stateKey()); localStorage.removeItem(zonesKey()); localStorage.removeItem(timerKey()); localStorage.removeItem(picKey()); localStorage.removeItem(progressKey()); localStorage.removeItem(doneKey()); } catch (e) {}
   updateHUD(); fitView(); needsDraw = true;
+}
+
+// ============================================================
+//  VERSUS — match lifecycle
+// ============================================================
+// A match is scratch work laid over whatever canvas the player already has. On
+// start we bank an exportCode() of the live board (plus the two things a code
+// does not carry: banked play-time and which quotes this map has already shown),
+// blank the canvas in memory, and set every save path to bail. On teardown we
+// replay the code back. Net effect: playing versus on a canvas leaves that
+// canvas's localStorage byte-for-byte as it was.
+
+// the owner tokens competing, in a stable display order
+function pvpSeatTokens(){
+  if (PVP.mode === 'local') return players.map(p => 'L' + p.id);
+  return ['me', ...peerIds()];
+}
+function pvpLabel(tok){
+  if (tok === 'me') return 'You';
+  if (typeof tok === 'string' && tok[0] === 'L') return 'P' + ((+tok.slice(1) || 0) + 1);
+  return peerLabel(tok);
+}
+function pvpColor(tok){
+  const k = PVP.seats.indexOf(tok);
+  return PLAYER_COLOR[(k < 0 ? 0 : k) % PLAYER_COLOR.length];
+}
+function pvpRegionsTotal(){ return REG_COUNT; }
+
+function pvpBegin(cfg){
+  if (PVP.active) return;
+  PVP.mode    = cfg.mode;
+  PVP.matchId = cfg.matchId || ((Date.now() ^ (Math.random() * 0xffffff)) >>> 0);
+  PVP.rule    = cfg.rule || 'full';
+  PVP.target  = Math.max(1, cfg.target | 0);
+  // bank everything the match is about to overwrite, BEFORE anything is cleared
+  PVP.restore = {
+    map: currentMap,
+    code: exportCode(),
+    timerBase, timerStart,
+    quotes: (quotesShown[currentMap] || []).slice(),
+  };
+  PVP.active = true;
+  PVP.phase = 'live';
+  PVP.claim = new Int16Array(REG_COUNT).fill(-1);
+  PVP.seats = pvpSeatTokens();
+  PVP.scores = {}; PVP.opp = {}; PVP.result = null;
+  clearBoardState();                 // in-memory only — the saved canvas is untouched
+  PVP.startAt = performance.now();
+  PVP.endsAt  = PVP.rule === 'timed' ? PVP.startAt + PVP.target * 1000 : 0;
+  recomputeScores();
+  document.body.classList.add('versus');
+  buildPvpBar();
+  updateHUD();
+  needsDraw = true;
+}
+
+// end the match and show the scoreboard. `winner` may be null (a genuine draw).
+function pvpFinish(winner, scores){
+  if (!PVP.active || PVP.phase === 'over') return;
+  if (!scores) { recomputeScores(); scores = PVP.scores; }
+  else PVP.scores = scores;
+  PVP.phase = 'over';
+  PVP.result = { winner: winner == null ? null : winner, scores };
+  updatePvpBar();
+  showPvpResult();
+  needsDraw = true;
+}
+
+// put the player's own canvas back exactly as they left it
+function pvpTeardown(){
+  if (!PVP.active) return;
+  const r = PVP.restore;
+  PVP.active = false;
+  PVP.phase = 'off';
+  PVP.mode = null;
+  PVP.claim = null; PVP.seats = []; PVP.scores = {}; PVP.opp = {}; PVP.ready = {};
+  PVP.result = null; PVP.restore = null;
+  document.body.classList.remove('versus');
+  clearPvpBar();
+  clearPvpMinimap();
+  if (!r) { updateHUD(); return; }
+  quotesShown[r.map] = r.quotes; saveQuotes();
+  // importCode rebuilds first if the match ran on a different canvas or weave,
+  // then replays the banked marks; PVP.active is already false so this persists.
+  importCode(r.code, () => {
+    timerBase = r.timerBase; timerStart = -1; timerShown = '';
+    updateHUD();
+  }, true);
+}
+
+// Has anyone met the rule? Returns the winning token, or null if the match runs on.
+function pvpEvaluate(){
+  if (PVP.rule === 'regions')
+    for (const o of PVP.seats) if (((PVP.scores[o] || {}).regions || 0) >= PVP.target) return o;
+  // whatever the rule, a finished canvas always ends the match — there is nothing
+  // left to contest, so the standing leader takes it
+  if (regionDone.length && regionDone.every(Boolean)) return pvpRanking()[0] || null;
+  return null;
+}
+// Called whenever a region is claimed. Online guests never decide anything: they
+// report and wait for the host's pvp-result (see the versus net section).
+function pvpCheckEnd(){
+  if (!pvpLive()) return;
+  if (PVP.mode === 'online') { pvpOnlineCheckEnd(); return; }
+  const w = pvpEvaluate();
+  if (w !== null || (regionDone.length && regionDone.every(Boolean))) pvpFinish(w);
+}
+
+let pvpScoreNext = 0;
+// driven from loop(): a 2Hz scoreboard refresh (ownerCorrectCount is O(N), far too
+// heavy per stitch) plus the countdown for a timed round.
+function pvpTick(now){
+  if (!PVP.active) return;
+  if (PVP.phase !== 'live') return;
+  if (now >= pvpScoreNext) {
+    pvpScoreNext = now + 500;
+    recomputeScores();
+    updatePvpBar();
+    pvpMaybeSendProgress(now);
+  }
+  if (PVP.rule === 'timed') {
+    updatePvpClock(now);
+    if (now >= PVP.endsAt) {
+      recomputeScores();
+      if (PVP.mode === 'online') pvpOnlineTimeUp();
+      else pvpFinish(pvpRanking()[0] || null);
+    }
+  }
+}
+
+// ============================================================
+//  VERSUS — scoreboard, minimap panel and result screen
+// ============================================================
+// DOM, not canvas: the scoreboard is text that changes twice a second, and
+// draw() repaints only when needsDraw is set — parking text in the canvas would
+// mean re-rasterising it every frame of a drag stroke. The one thing that DOES
+// belong on the canvas is the claimed-region border, drawn in drawViewport.
+
+// one seat's live numbers. Locally everyone shares a board, so only regions and
+// tiles distinguish seats; online, an opponent's row is whatever they last sent.
+function pvpStat(tok){
+  if (PVP.mode === 'online' && tok !== 'me') {
+    const o = PVP.opp[tok] || {};
+    return { regions: o.regions | 0, tiles: o.tiles | 0, pct: o.pct | 0, seen: !!o.at };
+  }
+  const s = PVP.scores[tok] || { regions: 0, tiles: 0 };
+  // boardPercent() is a full O(N) sweep, and locally every seat shares one board
+  // so the number would be identical for all of them — only online rows show it.
+  return { regions: s.regions | 0, tiles: s.tiles | 0, pct: PVP.mode === 'online' ? boardPercent() : 0, seen: true };
+}
+function pvpRuleText(){
+  if (PVP.rule === 'regions') return 'First to ' + PVP.target + ' regions';
+  if (PVP.rule === 'timed')   return 'Most regions in ' + Math.round(PVP.target / 60) + ' min';
+  return 'Whole canvas — most regions wins';
+}
+function buildPvpBar(){
+  const bar = document.getElementById('pvpBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  for (const tok of PVP.seats) {
+    const el = document.createElement('div');
+    el.className = 'pvpSeat' + (tok === 'me' || (PVP.mode === 'local' && tok === 'L0') ? ' mine' : '');
+    el.dataset.seat = tok;
+    el.innerHTML = '<span class="ps-dot"></span><span class="ps-name"></span>'
+                 + '<span class="ps-num"></span><span class="ps-sub"></span>';
+    el.querySelector('.ps-dot').style.background = pvpColor(tok);
+    el.querySelector('.ps-name').textContent = pvpLabel(tok);
+    bar.appendChild(el);
+  }
+  if (PVP.rule === 'timed' || PVP.rule === 'regions') {
+    const c = document.createElement('div');
+    c.id = 'pvpClock';
+    bar.appendChild(c);
+  }
+  bar.style.display = '';
+  updatePvpBar();
+  if (PVP.mode === 'online') buildPvpPanel();
+}
+function updatePvpBar(){
+  const bar = document.getElementById('pvpBar');
+  if (!bar || !PVP.active) return;
+  const lead = pvpRanking()[0];
+  for (const el of bar.querySelectorAll('.pvpSeat')) {
+    const tok = el.dataset.seat, st = pvpStat(tok);
+    el.querySelector('.ps-num').textContent = st.regions + (PVP.rule === 'regions' ? '/' + PVP.target : '');
+    el.querySelector('.ps-sub').textContent = PVP.mode === 'online'
+      ? (st.seen ? st.pct + '%' : '…')
+      : st.tiles + ' tiles';
+    el.classList.toggle('lead', tok === lead && st.regions > 0);
+  }
+  const clock = document.getElementById('pvpClock');
+  if (clock && PVP.rule === 'regions') clock.textContent = 'First to ' + PVP.target;
+  if (PVP.mode === 'online') updatePvpPanel();
+}
+function updatePvpClock(now){
+  const clock = document.getElementById('pvpClock');
+  if (!clock || PVP.rule !== 'timed') return;
+  const left = Math.max(0, PVP.endsAt - now);
+  clock.textContent = '⏱ ' + fmtTime(left);
+  clock.classList.toggle('urgent', left < 30000);
+}
+function clearPvpBar(){
+  const bar = document.getElementById('pvpBar');
+  if (bar) { bar.innerHTML = ''; bar.style.display = 'none'; }
+  const p = document.getElementById('pvpPanel');
+  if (p) p.style.display = 'none';
+}
+
+// ---- online opponent panel + decided-tiles minimap ----
+let pvpMiniSel = null;      // which opponent the minimap is showing
+function buildPvpPanel(){
+  const p = document.getElementById('pvpPanel');
+  if (!p) return;
+  const rows = document.getElementById('pvpOppRows');
+  rows.innerHTML = '';
+  for (const tok of PVP.seats) {
+    if (tok === 'me') continue;
+    const el = document.createElement('div');
+    el.className = 'pvpOpp';
+    el.dataset.seat = tok;
+    el.innerHTML = '<span class="ps-dot"></span><span class="po-name"></span><span class="po-num"></span>';
+    el.querySelector('.ps-dot').style.background = pvpColor(tok);
+    el.querySelector('.po-name').textContent = pvpLabel(tok);
+    el.onclick = () => { pvpMiniSel = tok; updatePvpPanel(); };
+    rows.appendChild(el);
+  }
+  if (!pvpMiniSel) pvpMiniSel = PVP.seats.find(t => t !== 'me') || null;
+  p.style.display = PVP.seats.length > 1 ? '' : 'none';
+  document.getElementById('pvpMiniCap').textContent =
+    'Tiles they have decided. Which colour they chose is never shown.';
+  updatePvpPanel();
+}
+function updatePvpPanel(){
+  const p = document.getElementById('pvpPanel');
+  if (!p || p.style.display === 'none') return;
+  for (const el of p.querySelectorAll('.pvpOpp')) {
+    const tok = el.dataset.seat, st = pvpStat(tok);
+    el.querySelector('.po-num').textContent = st.seen ? (st.pct + '% · ' + st.regions + '/' + pvpRegionsTotal()) : 'connecting…';
+    el.classList.toggle('sel', tok === pvpMiniSel);
+  }
+  pvpRenderMini(pvpMiniSel);
+}
+function clearPvpMinimap(){ pvpMiniSel = null; }
+// Paint the opponent's DECIDED mask over this board's own region partition (which
+// is identical on every client — the partition is keyed by map, not seed). We read
+// regionOf/regionTint/regionDone and the received mask, and deliberately never
+// touch sol[] or cellCol[]: that is what makes the minimap incapable of leaking
+// light-vs-dark, however long you stare at it.
+function pvpRenderMini(tok){
+  const cv = document.getElementById('pvpMini');
+  if (!cv || !tok) return;
+  const o = PVP.opp[tok];
+  const cell = Math.max(1, Math.min(4, Math.round(240 / Math.max(GW, GH))));
+  if (cv.width !== GW * cell || cv.height !== GH * cell) { cv.width = GW * cell; cv.height = GH * cell; }
+  const g = cv.getContext('2d');
+  g.fillStyle = C.boardEdge || '#eee';
+  g.fillRect(0, 0, cv.width, cv.height);
+  const mask = o && o.mask;
+  const col = pvpColor(tok);
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+    const i = y * GW + x, r = regionOf[i];
+    if (r < 0) continue;
+    g.fillStyle = (mask && mask[i]) ? col : (regionTint[r] || '#ddd');
+    g.globalAlpha = (mask && mask[i]) ? 0.85 : 1;
+    g.fillRect(x * cell, y * cell, cell, cell);
+  }
+  g.globalAlpha = 1;
+}
+
+// ---- result screen ----
+function showPvpResult(){
+  const res = PVP.result || { winner: null, scores: {} };
+  document.getElementById('pvpResultRule').textContent = pvpRuleText();
+  const mine = PVP.mode === 'online' ? 'me' : 'L0';
+  const t = document.getElementById('pvpResultTitle');
+  if (res.winner == null) t.textContent = 'A dead heat';
+  else if (res.winner === mine) t.textContent = '🏆 You win';
+  else t.textContent = pvpLabel(res.winner) + ' wins';
+  const wrap = document.getElementById('pvpStandings');
+  wrap.innerHTML = '';
+  const order = PVP.seats.slice().sort((a, b) => {
+    const A = res.scores[a] || pvpStat(a), B = res.scores[b] || pvpStat(b);
+    return ((B.regions | 0) - (A.regions | 0)) || ((B.tiles | 0) - (A.tiles | 0));
+  });
+  for (const tok of order) {
+    const s = res.scores[tok] || pvpStat(tok);
+    const row = document.createElement('div');
+    row.className = 'pvpStandRow' + (tok === res.winner ? ' win' : '');
+    row.innerHTML = '<span class="ps-dot"></span><span class="psr-name"></span>'
+                  + '<span class="psr-sc"></span><span class="psr-sub"></span>';
+    row.querySelector('.ps-dot').style.background = pvpColor(tok);
+    row.querySelector('.psr-name').textContent = pvpLabel(tok);
+    row.querySelector('.psr-sc').textContent = (s.regions | 0) + (((s.regions | 0) === 1) ? ' region' : ' regions');
+    row.querySelector('.psr-sub').textContent = (s.tiles | 0) + ' tiles';
+    wrap.appendChild(row);
+  }
+  document.getElementById('pvpResultModal').classList.add('show');
+}
+
+// ---- match lobby ----
+// One surface for both shapes. Local just confirms the rules and starts. Online
+// is a two-step: open the room (so a code exists), then start once a rival is
+// built and ready — the ready gate matters because a custom weave misses the
+// baked clue set and can take tens of seconds to generate on the guest's machine.
+let pvpLobbyCfg = null, pvpLobbyStage = 'setup';
+function openPvpLobby(cfg){
+  pvpLobbyCfg = cfg;
+  pvpLobbyStage = 'setup';
+  const isLocal = cfg.mode === 'local';
+  document.getElementById('pvpLobbyTitle').textContent = isLocal ? 'Local versus' : 'Online versus';
+  document.getElementById('pvpLobbyBlurb').textContent = isLocal
+    ? 'One canvas for ' + cfg.players + ' players. Every region goes to whoever stitched the most of it — grab the last tile and you can steal one. ' + pvpRuleText() + '.'
+    : 'You and your rivals each get your own copy of this exact canvas. You will see their pace, never their answers. ' + pvpRuleText() + '. '
+      + 'Everyone scores their own board and reports it, so a match runs on the honour system — play it with people you would lend a pen to.';
+  document.getElementById('pvpLobbyOnline').style.display = isLocal ? 'none' : '';
+  document.getElementById('pvpLobbyRoom').style.display = 'none';
+  const warn = document.getElementById('pvpLobbyWarn');
+  if (isCustomSeed(currentMap)) {
+    warn.style.display = '';
+    warn.textContent = 'This canvas is on a custom weave, so it is not one of the boards that ship pre-built. Everyone will have to generate it, which can take a while.';
+  } else warn.style.display = 'none';
+  const start = document.getElementById('pvpLobbyStart');
+  start.textContent = isLocal ? 'Start the match' : 'Open the room';
+  start.disabled = false;
+  if (!isLocal) {
+    // blank the board BEFORE anyone can join: the setup payload is exportCode(),
+    // and it must not carry the host's own progress across the wire
+    pvpBegin({ mode: 'online', rule: cfg.rule, target: cfg.target });
+    PVP.phase = 'lobby';
+    document.getElementById('pvpLoopback').checked = document.getElementById('onlineLoopback').checked;
+  }
+  document.getElementById('pvpLobbyModal').classList.add('show');
+}
+function pvpLobbyRefresh(){
+  const seats = document.getElementById('pvpLobbySeats');
+  if (!seats || pvpLobbyStage !== 'waiting') return;
+  seats.innerHTML = '';
+  const list = ['me', ...peerIds()];
+  for (const tok of list) {
+    const row = document.createElement('div');
+    row.className = 'pvpSeatRow';
+    const ready = tok === 'me' || !!PVP.ready[tok];
+    row.innerHTML = '<span class="ps-dot"></span><span class="psr-name"></span><span class="psr-state"></span>';
+    row.querySelector('.ps-dot').style.background = PLAYER_COLOR[list.indexOf(tok) % PLAYER_COLOR.length];
+    row.querySelector('.psr-name').textContent = tok === 'me' ? 'You (host)' : peerLabel(tok);
+    const st = row.querySelector('.psr-state');
+    st.textContent = ready ? 'ready' : 'building the canvas…';
+    st.classList.toggle('ok', ready);
+    seats.appendChild(row);
+  }
+  const anyReady = peerIds().some(p => PVP.ready[p]);
+  const start = document.getElementById('pvpLobbyStart');
+  start.disabled = !anyReady;
+  start.textContent = anyReady ? 'Start the match' : 'Waiting for a rival…';
+}
+function pvpLobbyAdvance(){
+  const cfg = pvpLobbyCfg;
+  if (!cfg) return;
+  if (cfg.mode === 'local') {
+    document.getElementById('pvpLobbyModal').classList.remove('show');
+    startPvpLocal(cfg.players, cfg.rule, cfg.target);
+    return;
+  }
+  if (pvpLobbyStage === 'setup') {
+    document.getElementById('onlineLoopback').checked = document.getElementById('pvpLoopback').checked;
+    document.getElementById('pvpLoopWrap').style.display = 'none';
+    maxGuests = Math.max(1, Math.min(3, cfg.guests | 0));
+    pvpLobbyStage = 'waiting';
+    document.getElementById('pvpLobbyRoom').style.display = '';
+    document.getElementById('pvpLobbyCode').value = '';
+    const start = document.getElementById('pvpLobbyStart');
+    start.disabled = true; start.textContent = 'Waiting for a rival…';
+    startNet(chosenTransport(), 'host', null,
+      info => { document.getElementById('pvpLobbyCode').value = (info && info.roomId) || ''; setOnlineUI(); pvpLobbyRefresh(); },
+      () => { document.getElementById('pvpLobbyWarn').style.display = ''; document.getElementById('pvpLobbyWarn').textContent = 'Could not open the room. Try again.'; });
+    pvpLobbyRefresh();
+    return;
+  }
+  // waiting → live
+  document.getElementById('pvpLobbyModal').classList.remove('show');
+  PVP.phase = 'live';
+  PVP.startAt = performance.now();
+  PVP.endsAt = PVP.rule === 'timed' ? PVP.startAt + PVP.target * 1000 : 0;
+  pvpSendNext = 0; pvpLastPct = -1; pvpLastRegions = -1;
+  PVP.seats = pvpSeatTokens();
+  recomputeScores();
+  buildPvpBar();
+  netSend('pvp-start', { matchId: PVP.matchId, rule: PVP.rule, target: PVP.target, durationMs: PVP.rule === 'timed' ? PVP.target * 1000 : 0 });
+  toast('Go! ' + pvpRuleText(), true);
+}
+function pvpLobbyAbort(){
+  document.getElementById('pvpLobbyModal').classList.remove('show');
+  if (pvpLobbyStage === 'waiting' && net) { netSend('pvp-cancel', { reason: 'The host cancelled the match.' }); netClose(); setOnlineUI(); }
+  pvpLobbyStage = 'setup'; pvpLobbyCfg = null;
+  if (PVP.active) pvpTeardown();
 }
 
 // ============================================================
@@ -3958,10 +5215,16 @@ function resetGame(){
 //         patches or every mark inside one would read as a mistake. v5 and
 //         older codes predate patch shaping and decode with no tiers, which
 //         means "shape every patch at the code's difficulty".
+//    v7 only: immediately after the map id, 4 bytes of SEED (big-endian). A
+//         canvas can be rewoven at a custom seed, and since the recipient
+//         rebuilds locally before replaying, a code that did not name its seed
+//         would have them rebuild the CANONICAL board and read every mark as a
+//         mistake — the same trap the v6 picross tiers close. Older codes carry
+//         no seed, which means "the canonical one".
 //    then state: GW*GH cells, 2 bits each, 4 per byte → ceil(N/4) bytes
 // ============================================================
 const SHARE_TAG = 'NPXS3:';
-const SHARE_VER = 6;       // v6 adds the per-patch picross tiers; v5 encoded the map by id (stable) rather than its MAPS index
+const SHARE_VER = 7;       // v7 adds the board seed; v6 added the per-patch picross tiers; v5 encoded the map by id (stable) rather than its MAPS index
 // FROZEN persistence table: v3/v4 codes stored the map as an index into MAPS as it
 // was ordered at v4. Decoding those old codes must use THIS order — never the live
 // MAPS array — so DO NOT edit or reorder this even when maps are added/reordered.
@@ -3988,12 +5251,14 @@ function exportCode(){
   let zBytes = 0;
   for (const z of ZONES) zBytes += 1 + ((z.n * z.n + 1) >> 1);   // 1 byte n + entries
   const pBytes = 1 + PICROSS.length;                             // count + one tier byte per patch
-  const buf = new Uint8Array(header + 5 + zBytes + pBytes + stBytes);   // +5 = GW(2) GH(2) zones(1)
+  const buf = new Uint8Array(header + 4 + 5 + zBytes + pBytes + stBytes);   // +4 = seed, +5 = GW(2) GH(2) zones(1)
   buf[0] = SHARE_VER;
   buf[1] = Math.max(0, DIFF_ORDER.indexOf(difficulty));
   buf[2] = idBytes.length;
   for (let k = 0; k < idBytes.length; k++) buf[3 + k] = idBytes[k];
   let o = header;
+  const sd = SEED >>> 0;                               // v7: which weave this board is
+  buf[o++] = (sd >>> 24) & 255; buf[o++] = (sd >>> 16) & 255; buf[o++] = (sd >>> 8) & 255; buf[o++] = sd & 255;
   buf[o++] = (GW >> 8) & 255; buf[o++] = GW & 255;     // GW, GH as 2 bytes each (big-endian)
   buf[o++] = (GH >> 8) & 255; buf[o++] = GH & 255;
   buf[o++] = ZONES.length;
@@ -4025,10 +5290,10 @@ function decodeCode(code){
     s = s.replace(/\s+/g, '');
     const buf = bytesFromB64(s);
     const ver = buf[0];
-    if (buf.length < 6 || ver < 3 || ver > 6) return null;   // v3 = 1-byte dims, v4 = 2-byte dims, v5 = map id, v6 = + picross tiers
+    if (buf.length < 6 || ver < 3 || ver > 7) return null;   // v3 = 1-byte dims, v4 = 2-byte dims, v5 = map id, v6 = + picross tiers, v7 = + seed
     const diff = DIFF_ORDER[buf[1]];
     if (!diff) return null;
-    let map, gw, gh, nz, o;
+    let map, gw, gh, nz, o, seed = null;
     if (ver >= 5) {
       const idLen = buf[2];
       if (idLen < 1 || idLen > 64 || buf.length < 3 + idLen + 5) return null;
@@ -4036,7 +5301,12 @@ function decodeCode(code){
       for (let k = 0; k < idLen; k++) id += String.fromCharCode(buf[3 + k]);
       if (!MAPS.some(m => m.id === id)) return null;   // unknown / newer map id
       map = id;
-      const h = 3 + idLen;
+      let h = 3 + idLen;
+      if (ver >= 7) {                                  // v7: the weave this board was built at
+        if (buf.length < h + 4 + 5) return null;
+        seed = ((buf[h] << 24) | (buf[h + 1] << 16) | (buf[h + 2] << 8) | buf[h + 3]) >>> 0;
+        h += 4;
+      }
       gw = (buf[h] << 8) | buf[h + 1]; gh = (buf[h + 2] << 8) | buf[h + 3]; nz = buf[h + 4]; o = h + 5;
     } else {
       map = LEGACY_MAP_IDS[buf[2]];                    // FROZEN v3/v4 index → id
@@ -4088,7 +5358,8 @@ function decodeCode(code){
       if (i + 3 < nn) st[i + 3] = (b >> 6) & 3;
     }
     for (let i = 0; i < nn; i++) if (st[i] > 2) return null;
-    return { diff, map, gw, gh, state: st, zones, pics };
+    // pre-v7 codes name no seed, which means the canonical weave for that map
+    return { diff, map, gw, gh, state: st, zones, pics, seed: seed === null ? mapDef(map).seed : seed };
   } catch (e) { return null; }
 }
 
@@ -4130,10 +5401,23 @@ function applyImported(data){
 
 // top-level entry: validate, then apply (re-weaving clues first if the code's
 // difficulty differs from the current one — same path setDifficulty uses)
-function importCode(code, onDone, silent){
+// `opts.blank` = adopt this code's BOARD IDENTITY (map, weave, tier, patch tiers)
+// but throw away its progress and start empty. That is what a versus opponent
+// needs: the identical puzzle, none of the sender's answers. Everything
+// downstream already handles an empty payload, so we blank the decoded data here
+// rather than special-casing applyImported.
+// `opts.adopted` = this board arrived from a peer, not from the player pasting a
+// code. The weave is used for generation but never recorded as this player's own
+// (see setCustomSeed) — otherwise joining a friend's session would silently
+// re-file every save key for that canvas under the friend's weave.
+function importCode(code, onDone, silent, opts){
   if (!generated || solving) { toast('One moment, the canvas is still busy.', true); return false; }
   const data = decodeCode(code);
   if (!data) { toast('Hmm, I could not read that code. Check you copied all of it.', true); return false; }
+  if (opts && opts.blank) {
+    data.state.fill(0);
+    data.zones = (data.zones || []).map(e => new Uint8Array(e ? e.length : 0));
+  }
   const finish = () => {
     applyImported(data);
     if (typeof onDone === 'function') onDone();
@@ -4144,7 +5428,9 @@ function importCode(code, onDone, silent){
   const diffChanged = data.diff !== difficulty;
   if (diffChanged) {
     difficulty = data.diff;
-    try { localStorage.setItem(DIFF_KEY, difficulty); } catch (e) {}
+    // adopting an opponent's tier for one match must not rewrite the player's own
+    // default (the in-memory change still applies, so the board builds correctly)
+    if (!PVP.active) { try { localStorage.setItem(DIFF_KEY, difficulty); } catch (e) {} }
     updateDiffSel();
   }
   // Picross patch content is tier-shaped, and the recipient regenerates the
@@ -4158,8 +5444,19 @@ function importCode(code, onDone, silent){
   let picsChanged = false;
   for (let k = 0; k < PICROSS.length && k < want.length; k++) if (picTier[k] !== want[k]) { picsChanged = true; break; }
 
-  if (data.map !== currentMap) {
-    // different painting: rebuild it (at the imported difficulty), then replay
+  // v7 codes name the weave they were built at. Adopt it BEFORE any rebuild,
+  // since seedFor() is what generation reads — and unlike a difficulty or patch
+  // change, a different seed means a different sol[], so regenClues alone will
+  // not do: it needs the full rebuild. (Pre-v7 codes decode as canonical, so
+  // importing one puts a rewoven canvas back on the original weave.)
+  // `opts.adopted` marks a board that came off the wire (a co-op snapshot or a
+  // resync), so the weave is used but never written into this player's seed store.
+  const seedChanged = data.seed !== seedFor(data.map);
+  if (seedChanged) setCustomSeed(data.map, data.seed, !!(opts && opts.adopted));
+
+  if (data.map !== currentMap || seedChanged) {
+    // different painting (or a different weave of this one): rebuild it at the
+    // imported difficulty, then replay
     importPicTier = want;            // loadPicTier picks this up inside rebuildForMap
     rebuildForMap(data.map, finish);
   } else if (diffChanged || picsChanged) {
@@ -4253,6 +5550,7 @@ function zoneSolveOrder(zone){
 }
 
 function startSolve(regionIds, leaveOne){
+  if (PVP.active) return;   // the auto-solver would simply win the match; the PIN gate unlocks for a whole session, so block it here too
   const list = [];
   for (const r of regionIds) {
     if (regionDone[r]) continue;
@@ -4395,8 +5693,11 @@ const PAD_ACTIONS = [
   { key: 'fit',     label: 'Fit view' },
   { key: 'zoomIn',  label: 'Zoom in (hold)' },
   { key: 'zoomOut', label: 'Zoom out (hold)' },
+  // Seats 2-4 have no keyboard and no HUD button, so without a pad binding they
+  // could never undo their own work — fine in co-op, unfair in a versus match.
+  { key: 'undo',    label: 'Undo my last stitch' },
 ];
-const PAD_DEFAULTS = { light: 0, dark: 1, hint: 2, fit: 3, zoomIn: 5, zoomOut: 4 };
+const PAD_DEFAULTS = { light: 0, dark: 1, hint: 2, fit: 3, zoomIn: 5, zoomOut: 4, undo: 8 };
 const PAD_KEY = 'proverbs2-pad';
 let padMap = Object.assign({}, PAD_DEFAULTS);
 try { const m = JSON.parse(localStorage.getItem(PAD_KEY) || 'null'); if (m) padMap = Object.assign(padMap, m); } catch (e) {}
@@ -4684,6 +5985,7 @@ function pollPad(pl, gp, now){
   if (edge(padMap.dark))  padSecondary(pl);
   if (edge(padMap.hint))  giveHint(pl);
   if (edge(padMap.fit))   fitView(pl);
+  if (edge(padMap.undo))  undo(pl);
 
   pl.padPrev = pressed;
 }
@@ -4716,6 +6018,10 @@ function tryLocalJoin(gps){
       pl.cursor = (GH >> 1) * GW + (GW >> 1);
       players.push(pl);
       for (const q of players) fitView(q);   // the split reflowed — re-fit everyone into their new pane
+      // a late joiner has to appear on the scoreboard. Seat tokens are only ever
+      // APPENDED ('L'+id, ids handed out in order), so the indices already stored
+      // in PVP.claim keep pointing at the same players.
+      if (PVP.active && PVP.mode === 'local') { PVP.seats = pvpSeatTokens(); recomputeScores(); buildPvpBar(); }
       toast('Player ' + players.length + ' joined!', true);
       needsDraw = true;
       if (players.length >= maxPlayers) break;
@@ -4734,6 +6040,17 @@ function startCoop(n){
   setOnlineUI();
   toast('Local co-op, up to ' + maxPlayers + '. Others: press a controller button to join.', true);
   needsDraw = true;
+}
+
+// Local versus rides on co-op: the seats, panes, per-seat undo and 'L'+id owner
+// tokens are all exactly what a territory match needs. PVP only adds the scoring,
+// the gates and the chrome — nothing else has to learn about a third mode.
+function startPvpLocal(n, rule, target){
+  startCoop(n);
+  pvpBegin({ mode: 'local', rule, target });
+  PVP.seats = pvpSeatTokens();     // startCoop may have resized players[]
+  buildPvpBar();
+  toast('Versus: ' + pvpRuleText() + '. Others: press a controller button to join.', true);
 }
 
 function exitCoop(){
@@ -4776,11 +6093,14 @@ function peerCount(){ return peerIds().length; }
 // number peers "Player 2, 3, …" in order of first sighting (this machine's P1 is
 // myself). Assigned lazily so any pid we hear about gets a label.
 let nextPeerNum = 2;
+let peerNums = {};   // pid -> display number. Kept OUT of coopPeers, which is the roster:
+                     // naming a peer must never be what puts it on the roster.
 function peerLabel(pid){
   if (!pid || pid === 'peer' || pid === 'me') return 'A teammate';
-  const p = coopPeers[pid] || (coopPeers[pid] = { cell: -1, view: null, seq: -1 });
-  if (!p.num) p.num = nextPeerNum++;
-  return 'Player ' + p.num;
+  if (!peerNums[pid]) peerNums[pid] = nextPeerNum++;
+  const p = coopPeers[pid];
+  if (p && !p.num) p.num = peerNums[pid];
+  return 'Player ' + peerNums[pid];
 }
 // synthetic, read-only "player" mirroring a remote participant's viewport (watch grid)
 function peerPlayerFor(id, idx){
@@ -4790,11 +6110,35 @@ function peerPlayerFor(id, idx){
 }
 
 function netEnvelope(type, data){ return { v: PROTO_V, app: APP_VERSION, compat: BOARD_COMPAT, pid: myPeerId, seq: netSeq++, type, data }; }
+// WHO REALLY SENT THIS. `msg.pid` is written by the sender and is therefore worth
+// nothing for authorisation — it survives only as a display hint. The transport
+// hands us the connection a frame arrived on, and that is the identity we use:
+//   host  — talks to every guest directly, so the connection IS the sender.
+//   guest — hears everything over its one connection to the host, so the
+//           connection alone cannot tell a host frame from a relayed guest frame.
+//           The host stamps `src` on everything it relays (see PeerNet.wire), so
+//           a stamped frame is by definition NOT the host's own.
+// LoopbackNet is a broadcast bus with no relay, so `from` is already the true
+// sender there and no frame ever carries `src`.
+function netOrigin(msg, from){
+  if (onlineRole === 'host') return from;
+  return (msg && msg.src) || from;
+}
+// A frame carrying a whole board is the only large thing on the wire; anything
+// past this is not a board we would accept anyway, so drop it before decoding
+// rather than allocating for it.
+const NET_MAX_CODE = 262144;
+const NET_MAX_PENDING = 4096;    // buffered peer moves while a joiner imports
+const NET_MAX_PEERS = 8;         // roster ceiling, so a peer list cannot grow without bound
+function netCodeOK(s){ return typeof s === 'string' && s.length > 0 && s.length <= NET_MAX_CODE; }
 function netSend(type, data){ if (net) net.send(netEnvelope(type, data)); }                       // broadcast to all
 function netSendTo(pid, type, data){ if (net && net.sendTo) net.sendTo(pid, netEnvelope(type, data)); }
 // emit a local move to everyone — no-op unless online and not currently replaying
-function netEmit(ev){ if (online && !applyingRemote && net) netSend('move', ev); }
-function netResync(){ if (online && net) netSend('resync', { code: exportCode() }); }
+// Co-op syncs MOVES because everyone shares one board. Versus does the opposite:
+// each client owns an independent board, so a move must never cross the wire —
+// only the lossy progress summaries in the versus net section do.
+function netEmit(ev){ if (online && !applyingRemote && net && !PVP.active) netSend('move', ev); }
+function netResync(){ if (online && net && !PVP.active) netSend('resync', { code: exportCode() }); }
 
 // replay a peer's move locally, WITHOUT re-broadcasting; every field bounds-checked.
 // `pid` is the sender, so its edits are attributed to that peer (drives who, on
@@ -4823,12 +6167,16 @@ function applyRemote(ev, pid){
 
 // ---- protocol message router. The host relays guests' moves/cursors to the
 //      other guests at the transport layer, so this stays a simple broadcast model. ----
-function onNetMessage(msg){
+function onNetMessage(msg, from){
   if (!msg || typeof msg !== 'object') return;
+  const origin = netOrigin(msg, from);     // authenticated; never msg.pid
+  if (!origin) return;
   switch (msg.type) {
     case 'hello':       // host → joiner: compatibility handshake
       if (onlineRole !== 'join') break;
-      hostPid = msg.pid;   // remember the host so we know whose leaving ends the session
+      if (msg.src) break;              // relayed by the host ⇒ another guest sent it
+      if (hostPid && hostPid !== origin) break;   // the host is decided once, at the first hello
+      hostPid = origin;    // remember the host so we know whose leaving ends the session
       if (msg.compat !== BOARD_COMPAT) {   // board/format/protocol compat, not release version
         netSend('hello-ack', { ok: false, reason: 'version' });
         toast('Version mismatch: host is on v' + msg.app + ', you are on v' + APP_VERSION + '. Update to play together.', true);
@@ -4840,44 +6188,280 @@ function onNetMessage(msg){
       break;
     case 'hello-ack':   // joiner → host: send that specific joiner the current board
       if (onlineRole !== 'host' || !msg.data) break;
+      if (!coopPeers[origin]) break;   // only a peer we actually accepted gets a board
       if (!msg.data.ok) { toast('A player could not join (' + (msg.data.reason || '?') + ').', true); break; }
-      netSendTo(msg.pid, 'snapshot', { code: exportCode() });
+      if (PVP.active) {
+        // Versus: hand over the board IDENTITY, not the board. The host's canvas is
+        // already blank at this point (pvpBegin runs before anyone can join), so the
+        // code carries no progress — and the guest imports it with blank:true anyway.
+        netSendTo(origin, 'pvp-setup', { matchId: PVP.matchId, rule: PVP.rule, target: PVP.target, code: exportCode() });
+        PVP.seats = pvpSeatTokens(); recomputeScores(); buildPvpBar(); pvpLobbyRefresh();
+        toast('A rival is joining your match.', true);
+        break;
+      }
+      netSendTo(origin, 'snapshot', { code: exportCode() });
       toast('A player is joining your board.', true);
       break;
+
+    // ---- versus (see the VERSUS NET section below) ----
+    // Every host→guest type repeats the `snapshot` guard. Under PeerNet's star
+    // relay the host rebroadcasts guest frames, so guest→guest traffic exists and
+    // without this check any guest could push a setup or a result at every other
+    // guest. `origin` is the authenticated sender, so the check now means what it
+    // always read as.
+    case 'pvp-setup':
+      if (onlineRole !== 'join' || origin !== hostPid || !msg.data) break;
+      pvpGuestSetup(msg.data);
+      break;
+    case 'pvp-ready':
+      if (onlineRole !== 'host' || !msg.data || !coopPeers[origin]) break;
+      if (msg.data.matchId !== PVP.matchId) break;
+      PVP.ready[origin] = true;
+      pvpLobbyRefresh();
+      break;
+    case 'pvp-start':
+      if (onlineRole !== 'join' || origin !== hostPid || !msg.data) break;
+      pvpGuestStart(msg.data);
+      break;
+    case 'pvp-progress':
+      if (!PVP.active || !msg.data || msg.data.matchId !== PVP.matchId) break;
+      pvpRecvProgress(origin, msg.data);
+      break;
+    case 'pvp-done':
+      if (onlineRole !== 'host' || !msg.data || !coopPeers[origin]) break;
+      if (msg.data.matchId !== PVP.matchId) break;
+      pvpHostDone(origin, msg.data);
+      break;
+    case 'pvp-result':
+      if (onlineRole !== 'join' || origin !== hostPid || !msg.data) break;
+      if (msg.data.matchId !== PVP.matchId) break;
+      pvpFinish(msg.data.winner, msg.data.scores);
+      break;
+    case 'pvp-cancel':
+      if (onlineRole !== 'join' || origin !== hostPid) break;
+      toast((msg.data && typeof msg.data.reason === 'string' && msg.data.reason.slice(0, 160))
+            || 'The host ended the match.', true);
+      pvpTeardown();
+      break;
     case 'snapshot':    // host → joiner: adopt the host's board + progress
-      if (onlineRole !== 'join' || msg.pid !== hostPid) break;   // only the host may push the board
-      if (msg.data && msg.data.code) {
+      if (onlineRole !== 'join' || origin !== hostPid) break;   // only the host may push the board
+      if (PVP.active) break;   // a match runs on independent boards — pvp-setup is the only way in
+      if (msg.data && netCodeOK(msg.data.code)) {
         joinerBackup = joinerBackup || exportCode();   // remember our own solo board
+        // `adopted`: this weave came off the wire, so it must not be written into
+        // OUR seed store — that would re-file this map's save under the host's
+        // weave and hide the player's own progress (see setCustomSeed).
         importCode(msg.data.code, () => {
           online = true;
           pendingRemote.forEach(x => applyRemote(x.ev, x.pid)); pendingRemote = [];   // flush moves that arrived mid-import
           setOnlineUI(); toast('Joined! You’re on the host’s board now.', true); needsDraw = true;
-        });
+        }, false, { adopted: true });
       }
       break;
     case 'move':
-      if (online) applyRemote(msg.data, msg.pid);
-      else if (net) pendingRemote.push({ ev: msg.data, pid: msg.pid });   // buffer until the snapshot import finishes
+      if (PVP.active) break;   // versus boards are independent: no move may cross the wire
+      if (online) applyRemote(msg.data, origin);
+      // buffer until the snapshot import finishes — bounded, so a peer that floods
+      // a half-joined client cannot grow this without limit
+      else if (net && pendingRemote.length < NET_MAX_PENDING) pendingRemote.push({ ev: msg.data, pid: origin });
       break;
     case 'cursor':
-      if (msg.data && msg.pid) {
-        const prev = coopPeers[msg.pid];
-        if (!prev || msg.seq > (prev.seq || -1)) { coopPeers[msg.pid] = { cell: msg.data.cell, view: msg.data.view, seq: msg.seq }; needsDraw = true; }
+      // The host only ever accepts presence from a peer it actually accepted; a
+      // guest's `origin` is already host-attested, so both sides are bounded by
+      // the host's real connections rather than by whatever pid a frame claims.
+      if (!msg.data) break;
+      if (!coopPeers[origin] && (onlineRole === 'host' || peerCount() >= NET_MAX_PEERS)) break;
+      {
+        const prev = coopPeers[origin];
+        if (!prev || msg.seq > (prev.seq || -1)) { coopPeers[origin] = { cell: msg.data.cell, view: msg.data.view, seq: msg.seq, num: prev && prev.num }; needsDraw = true; }
       }
       break;
     case 'resync':      // host → joiner: drift self-heal full snapshot (e.g. after a solo-path undo)
-      if (online && onlineRole === 'join' && msg.pid === hostPid && msg.data && msg.data.code)
-        importCode(msg.data.code, () => { needsDraw = true; });
+      if (PVP.active) break;   // see 'move'
+      if (online && onlineRole === 'join' && origin === hostPid && msg.data && netCodeOK(msg.data.code))
+        importCode(msg.data.code, () => { needsDraw = true; }, false, { adopted: true });
       break;
     case 'bye':
-      handlePeerGone('A player left.', msg.pid);
+      handlePeerGone('A player left.', origin);
       break;
   }
+}
+
+// ============================================================
+//  VERSUS NET — separate boards, lossy summaries, host referee
+// ============================================================
+// Co-op syncs moves because everyone shares a board. Versus is the opposite: the
+// determinism contract (map + seed + difficulty + picross tiers ⇒ identical
+// bytes) means each client can build the SAME puzzle independently, so the only
+// thing that has to cross the wire is how fast the other player is going.
+//
+// What an opponent may learn: your completion %, how many regions you hold, and
+// WHICH tiles you have committed to. What they may never learn: whether you
+// called a tile light or dark. The `done` mask below is keyed on `state[i] !== 0`
+// alone, so it reads identically for light, dark, right and wrong.
+//
+// One honest caveat, worth stating plainly: every client holds sol[] locally —
+// that is what makes independent generation possible at all — so online versus is
+// a trust-based race between friends, not a cheat-proof competition.
+
+// ---- decided-mask codec: bitmask → run-length → base64 ----
+// A raw mask is N bits (7.2 KB at the 320x180 ceiling). Play is spatially
+// clustered, so run-lengths compress it hard early and late; when they don't
+// (a heavily speckled board) we fall back to the packed bits so a frame can
+// never grow beyond the raw size.
+function pvpEncodeMask(){
+  const bits = new Uint8Array(N);
+  for (let i = 0; i < N; i++) bits[i] = state[i] !== 0 ? 1 : 0;
+  const packed = packBits(bits, N);
+  const runs = [];
+  let cur = 0, run = 0;                 // always starts with a run of 0-bits
+  for (let i = 0; i < N; i++) {
+    if (bits[i] === cur) { run++; continue; }
+    runs.push(run); cur ^= 1; run = 1;
+  }
+  runs.push(run);
+  const out = [];
+  for (const r of runs) { let v = r; do { let b = v & 0x7f; v >>>= 7; out.push(v ? (b | 0x80) : b); } while (v); }
+  if (out.length >= packed.length) return { raw: 1, d: bytesToB64(packed) };
+  return { raw: 0, d: bytesToB64(Uint8Array.from(out)) };
+}
+function pvpDecodeMask(frame){
+  if (!frame || !frame.d) return null;
+  const b = b64ToBytes(frame.d);
+  if (!b) return null;
+  if (frame.raw) return unpackBits(b, N);
+  const out = new Uint8Array(N);
+  let i = 0, p = 0, cur = 0;
+  while (p < b.length && i < N) {
+    let v = 0, sh = 0, byte;
+    do { byte = b[p++]; v |= (byte & 0x7f) << sh; sh += 7; } while (byte & 0x80 && p < b.length);
+    const end = Math.min(N, i + v);
+    if (cur) out.fill(1, i, end);
+    i = end; cur ^= 1;
+  }
+  return out;
+}
+
+// ---- progress broadcast ----
+let pvpSendNext = 0, pvpLastPct = -1, pvpLastRegions = -1;
+function pvpMaybeSendProgress(now){
+  if (!PVP.active || PVP.mode !== 'online' || !online || !net) return;
+  if (now < pvpSendNext) return;
+  const mine = PVP.scores['me'] || { regions: 0, tiles: 0 };
+  const pct = boardPercent();
+  if (pct === pvpLastPct && mine.regions === pvpLastRegions && pvpSendNext !== 0) { pvpSendNext = now + 1200; return; }
+  pvpLastPct = pct; pvpLastRegions = mine.regions;
+  pvpSendNext = now + 1200;
+  const m = pvpEncodeMask();
+  netSend('pvp-progress', { matchId: PVP.matchId, pct, regions: mine.regions, tiles: mine.tiles, raw: m.raw, d: m.d });
+}
+function pvpRecvProgress(pid, d){
+  if (!pid) return;
+  PVP.opp[pid] = { pct: d.pct | 0, regions: d.regions | 0, tiles: d.tiles | 0, mask: pvpDecodeMask(d), at: Date.now() };
+  if (PVP.seats.indexOf(pid) < 0) { PVP.seats = pvpSeatTokens(); buildPvpBar(); }
+  updatePvpBar();
+  if (onlineRole === 'host') pvpHostArbitrate();
+}
+
+// ---- the host is the referee ----
+// A guest that believes it has won says so and waits; only the host mints a
+// result. That is the only way to get one consistent answer out of independent
+// boards, and it matches the transport (a star through the host).
+function pvpOnlineCheckEnd(){
+  if (onlineRole === 'host') { pvpHostArbitrate(); return; }
+  const mine = PVP.scores['me'] || { regions: 0, tiles: 0 };
+  const met = (PVP.rule === 'regions' && mine.regions >= PVP.target)
+           || (regionDone.length && regionDone.every(Boolean));
+  if (met) netSend('pvp-done', { matchId: PVP.matchId, regions: mine.regions, tiles: mine.tiles, pct: boardPercent() });
+}
+function pvpHostDone(pid, d){
+  PVP.opp[pid] = Object.assign(PVP.opp[pid] || {}, { regions: d.regions | 0, tiles: d.tiles | 0, pct: d.pct | 0, at: Date.now(), done: true });
+  pvpHostArbitrate();
+}
+// standings from the host's point of view: its own live tally plus whatever each
+// guest last reported
+function pvpStandings(){
+  const s = {};
+  for (const tok of PVP.seats) {
+    const st = pvpStat(tok);
+    s[tok] = { regions: st.regions, tiles: st.tiles, pct: st.pct };
+  }
+  return s;
+}
+function pvpDeclare(winner){
+  if (!PVP.active || PVP.phase === 'over') return;
+  const scores = pvpStandings();
+  netSend('pvp-result', { matchId: PVP.matchId, winner: winner == null ? null : winner, scores });
+  pvpFinish(winner, scores);
+}
+function pvpHostArbitrate(){
+  if (!pvpLive() || onlineRole !== 'host') return;
+  // whoever first satisfies the rule, as observed here, takes it
+  if (PVP.rule === 'regions') {
+    for (const tok of PVP.seats) if (pvpStat(tok).regions >= PVP.target) { pvpDeclare(tok); return; }
+  }
+  const meDone = regionDone.length && regionDone.every(Boolean);
+  for (const tok of PVP.seats) {
+    const done = tok === 'me' ? meDone : !!(PVP.opp[tok] && PVP.opp[tok].done);
+    if (done) { pvpDeclare(PVP.rule === 'full' ? tok : (pvpOnlineRanking()[0] || tok)); return; }
+  }
+}
+// rank every online seat by the same rule the scoreboard shows
+function pvpOnlineRanking(){
+  return PVP.seats.slice().sort((a, b) => {
+    const A = pvpStat(a), B = pvpStat(b);
+    return (B.regions - A.regions) || (B.tiles - A.tiles) || (B.pct - A.pct);
+  });
+}
+function pvpOnlineTimeUp(){
+  if (onlineRole !== 'host') return;   // guests just show 0:00 and wait for the verdict
+  pvpDeclare(pvpOnlineRanking()[0] || null);
+}
+
+// ---- guest side of the handshake ----
+function pvpGuestSetup(d){
+  if (!d.code) return;
+  const peek = decodeCode(d.code);
+  if (!peek) { toast('Could not read the match board.', true); return; }
+  // Mirror menuLaunch's prefetch: clueCacheProbe awaits BAKED.load anyway, so
+  // without this the guest sits on a bare screen for the length of the download.
+  // A custom weave misses the bake by design, so don't ask for it.
+  const pre = (peek.seed === mapDef(peek.map).seed) ? BAKED.load(peek.map) : Promise.resolve(null);
+  pre.catch(() => null).then(() => {
+    pvpBegin({ mode: 'online', matchId: d.matchId, rule: d.rule, target: d.target });
+    // blank:true — take the map, weave, tier and patch tiers, leave the answers
+    importCode(d.code, () => {
+      online = true;
+      PVP.seats = pvpSeatTokens(); recomputeScores(); buildPvpBar();
+      PVP.phase = 'lobby';
+      document.getElementById('onlineModal').classList.remove('show');   // the join panel has done its job
+      setOnlineUI();
+      netSend('pvp-ready', { matchId: PVP.matchId });
+      toast('Ready. Waiting for the host to start the match…', true);
+      needsDraw = true;
+    }, true, { blank: true });
+  });
+}
+function pvpGuestStart(d){
+  if (!PVP.active) return;
+  PVP.rule = d.rule || PVP.rule;
+  PVP.target = d.target || PVP.target;
+  PVP.phase = 'live';
+  PVP.startAt = performance.now();
+  // No absolute timestamp crosses the wire — there is no clock sync here. Each
+  // peer runs its own countdown for display; the HOST's expiry is what ends it.
+  PVP.endsAt = PVP.rule === 'timed' ? PVP.startAt + (d.durationMs || PVP.target * 1000) : 0;
+  pvpSendNext = 0; pvpLastPct = -1; pvpLastRegions = -1;
+  buildPvpBar();
+  toast('Go! ' + pvpRuleText(), true);
 }
 
 // throttled local cursor + viewport broadcast (≈16 Hz, only when it changed)
 function maybeSendPresence(now){
   if (!online || !net) return;
+  // Versus: boards are independent, so a peer's cell index means nothing on your
+  // board — and painting their cursor there would leak where they are working.
+  if (PVP.active) return;
   if (now - lastPresenceAt < 60) return;
   const pl = players[0], v = pl.view;
   const cell = (pl.lastInput === 'pad' && pl.padActive) ? pl.cursor : pl.hoverCell;
@@ -4908,7 +6492,7 @@ function startNet(impl, role, roomId, onReady, onErr){
 function netClose(){
   if (net) { try { net.send(netEnvelope('bye', {})); } catch (e) {} try { net.close(); } catch (e) {} }
   net = null; online = false; onlineRole = null; coopPeers = {}; hostPid = null; watchPartner = false; pendingRemote = []; joinerBackup = null;
-  nextPeerNum = 2; mistakeFlagged.clear(); clearCoopNotes();
+  nextPeerNum = 2; peerNums = {}; mistakeFlagged.clear(); clearCoopNotes();
   clearUndo();   // undo history is per-session/mode — don't carry it across a disconnect
 }
 // user-initiated full disconnect (host or guest)
@@ -4923,6 +6507,12 @@ function leaveOnline(){
 // pre-join one) if you later disconnect.
 function saveCoopToLocal(){
   if (onlineRole !== 'join') return;
+  if (PVP.active) return;   // a match board is scratch work; adopting it would overwrite the real save
+  // The host's weave was adopted in memory only (see setCustomSeed). This is the
+  // player explicitly claiming this board, so the weave becomes theirs for real —
+  // otherwise the keys written below would be filed under a suffix that no longer
+  // resolves after a reload.
+  persistSeeds();
   try {
     localStorage.setItem(stateKey(), Array.from(state.subarray(0, N)).join(''));
     localStorage.setItem(zonesKey(), JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
@@ -4939,10 +6529,29 @@ function handlePeerGone(reason, pid){
   if (!net) return;
   if (onlineRole === 'host') {
     if (pid && coopPeers[pid]) { delete coopPeers[pid]; toast('A player left.', true); setOnlineUI(); needsDraw = true; }
+    if (PVP.active && PVP.mode === 'online') {
+      delete PVP.opp[pid]; delete PVP.ready[pid];
+      PVP.seats = pvpSeatTokens();
+      if (!peerIds().length) {          // last rival gone — a race with one runner has no result
+        toast('Your rival left. The match is off.', true);
+        pvpTeardown();
+      } else { buildPvpBar(); pvpLobbyRefresh(); pvpHostArbitrate(); }
+    }
     return;
   }
   // guest: another guest leaving just removes them; only the host leaving ends it
-  if (pid && hostPid && pid !== hostPid) { if (coopPeers[pid]) { delete coopPeers[pid]; needsDraw = true; } return; }
+  if (pid && hostPid && pid !== hostPid) {
+    if (coopPeers[pid]) { delete coopPeers[pid]; needsDraw = true; }
+    if (PVP.active) { delete PVP.opp[pid]; PVP.seats = pvpSeatTokens(); buildPvpBar(); }
+    return;
+  }
+  // the host is gone. In a match that voids it — nobody left can mint a result.
+  if (PVP.active) {
+    netClose(); setOnlineUI();
+    toast((reason || 'Disconnected') + ' The match is off; your own canvas is back.', true);
+    pvpTeardown();
+    return;
+  }
   const backup = joinerBackup;
   netClose(); setOnlineUI(); needsDraw = true;
   if (backup) importCode(backup, null, true);
@@ -4980,6 +6589,29 @@ function LoopbackNet(){
   };
 }
 
+// PeerJS is the project's ONLY third-party code, and it is vendored rather than
+// imported from a CDN: a runtime import puts whoever controls that CDN inside the
+// page, with full reach over every localStorage key, and a dynamic import cannot
+// carry an integrity hash to prevent it. Loaded as a script tag rather than by
+// fetch/import for the same reason boards/*.js is (see BAKED.load): fetch and ESM
+// imports are CORS-blocked on file://, script tags are not, so opening index.html
+// straight off disk keeps working. Lazy, so a solo player never pays for it.
+//   vendor/peerjs.js — peerjs 1.5.4 (peerjs.min.js, UMD; sets window.Peer)
+//   sha256 ad5d8870d1e389914f9cba8d35be313c4327c69ee0a221e482e9bf7621136fe5
+let peerJsPending = null;
+function loadPeerJS(){
+  if (window.Peer) return Promise.resolve(window.Peer);
+  return peerJsPending || (peerJsPending = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/peerjs.js';
+    s.async = true;
+    s.onload = () => window.Peer ? res(window.Peer)
+                                 : rej(new Error('the multiplayer library did not load'));
+    s.onerror = () => { peerJsPending = null; rej(new Error('could not load the multiplayer library')); };
+    document.head.appendChild(s);
+  }));
+}
+
 // real transport: WebRTC P2P via PeerJS (free public broker for signaling only).
 // Host's peer id IS the shareable code. STAR topology: guests connect to the host,
 // and the host relays each guest's data to the other guests.
@@ -4991,7 +6623,15 @@ function PeerNet(){
     c.on('open', () => { conns[c.peer] = c; em.emit('peer', c.peer); });
     c.on('data', d => {
       em.emit('message', d, c.peer);
-      if (isHost) for (const pid in conns) if (pid !== c.peer && conns[pid].open) conns[pid].send(d);   // relay
+      if (!isHost) return;
+      // Relay to the other guests — but STAMP THE TRUE ORIGIN first. A guest hears
+      // everything over its single connection to the host, so without this stamp a
+      // relayed guest frame is indistinguishable from one the host authored, and
+      // every "only the host may do this" guard downstream would pass for any
+      // guest. `src` is written by the host, over whatever the sender put there,
+      // so it cannot be forged. See netOrigin().
+      if (d && typeof d === 'object') d.src = c.peer;
+      for (const pid in conns) if (pid !== c.peer && conns[pid].open) conns[pid].send(d);
     });
     c.on('close', () => { delete conns[c.peer]; em.emit('close', c.peer); });
     c.on('error', e => em.emit('error', e));
@@ -5000,8 +6640,7 @@ function PeerNet(){
     on: em.on,
     async connect({ role, roomId }){
       isHost = role === 'host';
-      const mod = await import('https://esm.sh/peerjs@1.5.4');
-      const Peer = mod.default || mod.Peer || mod;
+      const Peer = await loadPeerJS();
       const opts = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } };
       if (isHost) {
         const id = roomId || ('npxs-' + Math.random().toString(36).slice(2, 8));
@@ -5034,6 +6673,7 @@ function loop(now){
   pollGamepad(now);
   maybeSendPresence(now);     // online: share this player's cursor + viewport with the peer
   updateTimer();              // live session clock; ticks every frame, re-renders only on change
+  pvpTick(now);               // versus: 2Hz scoreboard refresh + the match countdown
   let animating = false;
   for (const pl of players) {
     if (!pl.viewAnim) continue;
@@ -5203,6 +6843,39 @@ function drawViewport(player, now, px, py, pw, ph){
     }
   }
   ctx.stroke();
+
+  // ---- versus: claimed-region borders ----
+  // Re-stroke the perimeter of each claimed region in its owner's colour. This
+  // sits on TOP of the neutral border pass and deliberately leaves the cell fill
+  // alone — the revealed artwork is the reward for finishing a region, so the
+  // scoreboard rides on the outline instead of painting over the picture.
+  if (PVP.active && PVP.claim) {
+    const seen = new Map();
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const i = gy * GW + gx, r = regionOf[i];
+        if (r < 0 || PVP.claim[r] < 0) continue;
+        const px = v.x + gx * s, py = v.y + gy * s;
+        let seg = seen.get(r);
+        if (!seg) { seg = []; seen.set(r, seg); }
+        if (gx === 0        || regionOf[i - 1]  !== r) seg.push(px, py, px, py + s);
+        if (gx === GW - 1   || regionOf[i + 1]  !== r) seg.push(px + s, py, px + s, py + s);
+        if (gy === 0        || regionOf[i - GW] !== r) seg.push(px, py, px + s, py);
+        if (gy === GH - 1   || regionOf[i + GW] !== r) seg.push(px, py + s, px + s, py + s);
+      }
+    }
+    ctx.lineWidth = Math.max(2.5, s * 0.17);
+    ctx.lineCap = 'round';
+    for (const [r, seg] of seen) {
+      const tok = PVP.seats[PVP.claim[r]];
+      if (tok == null) continue;
+      ctx.strokeStyle = pvpColor(tok);
+      ctx.beginPath();
+      for (let k = 0; k < seg.length; k += 4) { ctx.moveTo(seg[k], seg[k + 1]); ctx.lineTo(seg[k + 2], seg[k + 3]); }
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  }
 
   // ---- sudoku plots ----
   for (const zone of ZONES) {
@@ -5405,12 +7078,18 @@ function cellAt(mx, my, v = view){
 
 function cycleZone(zone, p, dir, pl = mousePlayer()){
   const n = zone.n;
+  coopActor = pl;                          // attribute this digit to the acting player (co-op/versus)
   pushUndo();
   const prev = zone.entries[p];
   let v = prev + dir;
   if (v > n) v = 0;
   if (v < 0) v = n;
   zone.entries[p] = v;
+  // Same attribution as setZoneDigit: a digit cycled by click/pad must record its
+  // author too, or sudoku work is invisible to regionContributors and to versus scoring.
+  if (!zone.owner) zone.owner = new Array(n * n).fill(null);
+  zone.owner[p] = (v === 0) ? null : ownerForEdit();
+  if (v !== 0) lastEditOwner = zone.owner[p];
   lastTouchedRegion = zone.region;
   lastCell = (zone.y + ((p / n) | 0)) * GW + zone.x + (p % n);
   checkZone(zone);
@@ -5421,12 +7100,14 @@ function cycleZone(zone, p, dir, pl = mousePlayer()){
 
 function setZoneDigit(zone, p, v, pl = mousePlayer()){
   if (zone.entries[p] === v) return;
+  if (PVP.active && PVP.phase !== 'live') return;   // same gate as setCell: no digits before the go, or after the whistle
   coopActor = pl;                          // attribute this digit to the acting player (co-op)
   pushUndo();
   const prev = zone.entries[p];
   zone.entries[p] = v;
   if (!zone.owner) zone.owner = new Array(zone.n * zone.n).fill(null);
   zone.owner[p] = (v === 0) ? null : ownerForEdit();
+  if (v !== 0) lastEditOwner = zone.owner[p];
   lastTouchedRegion = zone.region;
   lastCell = (zone.y + ((p / zone.n) | 0)) * GW + zone.x + (p % zone.n);
   checkZone(zone);
@@ -5559,13 +7240,21 @@ cvs.addEventListener('wheel', e => {
 //  Listeners live on `cvs`: a touch is delivered to its origin element for the
 //  whole gesture, so canvas gestures never steal scrolling from modals/menu, and
 //  preventDefault() (with #game touch-action:none) suppresses synthetic mouse
-//  events + page zoom. Drives player 0 (touch co-op is out of scope).
+//  events + page zoom. The seat is resolved from the pane the first finger lands
+//  in (touchPl), so split-screen touch attributes correctly.
 // ============================================================
 let touchBrush = 1;               // 1 = light, 2 = dark — what a tap/drag places
 let touchRevealed = false;
 const touchPts = new Map();       // identifier -> { x, y } (canvas-originated touches only)
 let touchGesture = null;          // 2-finger ref: { mx, my, dist }
 let touchStroke = null;           // 1-finger: { color, touched:Set } paint, or { pan:true, x, y }
+// Which local seat owns the touch interaction in flight. Resolved from the pane
+// the first finger lands in and held for the whole gesture, so a drag that
+// crosses a pane divider keeps stitching for the player who started it. Without
+// this, split-screen touch edits attribute to whoever acted last (see
+// ownerForEdit) — which quietly mis-scores co-op and versus alike.
+let touchPl = null;
+function touchPlayer(){ return (touchPl && players.includes(touchPl)) ? touchPl : players[0]; }
 
 function revealBrushBtn(){
   if (touchRevealed) return;
@@ -5587,7 +7276,9 @@ cvs.addEventListener('touchstart', e => {
   revealBrushBtn();
   for (const t of e.changedTouches) touchPts.set(t.identifier, { x: t.clientX, y: t.clientY });
   e.preventDefault();
-  const pl = players[0];
+  // a fresh single-finger interaction picks its seat from the pane it landed in
+  if (touchPts.size === 1) touchPl = playerAt(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+  const pl = touchPlayer();
   pl.viewAnim = null;
   if (touchPts.size >= 2) { touchStroke = null; touchGesture = touchGestureRef(); return; }   // two fingers → pan/zoom
   const t = e.changedTouches[0];
@@ -5617,6 +7308,7 @@ cvs.addEventListener('touchstart', e => {
   if (!regionDone[regionOf[i]] && !locked[i]) pushUndo();   // one undo entry per stroke
   const c = touchBrush;
   const prev = state[i], next = state[i] === c ? 0 : c;
+  coopActor = pl;                                // attribute the stitch to this seat
   setCell(i, next);                              // same per-cell toggle rule as a mouse click
   touchStroke = { color: c, touched: new Set([i]), edits: [{ i, prev, next }] };
 }, { passive: false });
@@ -5624,7 +7316,7 @@ cvs.addEventListener('touchstart', e => {
 cvs.addEventListener('touchmove', e => {
   for (const t of e.changedTouches) if (touchPts.has(t.identifier)) touchPts.set(t.identifier, { x: t.clientX, y: t.clientY });
   e.preventDefault();
-  const pl = players[0], v = pl.view;
+  const pl = touchPlayer(), v = pl.view;
   if (touchPts.size >= 2) {                      // pan by midpoint delta + pinch-zoom about the midpoint
     const g = touchGestureRef();
     if (touchGesture) {
@@ -5647,13 +7339,13 @@ cvs.addEventListener('touchmove', e => {
   if (i < 0 || zoneOf[i] >= 0) return;
   pl.cursor = i; pl.hoverCell = i;
   const c = touchStroke.color;
-  if (c && !touchStroke.touched.has(i)) { touchStroke.touched.add(i); const prev = state[i], next = state[i] === c ? 0 : c; setCell(i, next); if (touchStroke.edits) touchStroke.edits.push({ i, prev, next }); }
+  if (c && !touchStroke.touched.has(i)) { touchStroke.touched.add(i); const prev = state[i], next = state[i] === c ? 0 : c; coopActor = pl; setCell(i, next); if (touchStroke.edits) touchStroke.edits.push({ i, prev, next }); }
 }, { passive: false });
 
 function endTouch(e){
   for (const t of e.changedTouches) touchPts.delete(t.identifier);
   e.preventDefault();
-  const pl = players[0];
+  const pl = touchPlayer();
   if (touchPts.size >= 2) { touchGesture = touchGestureRef(); return; }
   if (touchPts.size === 1) {                     // dropped from two fingers to one → keep panning, don't stitch
     touchGesture = null;
@@ -5682,7 +7374,7 @@ addEventListener('keydown', e => {
   if (e.key === '+' || e.key === '=') { zoomCenter(1.25, pl); return; }
   if (e.key === '-') { zoomCenter(1 / 1.25, pl); return; }
   if (GEN.active) return;   // the loading animation owns the frame — no gameplay keys reach a board mid-generation
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(pl); return; }
   // digits go to the selected sudoku-plot cell
   if (pl.selZ >= 0 && pl.selP >= 0 && !solving) {
     const zone = ZONES[pl.selZ];
@@ -5716,6 +7408,7 @@ const MODAL_CLOSE = {
   onlineModal: 'btnCloseOnline', shareModal: 'btnCloseShare',
   optionsModal: 'btnCloseOptions', sudokuHelpModal: 'btnCloseSudokuHelp',
   picrossHelpModal: 'btnClosePicrossHelp',
+  pvpLobbyModal: 'pvpLobbyCancel', pvpResultModal: 'pvpResultClose',
 };
 // close an overlay via its mapped button (falls back to the last button / hiding)
 function closeOverlay(open){
@@ -6048,7 +7741,8 @@ document.getElementById('joinCode').addEventListener('keydown', e => { if (e.key
 // onlineBack: where the onlineChoice view's Back/Esc should return to — 'coopMode'
 // when reached via Home → Co-op → Online, 'grid' when reached via the grid's own
 // mode pill (which skips the coopMode chooser entirely)
-const MENU = { view: 'home', mode: 'solo', stepVal: 2, stepMin: 2, stepMax: 4, onlineBack: 'coopMode' };
+const MENU = { view: 'home', mode: 'solo', stepVal: 2, stepMin: 2, stepMax: 4, onlineBack: 'coopMode',
+               pvpRule: 'regions', pvpTarget: 5 };   // versus defaults: first to 5 regions
 // canvas count in the sub-line is computed, not hardcoded, so it never drifts as maps are added/removed
 document.getElementById('menuSolo').innerHTML = 'Single Player<small>' + MAPS.length + ' canvases · your progress is kept per canvas</small>';
 const LAST_SOLO_KEY = 'proverbs2-lastsolo';   // most recent single-player map, for Continue
@@ -6088,6 +7782,7 @@ function menuApplySort(){
 const _menuCardCache = {};
 const _menuArtCache = {};   // id -> per-cell RGBA of the map's artwork (see menuArtCols)
 const _menuImg = {};        // id -> Image, the menu's own decodes (never touches mapImgCache's onload)
+const _menuArtCropCache = {};   // id -> {x,y,w,h} source-rect fractions (see menuArtCrop)
 
 // region run-length for a map: hand maps carry it in HAND_LAYOUTS, watershed
 // maps (castle/crew/fighters) use the baked PREVIEW_RLE
@@ -6128,19 +7823,62 @@ function menuLoadImg(id, cb){
   im.addEventListener('load', cb, { once: true });
   im.src = mapDef(id).src;
 }
+// a map's source art often has a plain sky/backdrop margin on one or more edges
+// (most visible on castle's sky, inferno's bright top) — findable as an edge band
+// whose average brightness sits well above the image's own mean. Trims each edge
+// independently (capped at 22% a side so a genuinely bright subject never gets
+// eaten), so most maps come back untouched and only the real offenders crop in.
+// Menu-preview-only: does not touch sampleImage()/cellCol, so it can't move a
+// single sol/clue byte and needs no re-bake. Cached per id; {x,y,w,h} are source
+// fractions (0..1) for drawImage's crop rect.
+function menuArtCrop(id){
+  if (_menuArtCropCache[id]) return _menuArtCropCache[id];
+  const im = menuImg(id);
+  const none = { x: 0, y: 0, w: 1, h: 1 };
+  if (!im) return none;
+  try {
+    const W = 160, H = Math.max(1, Math.round(160 * im.naturalHeight / im.naturalWidth));
+    const off = document.createElement('canvas'); off.width = W; off.height = H;
+    const octx = off.getContext('2d', { willReadFrequently: true });
+    octx.drawImage(im, 0, 0, W, H);
+    const data = octx.getImageData(0, 0, W, H).data;
+    const lum = new Float32Array(W * H);
+    let mean = 0;
+    for (let i = 0; i < W * H; i++) {
+      const L = 0.299 * data[i*4] + 0.587 * data[i*4+1] + 0.114 * data[i*4+2];
+      lum[i] = L; mean += L;
+    }
+    mean /= W * H;
+    let vsum = 0; for (let i = 0; i < W * H; i++) { const dv = lum[i] - mean; vsum += dv * dv; }
+    const thresh = mean + 0.5 * Math.sqrt(vsum / (W * H));
+    const rowLum = y => { let s = 0; for (let x = 0; x < W; x++) s += lum[y * W + x]; return s / W; };
+    const colLum = x => { let s = 0; for (let y = 0; y < H; y++) s += lum[y * W + x]; return s / H; };
+    const capRow = Math.floor(H * 0.22), capCol = Math.floor(W * 0.22);
+    let top = 0; while (top < capRow && rowLum(top) > thresh) top++;
+    let bot = 0; while (bot < capRow && rowLum(H - 1 - bot) > thresh) bot++;
+    let left = 0; while (left < capCol && colLum(left) > thresh) left++;
+    let right = 0; while (right < capCol && colLum(W - 1 - right) > thresh) right++;
+    _menuArtCropCache[id] = { x: left / W, y: top / H, w: 1 - (left + right) / W, h: 1 - (top + bot) / H };
+  } catch (e) { _menuArtCropCache[id] = none; }
+  return _menuArtCropCache[id];
+}
 // per-cell artwork colours for a map, sampled exactly the way sampleImage() fills
 // cellCol (nearest-neighbour into a gw×gh offscreen), so a revealed region on a card
-// matches the revealed region on the board. Null until the image has decoded.
+// matches the revealed region on the board, modulo the preview-only zoom above.
+// Null until the image has decoded.
 function menuArtCols(id){
   if (_menuArtCache[id]) return _menuArtCache[id];
   const im = menuImg(id), meta = MAP_META[id];
   if (!im || !meta) return null;
   try {
+    const crop = menuArtCrop(id);
+    const sx = crop.x * im.naturalWidth, sy = crop.y * im.naturalHeight;
+    const sw = crop.w * im.naturalWidth, sh = crop.h * im.naturalHeight;
     const off = document.createElement('canvas');
     off.width = meta.gw; off.height = meta.gh;
     const octx = off.getContext('2d', { willReadFrequently: true });
     octx.imageSmoothingEnabled = false;
-    octx.drawImage(im, 0, 0, meta.gw, meta.gh);
+    octx.drawImage(im, sx, sy, sw, sh, 0, 0, meta.gw, meta.gh);
     _menuArtCache[id] = octx.getImageData(0, 0, meta.gw, meta.gh).data;
   } catch (e) { return null; }
   return _menuArtCache[id];
@@ -6332,14 +8070,19 @@ function menuRefreshCards(){
     if (!played) { row.style.display = 'none'; card.querySelector('.mapCardStat').textContent = ''; continue; }
     row.style.display = '';
     card.querySelector('.mapCardBarFill').style.width = pct + '%';
-    card.querySelector('.mapCardStat').textContent = pct + '% · ' + done + '/' + (meta ? meta.regions : mask.length);
+    card.querySelector('.mapCardStat').textContent = pct + '% · ' + done + '/' + (meta ? meta.regions : mask.length) +
+      (isCustomSeed(id) ? ' · new weave' : '');   // which weave this progress belongs to
   }
 }
-// fill in (or hide) the grid's Continue card from the last solo map's saved progress
+// fill in (or hide) the grid's Continue card from the last solo map's saved progress.
+// Whatever it resolves to also gets hidden from its own small card below, so the
+// map being resumed isn't shown twice on the same grid.
 function menuRefreshGridContinue(){
   const cc = document.getElementById('gridContinueCard');
   if (!cc) return;
   const id = menuLastSolo();
+  for (const card of document.querySelectorAll('#mapGrid .mapCard'))
+    card.style.display = (id && card.dataset.id === id) ? 'none' : '';
   if (!id) { cc.style.display = 'none'; return; }
   cc.style.display = '';
   let pct = 0, ms = 0;
@@ -6353,13 +8096,33 @@ function menuRefreshGridContinue(){
 }
 // highlight the mode pill matching the grid's current mode ('solo'/'local'/'host')
 function updateModeRow(){
-  const active = MENU.mode === 'local' ? 'local' : MENU.mode === 'host' ? 'online' : 'solo';
+  const active = MENU.mode === 'local' ? 'local'
+               : MENU.mode === 'host' ? 'online'
+               : MENU.mode === 'pvpLocal' ? 'pvpLocal'
+               : MENU.mode === 'pvpHost' ? 'pvpOnline'
+               : 'solo';
   for (const b of document.querySelectorAll('.modePill')) b.classList.toggle('active', b.dataset.mode === active);
 }
+// the versus rule picker in the grid's mode row: three rule pills plus a target
+// stepper whose unit (regions / minutes) follows the chosen rule
+function updateRuleRow(){
+  const row = document.getElementById('menuRuleStep');
+  if (!row) return;
+  const isPvp = MENU.mode === 'pvpLocal' || MENU.mode === 'pvpHost';
+  row.style.display = isPvp ? '' : 'none';
+  if (!isPvp) return;
+  for (const b of row.querySelectorAll('.rulePill')) b.classList.toggle('active', b.dataset.rule === MENU.pvpRule);
+  const wrap = document.getElementById('menuTargetWrap');
+  wrap.style.display = MENU.pvpRule === 'full' ? 'none' : '';
+  document.getElementById('menuTargetVal').textContent = String(MENU.pvpTarget);
+  document.getElementById('menuTargetUnit').textContent = MENU.pvpRule === 'timed' ? 'min' : 'regions';
+}
+function pvpTargetBounds(){ return MENU.pvpRule === 'timed' ? [2, 60] : [2, 40]; }
 
 function menuShowView(v){
   MENU.view = v;
-  const map = { home: 'menuHome', credits: 'menuCreditsView', coopMode: 'menuCoopMode', onlineChoice: 'menuOnlineChoice', grid: 'menuGrid' };
+  const map = { home: 'menuHome', credits: 'menuCreditsView', coopMode: 'menuCoopMode', onlineChoice: 'menuOnlineChoice',
+                pvpMode: 'menuPvpMode', pvpOnlineChoice: 'menuPvpOnlineChoice', grid: 'menuGrid' };
   for (const id of Object.values(map)) document.getElementById(id).style.display = 'none';
   document.getElementById(map[v]).style.display = '';
   document.querySelector('.menuBrand').style.display = v === 'grid' ? 'none' : '';   // the grid draws its own compact wordmark
@@ -6395,18 +8158,19 @@ function menuOpenGrid(mode){
   if (generated && !GEN.active) saveNow();   // flush the debounced save so the cards show the region you JUST finished
   MENU.mode = mode;
   const step = document.getElementById('menuPlayerStep');
-  if (mode === 'local') {
+  if (mode === 'local' || mode === 'pvpLocal') {
     document.getElementById('menuStepLbl').textContent = 'Players';
     MENU.stepMin = 2; MENU.stepMax = 4; MENU.stepVal = Math.min(4, Math.max(2, MENU.stepVal || 2));
     step.style.display = '';
-  } else if (mode === 'host') {
-    document.getElementById('menuStepLbl').textContent = 'Guests';
+  } else if (mode === 'host' || mode === 'pvpHost') {
+    document.getElementById('menuStepLbl').textContent = mode === 'pvpHost' ? 'Rivals' : 'Guests';
     MENU.stepMin = 1; MENU.stepMax = 3; MENU.stepVal = Math.min(3, Math.max(1, MENU.stepVal || 1));
     step.style.display = '';
   } else {
     step.style.display = 'none';
   }
   document.getElementById('menuStepVal').textContent = String(MENU.stepVal);
+  updateRuleRow();
   document.getElementById('mapSort').value = mapSort;
   menuBuildGrid();
   menuApplySort();
@@ -6432,6 +8196,13 @@ function closeMenu(){ if (generated) hideMenu(); }
 // load the chosen map at the current (Options/header) difficulty: first launch →
 // startGeneration; later → loadMap. pendingAfterGen then starts any co-op session.
 function menuLaunch(id){
+  // Start pulling this canvas's baked clue payload the instant it is picked, so
+  // it overlaps the menu teardown and image decode. clueCacheProbe awaits the
+  // same promise before beginGen() puts the loading screen up — without this
+  // head start, a slow connection would leave the player on a bare canvas for
+  // the length of the download. A rewoven canvas cannot use the shipped clues,
+  // so there is nothing worth fetching for it.
+  if (!isCustomSeed(id)) BAKED.load(id);
   if (!generated) {
     currentMap = id; try { localStorage.setItem(MAP_KEY, id); } catch (e) {}
     img.onload = () => startGeneration();
@@ -6448,11 +8219,22 @@ function menuAfterGen(){
   const mode = MENU.mode;
   if (mode === 'local') { const n = MENU.stepVal; return () => startCoop(n); }
   if (mode === 'host')  { const g = MENU.stepVal; return () => menuStartHost(g); }
+  if (mode === 'pvpLocal') {
+    const n = MENU.stepVal, rule = MENU.pvpRule, target = pvpTargetSeconds();
+    return () => openPvpLobby({ mode: 'local', players: n, rule, target });
+  }
+  if (mode === 'pvpHost') {
+    const g = MENU.stepVal, rule = MENU.pvpRule, target = pvpTargetSeconds();
+    return () => openPvpLobby({ mode: 'online', guests: g, rule, target });
+  }
   return null;   // solo
 }
+// the rule's target in its storage unit: seconds for 'timed', regions otherwise
+function pvpTargetSeconds(){ return MENU.pvpRule === 'timed' ? MENU.pvpTarget * 60 : MENU.pvpTarget; }
 
 function menuPlay(id){
   // tear down any live session before switching modes/boards
+  if (PVP.active) pvpTeardown();
   if (online || net) { netClose(); setOnlineUI(); }
   if (coop) exitCoop();
   // remember the last single-player map so Continue can resume it
@@ -6495,6 +8277,11 @@ document.getElementById('menuLocal').onclick = () => menuOpenGrid('local');
 document.getElementById('menuOnline').onclick = () => { MENU.onlineBack = 'coopMode'; menuShowView('onlineChoice'); };
 document.getElementById('menuHostPick').onclick = () => menuOpenGrid('host');
 document.getElementById('menuJoinPick').onclick = () => menuJoin();
+document.getElementById('menuPvp').onclick = () => menuShowView('pvpMode');
+document.getElementById('menuPvpLocal').onclick = () => menuOpenGrid('pvpLocal');
+document.getElementById('menuPvpOnline').onclick = () => menuShowView('pvpOnlineChoice');
+document.getElementById('menuPvpHostPick').onclick = () => menuOpenGrid('pvpHost');
+document.getElementById('menuPvpJoinPick').onclick = () => menuJoin();   // the join flow is identical; the host's pvp-setup decides it's a match
 document.getElementById('menuHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
 document.getElementById('menuGridOptions').onclick = openOptions;
 document.getElementById('menuGridHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
@@ -6502,14 +8289,58 @@ document.querySelectorAll('.modePill').forEach(b => b.onclick = () => {
   const m = b.dataset.mode;
   if (m === 'local') menuOpenGrid('local');
   else if (m === 'online') { MENU.onlineBack = 'grid'; menuShowView('onlineChoice'); }
+  else if (m === 'pvpLocal') menuOpenGrid('pvpLocal');
+  else if (m === 'pvpOnline') menuOpenGrid('pvpHost');
   else menuOpenGrid('solo');
 });
+// where "← Back" lands from the grid, given the mode it was opened in
+function menuGridBack(){
+  if (MENU.mode === 'solo') return 'home';
+  if (MENU.mode === 'local') return 'coopMode';
+  if (MENU.mode === 'pvpLocal') return 'pvpMode';
+  if (MENU.mode === 'pvpHost') return 'pvpOnlineChoice';
+  return 'onlineChoice';
+}
 document.querySelectorAll('#menuScreen .menuBack').forEach(b => b.onclick = () => {
   const where = b.dataset.back;
-  if (where === 'auto') menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
+  if (where === 'auto') menuShowView(menuGridBack());
   else if (where === 'onlineAuto') menuShowView(MENU.onlineBack);
   else menuShowView(where);
 });
+// versus rule pills + target stepper
+document.querySelectorAll('#menuRuleStep .rulePill').forEach(b => b.onclick = () => {
+  MENU.pvpRule = b.dataset.rule;
+  const [lo, hi] = pvpTargetBounds();
+  MENU.pvpTarget = Math.min(hi, Math.max(lo, MENU.pvpRule === 'timed' ? 10 : 5));
+  updateRuleRow();
+});
+document.getElementById('menuTargetMinus').onclick = () => {
+  const [lo] = pvpTargetBounds();
+  MENU.pvpTarget = Math.max(lo, MENU.pvpTarget - 1); updateRuleRow();
+};
+document.getElementById('menuTargetPlus').onclick = () => {
+  const [, hi] = pvpTargetBounds();
+  MENU.pvpTarget = Math.min(hi, MENU.pvpTarget + 1); updateRuleRow();
+};
+// versus lobby + result
+document.getElementById('pvpLobbyStart').onclick = () => pvpLobbyAdvance();
+document.getElementById('pvpLobbyCancel').onclick = () => pvpLobbyAbort();
+document.getElementById('pvpCopyCode').onclick = () => {
+  const el = document.getElementById('pvpLobbyCode');
+  el.select();
+  try { navigator.clipboard.writeText(el.value); toast('Code copied.', true); } catch (e) {}
+};
+document.getElementById('pvpResultClose').onclick = () => {
+  document.getElementById('pvpResultModal').classList.remove('show');
+  if (online || net) { netClose(); setOnlineUI(); }
+  if (coop) exitCoop();
+  pvpTeardown();
+};
+document.getElementById('pvpPanelToggle').onclick = () => {
+  const p = document.getElementById('pvpPanel');
+  p.classList.toggle('collapsed');
+  document.getElementById('pvpPanelToggle').textContent = p.classList.contains('collapsed') ? '▴' : '▾';
+};
 document.getElementById('mapSort').onchange = e => {
   mapSort = e.target.value;
   try { localStorage.setItem(MAP_SORT_KEY, mapSort); } catch (err) {}
@@ -6531,9 +8362,11 @@ function menuEscape(){
   const ms = document.getElementById('menuScreen');
   if (!ms.classList.contains('show')) return false;
   const v = MENU.view;
-  if (v === 'grid')              menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
+  if (v === 'grid')              menuShowView(menuGridBack());
   else if (v === 'onlineChoice') menuShowView(MENU.onlineBack);
+  else if (v === 'pvpOnlineChoice') menuShowView('pvpMode');
   else if (v === 'coopMode')     menuShowView('home');
+  else if (v === 'pvpMode')      menuShowView('home');
   else if (v === 'credits')      menuShowView('home');
   else if (generated)            hideMenu();
   else return false;
@@ -6621,6 +8454,20 @@ document.getElementById('shareFile').onchange = e => {
   reader.onerror = () => toast('Could not read that file.', true);
   reader.readAsText(f);
 };
+document.getElementById('btnReweave').onclick = () => {
+  // only offer the way back when there is something to go back to
+  document.getElementById('btnBackToCanon').style.display = isCustomSeed() ? '' : 'none';
+  document.getElementById('reweaveModal').classList.add('show');
+};
+document.getElementById('btnCancelReweave').onclick = () => document.getElementById('reweaveModal').classList.remove('show');
+document.getElementById('btnConfirmReweave').onclick = () => {
+  document.getElementById('reweaveModal').classList.remove('show');
+  if (reweaveCanvas(randomSeed())) toast('Weaving a new puzzle from this painting…', true);
+};
+document.getElementById('btnBackToCanon').onclick = () => {
+  document.getElementById('reweaveModal').classList.remove('show');
+  if (reweaveCanvas(null)) toast('Back to the original weave. Your progress on it is as you left it.', true);
+};
 document.getElementById('btnReset').onclick = () => document.getElementById('resetModal').classList.add('show');
 document.getElementById('btnCancelReset').onclick = () => document.getElementById('resetModal').classList.remove('show');
 document.getElementById('btnConfirmReset').onclick = () => {
@@ -6683,6 +8530,7 @@ function syncOptions(){
 // exactly like the toolbar dropdown; keeps every difficulty control in sync
 function setDefaultDifficulty(d){
   if (!DIFF[d]) return;
+  if (PVP.active) { toast('The difficulty is fixed for the length of a match.', true); return; }
   if (typeof generated !== 'undefined' && generated && !solving) {
     setDifficulty(d);                 // reweaves clues, persists, updates #selDiff
   } else {
@@ -6723,7 +8571,7 @@ document.querySelectorAll('.opt-navitem').forEach(b => b.onclick = () => showOpt
 // ?audit=, which drives its own pipeline). The loading panel is dismissed so the
 // menu shows; beginGen() brings it back as the generation animation once the
 // player picks a canvas.
-if (!AUDIT_MODE) {
+if (!AUDIT_MODE && !BAKE_MODE && !VERIFY_BAKE) {
   applyTheme(themeHue, false);
   document.getElementById('loader').classList.add('done');
   showMenu();
