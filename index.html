@@ -3,6 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- No script may come from anywhere but this origin. The game is one big inline
+     script block, so 'unsafe-inline' is unavoidable without a build step (there is
+     no build step, on purpose) — but 'self' is what matters here: it is why the
+     WebRTC library is vendored under vendor/ instead of imported from a CDN at
+     runtime, which would otherwise put a third party inside the page with full
+     access to every save key. blob: is for the clue Worker (makeClueWorker), data:
+     for the map artwork, and *.peerjs.com for co-op signalling — that broker sees
+     room ids only, never a board. See CLAUDE.md §7d. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' blob:;
+  worker-src 'self' blob:;
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data:;
+  media-src 'self';
+  connect-src 'self' https://*.peerjs.com wss://*.peerjs.com;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'none'">
 <title>One More Tile: The Emergent Canvas</title>
 <style>
   :root{
@@ -291,6 +310,69 @@
   .coopNote .note-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 4px;line-height:1}
   body.generating #paneCards,body.generating #coopNotes{opacity:0;pointer-events:none}
 
+  /* ---------- versus (PVP) ---------- */
+  /* One scoreboard strip for both shapes: local territory play shares a board so a
+     single shared strip is the honest surface, and online reads the same for
+     symmetry. Sits directly under #hud, click-through except for its own chips. */
+  #pvpBar{position:fixed;top:52px;left:0;right:0;z-index:12;display:flex;justify-content:center;
+    gap:10px;padding:7px 12px;pointer-events:none;flex-wrap:wrap}
+  .pvpSeat{display:flex;align-items:center;gap:8px;pointer-events:auto;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:20px;
+    padding:5px 13px 5px 9px;font-size:13px;color:var(--text);
+    box-shadow:0 6px 18px rgba(40,28,80,.18)}
+  .pvpSeat .ps-dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .pvpSeat .ps-name{font-weight:700}
+  .pvpSeat .ps-num{font-variant-numeric:tabular-nums}
+  .pvpSeat .ps-sub{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+  .pvpSeat.lead{border-color:var(--accent);box-shadow:0 6px 20px hsl(var(--hue) 60% 50% / .32)}
+  .pvpSeat.mine{outline:2px solid var(--accent);outline-offset:1px}
+  #pvpClock{display:flex;align-items:center;pointer-events:auto;font-variant-numeric:tabular-nums;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:20px;
+    padding:5px 15px;font-size:13px;font-weight:700;color:var(--text)}
+  #pvpClock.urgent{color:#c0392b;border-color:#c0392b}
+
+  /* online only: opponent pace + the decided-tiles minimap */
+  #pvpPanel{position:fixed;right:14px;bottom:58px;z-index:39;width:248px;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:12px;
+    box-shadow:0 10px 30px rgba(40,28,80,.3);font-size:13px;color:var(--text);overflow:hidden}
+  .pvpPanelHead{display:flex;align-items:center;justify-content:space-between;
+    padding:8px 10px 8px 13px;border-bottom:1px solid var(--panel-border)}
+  .pvpPanelHead button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 5px}
+  #pvpPanelBody{padding:9px 11px 11px}
+  #pvpPanel.collapsed #pvpPanelBody{display:none}
+  .pvpOpp{display:flex;align-items:center;gap:7px;margin-bottom:7px;cursor:pointer}
+  .pvpOpp .ps-dot{width:10px;height:10px;border-radius:50%;flex:none}
+  .pvpOpp .po-name{flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pvpOpp .po-num{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
+  .pvpOpp.sel .po-name{color:hsl(var(--hue) 88% 45%)}
+  #pvpMini{display:block;width:100%;height:auto;border-radius:7px;margin-top:4px;
+    border:1px solid var(--panel-border);image-rendering:pixelated}
+  .pvpMiniCap{margin:6px 0 0;font-size:11px;color:var(--muted);line-height:1.35}
+  body.generating #pvpBar,body.generating #pvpPanel{opacity:0;pointer-events:none}
+  /* The visible half of the match gates (each is also blocked in JS, so hiding the
+     control is a courtesy, not the guard). Watch mode is hidden because mirroring a
+     rival's viewport is meaningless across independent boards; the rest would
+     either decide the match for you or throw away the board mid-race. */
+  body.versus #btnSolve,body.versus #btnShare,body.versus #btnReset,
+  body.versus #btnReweave,body.versus #btnWatch,body.versus #btnMP,
+  body.versus #selDiff{display:none !important}
+
+  .pvpWarn{margin-top:10px;padding:8px 11px;border-radius:9px;font-size:12.5px;
+    background:hsl(38 90% 55% / .16);border:1px solid hsl(38 70% 45% / .35);color:var(--text)}
+  .pvpSeatRow{display:flex;align-items:center;gap:9px;padding:6px 2px;font-size:13px}
+  .pvpSeatRow .ps-dot{width:10px;height:10px;border-radius:50%;flex:none}
+  .pvpSeatRow .psr-name{flex:1;font-weight:600}
+  .pvpSeatRow .psr-state{font-size:12px;color:var(--muted)}
+  .pvpSeatRow .psr-state.ok{color:hsl(150 55% 38%);font-weight:600}
+  #pvpStandings{margin-top:10px}
+  .pvpStandRow{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;
+    margin-bottom:6px;background:rgba(255,255,255,.55);border:1px solid var(--panel-border);font-size:14px}
+  .pvpStandRow.win{border-color:var(--accent);background:hsl(var(--hue) 80% 60% / .12);font-weight:700}
+  .pvpStandRow .ps-dot{width:12px;height:12px;border-radius:50%;flex:none}
+  .pvpStandRow .psr-name{flex:1;text-align:left}
+  .pvpStandRow .psr-sc{font-variant-numeric:tabular-nums}
+  .pvpStandRow .psr-sub{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px;min-width:5.5em;text-align:right}
+
   /* ---------- home menu ---------- */
   /* z-index 35: above the HUD/board (10/11) but below dialog overlays (40) and
      the loader (50), so Help/Online modals and the generation animation appear
@@ -341,7 +423,7 @@
   .menuChoice:hover{background:var(--panel);transform:translateY(-3px);box-shadow:0 18px 44px rgba(70,48,130,.24);border-color:var(--accent)}
   .menuChoice .mc-ico{font-size:34px;line-height:1}
   .menuChoice .mc-t{font-size:18px;font-weight:700;color:var(--text);letter-spacing:.5px}
-  .menuChoice .mc-s{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.4;padding:0 10px}
+  .menuChoice .mc-s{font-size:12.5px;color:var(--muted);text-align:center;line-height:1.4;padding:0 10px;white-space:normal}
   /* vertical stacked main-menu buttons (same size, one under another) */
   .menuStack{display:flex;flex-direction:column;gap:14px;width:100%;max-width:360px;margin-top:2px}
   .menuStackBtn{width:100%;padding:16px 20px;border-radius:14px;border:none;cursor:pointer;
@@ -397,7 +479,16 @@
   .menuStep{display:flex;align-items:center;gap:10px;padding:6px 14px 6px 18px;border-radius:22px;
     background:rgba(255,255,255,.6);border:1px solid var(--panel-border)}
   .menuStep b{font-size:15px;min-width:1.2em;text-align:center;color:var(--text)}
-  .menuStep button{width:28px;padding:4px 0;border-radius:14px}
+  .menuStep button:not(.rulePill){width:28px;padding:4px 0;border-radius:14px}
+  /* versus rule picker — same chip language as the mode pills, inside a menuStep */
+  .menuStep.pvpRule{gap:6px;padding:6px 10px 6px 16px}
+  .rulePill{padding:5px 13px;border-radius:16px;font-size:12.5px;font-weight:600;cursor:pointer;
+    font-family:inherit;color:var(--text);background:rgba(255,255,255,.55);border:1px solid var(--panel-border);width:auto}
+  .rulePill:hover{background:rgba(255,255,255,.9)}
+  .rulePill.active{background:var(--grad-primary);color:#fff;border:none}
+  .menuStepInline{display:flex;align-items:center;gap:7px;margin-left:4px;padding-left:10px;
+    border-left:1px solid var(--panel-border)}
+  .menuStepInline .menuOptLbl{margin-right:0}
   .mapGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px;width:100%;margin-top:24px}
   .mapCard{padding:0;overflow:hidden;border-radius:14px;background:var(--panel);border:1px solid var(--panel-border);
     cursor:pointer;position:relative;text-align:left;box-shadow:0 8px 24px hsl(var(--hue) 46% 35% / .12);
@@ -548,6 +639,7 @@
         <button class="menuStackBtn" id="menuContinue" style="display:none">Continue<small></small></button>
         <button class="menuStackBtn secondary" id="menuSolo">Single Player<small></small></button>
         <button class="menuStackBtn secondary" id="menuCoop">Co-op<small>Split-screen for 2–4, or online with a code</small></button>
+        <button class="menuStackBtn secondary" id="menuPvp">Versus<small>Race a friend for the canvas, split-screen or online</small></button>
         <div class="menuOptCredRow">
           <button class="menuRowBtn" id="menuOptions">⚙ Options</button>
           <button class="menuRowBtn" id="menuCredits">Credits</button>
@@ -578,6 +670,24 @@
       </div>
     </div>
 
+    <div class="menuView" id="menuPvpMode" style="display:none">
+      <button class="menuBack" data-back="home">← Back</button>
+      <h2 class="menuH2">⚔ Versus</h2>
+      <div class="menuBig">
+        <button class="menuChoice" id="menuPvpLocal"><span class="mc-ico">🖥</span><span class="mc-t">Local versus</span><span class="mc-s">2–4 on one screen, sharing one canvas: every region goes to whoever stitched most of it</span></button>
+        <button class="menuChoice" id="menuPvpOnline"><span class="mc-ico">🌐</span><span class="mc-t">Online versus</span><span class="mc-s">Same puzzle, separate canvases, over the internet. You see their pace, never their answers</span></button>
+      </div>
+    </div>
+
+    <div class="menuView" id="menuPvpOnlineChoice" style="display:none">
+      <button class="menuBack" data-back="pvpMode">← Back</button>
+      <h2 class="menuH2">🌐 Online versus</h2>
+      <div class="menuBig">
+        <button class="menuChoice" id="menuPvpHostPick"><span class="mc-ico">📡</span><span class="mc-t">Host a match</span><span class="mc-s">Pick the canvas and the rules, get a code to share</span></button>
+        <button class="menuChoice" id="menuPvpJoinPick"><span class="mc-ico">🔑</span><span class="mc-t">Join a match</span><span class="mc-s">Enter a friend's code and race them on their canvas</span></button>
+      </div>
+    </div>
+
     <div class="menuView" id="menuOnlineChoice" style="display:none">
       <button class="menuBack" data-back="onlineAuto">← Back</button>
       <h2 class="menuH2">🌐 Online co-op</h2>
@@ -600,11 +710,25 @@
         <button class="modePill" data-mode="solo">Single player</button>
         <button class="modePill" data-mode="local">🖥 Local co-op</button>
         <button class="modePill" data-mode="online">🌐 Online co-op</button>
+        <button class="modePill" data-mode="pvpLocal">⚔ Local versus</button>
+        <button class="modePill" data-mode="pvpOnline">⚔ Online versus</button>
         <div class="menuStep" id="menuPlayerStep" style="display:none">
           <span class="menuOptLbl" id="menuStepLbl">Players</span>
           <button id="menuStepMinus">−</button>
           <b id="menuStepVal">2</b>
           <button id="menuStepPlus">+</button>
+        </div>
+        <div class="menuStep pvpRule" id="menuRuleStep" style="display:none">
+          <span class="menuOptLbl">Win by</span>
+          <button class="rulePill" data-rule="full" title="Play the canvas out; whoever holds the most regions wins">Full canvas</button>
+          <button class="rulePill" data-rule="regions" title="First to this many regions">Regions</button>
+          <button class="rulePill" data-rule="timed" title="Most regions when the clock runs out">Timed</button>
+          <span class="menuStepInline" id="menuTargetWrap">
+            <button id="menuTargetMinus">−</button>
+            <b id="menuTargetVal">5</b>
+            <span class="menuOptLbl" id="menuTargetUnit">regions</span>
+            <button id="menuTargetPlus">+</button>
+          </span>
         </div>
         <span class="menuSpacer"></span>
         <select id="mapSort">
@@ -637,7 +761,7 @@
       <div id="loadBarWrap"><div id="loadBar"></div></div>
       <span id="genPct">0%</span>
     </div>
-    <div class="skiphint">scroll to zoom · this canvas is kept, so next time is instant</div>
+    <div class="skiphint">scroll to zoom</div>
   </div>
 </div>
 
@@ -810,6 +934,43 @@
     <div class="btns">
       <button id="btnAdmire">Admire the canvas</button>
       <button class="primary" id="btnPlayAgain">Stitch it again</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pvpLobbyModal">
+  <div class="card" style="max-width:min(520px, calc(100vw - 24px))">
+    <h2>⚔ <span id="pvpLobbyTitle">Match</span></h2>
+    <p id="pvpLobbyBlurb" style="opacity:.85"></p>
+    <div id="pvpLobbyOnline" style="display:none;text-align:left">
+      <label id="pvpLoopWrap" style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin:6px 0 10px">
+        <input type="checkbox" id="pvpLoopback"> Test in tabs of this browser (no internet)
+      </label>
+      <div id="pvpLobbyRoom" style="display:none">
+        <p style="margin:10px 0 4px"><b>Your code</b>, send it to whoever you're racing</p>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="pvpLobbyCode" readonly style="flex:1;font-family:ui-monospace,monospace">
+          <button id="pvpCopyCode">📋</button>
+        </div>
+        <p style="margin:12px 0 6px"><b>Players</b></p>
+        <div id="pvpLobbySeats"></div>
+      </div>
+    </div>
+    <p id="pvpLobbyWarn" class="pvpWarn" style="display:none"></p>
+    <div class="btns" style="margin-top:14px">
+      <button id="pvpLobbyCancel">Cancel</button>
+      <button class="primary" id="pvpLobbyStart">Start the match</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pvpResultModal">
+  <div class="card" style="max-width:min(520px, calc(100vw - 24px))">
+    <h2 id="pvpResultTitle">Match over</h2>
+    <p id="pvpResultRule" style="opacity:.75;margin-top:-4px"></p>
+    <div id="pvpStandings"></div>
+    <div class="btns" style="margin-top:16px">
+      <button class="primary" id="pvpResultClose">Back to my canvas</button>
     </div>
   </div>
 </div>
@@ -1086,6 +1247,15 @@
 <div id="version"></div>
 <div id="toast"></div>
 <!-- co-op: pane-confined cards (local split-screen) + corner notices (online) -->
+<div id="pvpBar" style="display:none"></div>
+<div id="pvpPanel" style="display:none">
+  <div class="pvpPanelHead"><b>Opponents</b><button id="pvpPanelToggle" title="Collapse">▾</button></div>
+  <div id="pvpPanelBody">
+    <div id="pvpOppRows"></div>
+    <canvas id="pvpMini" width="10" height="10"></canvas>
+    <p class="pvpMiniCap" id="pvpMiniCap"></p>
+  </div>
+</div>
 <div id="paneCards"></div>
 <div id="coopNotes"></div>
 
@@ -1140,7 +1310,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.31.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.33.0';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -1151,8 +1321,15 @@ const APP_VERSION = '0.31.0';   // shown bottom-right; keep in sync with CHANGEL
 // v6, which carries the per-patch tiers that keep them in step.
 // 5 = share format v7, which carries the board's SEED: a canvas can now be
 // rewoven at a custom seed, and a peer who rebuilt at the canonical one would
-// read every mark inside it as a mistake.)
-const BOARD_COMPAT = 5;
+// read every mark inside it as a mistake.
+// 6 = versus: seven new pvp-* message types, and a versus session deliberately
+// does NOT sync moves (each player owns an independent board), so an older peer
+// would sit waiting for stitches that never come.
+// 7 = peer identity moved from the sender-supplied `pid` to the connection a
+// frame arrived on, and the host now stamps `src` on every frame it relays. An
+// older host does not stamp, so a 7 guest would read its relayed frames as the
+// host's own — exactly the confusion the stamp exists to prevent.)
+const BOARD_COMPAT = 7;
 
 // Does THIS build produce the same boards as the build that made the shipped
 // payload? Nothing to do with talking to other players — it stamps the baked
@@ -1205,9 +1382,23 @@ function isCustomSeed(id){ return seedFor(id) !== mapDef(id).seed; }
 // fallback when a bake is missing or stale, and they must stay seed-stable too,
 // or a rewoven canvas would silently land every quote on the wrong region.
 function layoutSeed(id){ return mapDef(id).seed; }
-function setCustomSeed(id, seed){
+// `adopted` = this weave arrived from a peer rather than from the player choosing
+// it. The in-memory write always happens — seedFor() is what generation reads,
+// and stateKey() derives from it — but an adopted weave must NOT be recorded as
+// this player's own. If it were, every per-map save key would pick up the peer's
+// -s<seed> suffix and the player's own progress on that canvas would read as
+// empty until they happened to reweave back. A versus match is adopted by the
+// same argument, hence the PVP.active case.
+function setCustomSeed(id, seed, adopted){
   if (seed === null || seed === undefined || seed === mapDef(id).seed) delete customSeeds[id];
   else customSeeds[id] = seed >>> 0;
+  if (PVP.active || adopted) return;
+  persistSeeds();
+}
+// Commit the in-memory weave map to disk. Split out because an adopted weave is
+// held in memory only until the player deliberately claims the board as theirs
+// (saveCoopToLocal), which is the one moment it has to become real.
+function persistSeeds(){
   try { localStorage.setItem(SEED_KEY, JSON.stringify(customSeeds)); } catch (e) {}
 }
 function randomSeed(){ return (Math.floor(Math.random() * 0xFFFFFFFE) + 1) >>> 0; }
@@ -1755,6 +1946,42 @@ let gameWon = false, generated = false;
 // pause when the tab is hidden/closed, so closed/background time is never counted.
 let timerBase = 0;
 let timerStart = -1;
+
+// ============================================================
+// VERSUS (PVP) — competitive match state
+// ============================================================
+// Two shapes, chosen to fit each transport's information model:
+//
+//   local  — TERRITORY on ONE shared board. Every seat stitches the same canvas
+//            and each region is CLAIMED by whoever placed the most correct tiles
+//            in it. On a shared screen you cannot stop someone reading the other
+//            half, so we make that a non-issue: it is the same canvas by design.
+//   online — RACE on SEPARATE boards. Every client already builds its own
+//            identical board (map+seed+difficulty+picTier ⇒ identical bytes), so
+//            we simply stop syncing moves and exchange progress summaries instead.
+//            An opponent is only ever shown lossy data — never a solution bit.
+//
+// A match NEVER persists: `backup` holds an exportCode() of the pre-match board
+// and every save path bails while `active`, so a versus session cannot clobber
+// the player's solo progress on that canvas.
+const PVP = {
+  active: false,
+  mode: null,          // 'local' | 'online'
+  matchId: 0,          // host-minted; stamped on every frame so a rematch drops stale ones
+  rule: 'full',        // 'full' | 'regions' | 'timed'
+  target: 5,           // 'regions': regions to win. 'timed': match seconds. unused for 'full'.
+  phase: 'off',        // 'off' | 'lobby' | 'countdown' | 'live' | 'over'
+  startAt: 0,          // performance.now() when the match went live
+  endsAt: 0,           // performance.now() deadline for 'timed', else 0
+  claim: null,         // Int16Array(REG_COUNT): index into PVP.seats, -1 = unclaimed
+  seats: [],           // ordered owner tokens in play ('L0','L1',… locally; 'me'+pids online)
+  scores: {},          // ownerToken -> { regions, tiles }
+  opp: {},             // online only: pid -> { pct, regions, mask, at }
+  ready: {},           // online lobby: ownerToken -> true once that peer's board is built
+  backup: null,        // exportCode() of the board to restore on teardown
+  result: null,        // { winner, scores } once decided (online: only ever from the host)
+};
+function pvpLive(){ return PVP.active && PVP.phase === 'live'; }
 
 let resizeTimer = null;
 function resize(){
@@ -2905,6 +3132,7 @@ function rebuildForMap(id, done){
 // dropdown handler: load a map and replay its own saved progress
 function loadMap(id){
   if (id === currentMap || !MAPS.some(m => m.id === id) || solving || !generated) return;
+  if (PVP.active) { toast('Finish or leave the match before switching canvas.', true); return; }
   timerPause();   // bank the outgoing map's time before we switch away
   rebuildForMap(id, afterBoardSwap);
 }
@@ -2940,6 +3168,7 @@ function afterBoardSwap(){
 function reweaveCanvas(seed){
   if (!generated || solving || GEN.active) { toast('One moment, the canvas is still busy.', true); return false; }
   if (online) { toast('Leave the online session before reweaving — everyone shares one board.', true); return false; }
+  if (PVP.active) { toast('You cannot reweave the canvas during a match.', true); return false; }
   timerPause();                     // bank the outgoing weave's time under ITS key
   setCustomSeed(currentMap, seed);  // must land before rebuildForMap: seedFor() drives generation
   // a different weave is a fresh playthrough, so re-arm this canvas's proverbs.
@@ -3071,6 +3300,9 @@ function regenCluesFresh(token, done0){
 
 function setDifficulty(d){
   if (!generated || solving || d === difficulty || !DIFF[d]) return false;
+  // Everyone in a match was dealt the same tier; re-thinning the clues for one
+  // player only would hand them a different puzzle mid-race.
+  if (PVP.active) { toast('The difficulty is fixed for the length of a match.', true); return false; }
   difficulty = d;
   try { localStorage.setItem(DIFF_KEY, d); } catch (e) {}
   updateDiffSel();
@@ -3302,7 +3534,7 @@ function finishSetup(){
 let loopStarted = false;
 function startLoop(){ if (loopStarted) return; loopStarted = true; requestAnimationFrame(loop); }
 
-const GEN = { active:false, t0:0, clueReadyAt:-1, done:null, kind:'load', tl:null, progress:0, cached:false, _pct:-1, _hdr:'' };
+const GEN = { active:false, t0:0, clueReadyAt:-1, done:null, kind:'load', tl:null, progress:0, cached:false, artificial:false, _pct:-1, _hdr:'' };
 let genRankX = null, genRankY = null;
 // base timeline (ms). The INITIAL phases (bloom + shimmer ramp) are scaled up
 // per-run by board size — see beginGen — so heavier maps (which have more
@@ -3313,6 +3545,18 @@ const GTL_BASE = { bloomWin:850, regDur:340, shimDelay:110, shimIn:300, shimHold
 // so it collapses to a flicker here — but never to 0, since drawGen divides by
 // shimIn/regDur/settle. Deliberately NOT scaled by board size.
 const GTL_CACHED = { bloomWin:320, regDur:120, shimDelay:0, shimIn:1, shimHold:0, thinWin:260, settle:120, hold:80 };
+// Opening a canvas whose clues are already baked/cached has nothing left to hide
+// behind GTL_CACHED's ~0.9s beat — the board just appears, which reads as
+// "nothing happened" rather than as a fast load. So a fresh 'load'/'map' open
+// deliberately re-plays GTL_BASE's own shape (the show players already like),
+// uniformly time-compressed to a short, size-scaled target instead of GTL_BASE's
+// natural ~3.4s–5.6s: GEN_ARTIFICIAL_MIN_MS for the smallest map, …MAX_MS for the
+// largest (same sc used elsewhere), interpolated for the rest. A difficulty
+// switch (kind:'diff') is excluded on purpose — it's a frequent, already-quick
+// in-game action, not a "canvas opening" moment, and keeps GTL_CACHED's short beat.
+const GEN_ARTIFICIAL_MIN_MS = 3000, GEN_ARTIFICIAL_MAX_MS = 4000;
+const GTL_BASE_TOTAL = GTL_BASE.bloomWin + GTL_BASE.regDur + GTL_BASE.shimDelay + GTL_BASE.shimIn
+  + GTL_BASE.shimHold + GTL_BASE.thinWin + GTL_BASE.settle + GTL_BASE.hold;
 const genClamp = v => v < 0 ? 0 : v > 1 ? 1 : v;
 const genEase  = v => { v = genClamp(v); return v * v * (3 - 2 * v); };
 // a stable per-cell pseudo-random digit that reshuffles ~every 85ms
@@ -3333,7 +3577,9 @@ function genPrep(){
 // time to hide behind the show — see GTL_CACHED.
 function beginGen(kind, done, cached){
   GEN.active = true; GEN.clueReadyAt = -1; GEN.done = done; GEN.kind = kind;
-  GEN.cached = !!cached; GEN.progress = cached ? 1 : 0;
+  GEN.cached = !!cached;
+  GEN.artificial = !!cached && kind !== 'diff';
+  GEN.progress = (cached && !GEN.artificial) ? 1 : 0;   // artificial run ramps its own fake progress instead (see drawGen)
   GEN._pct = -1; GEN._hdr = '';   // force the header to repaint on the first frame
   genPrep();
   if (kind !== 'diff') fitView();   // a difficulty switch keeps the player's camera (same board)
@@ -3344,10 +3590,18 @@ function beginGen(kind, done, cached){
   // ~2.5×). The thinning/settle phases stay at base — they're gated on the
   // real clue data, which arrives when it arrives.
   const sc = Math.min(2.5, Math.max(1, (GW * GH) / 7680));   // castle (7,680 cells) = 1× baseline
-  GEN.tl = cached ? Object.assign({}, GTL_CACHED)   // no sc scaling: a cached Inferno is no slower than a cached Castle
-    : { bloomWin: GTL_BASE.bloomWin * sc, regDur: GTL_BASE.regDur * sc, shimDelay: GTL_BASE.shimDelay,
-        shimIn: GTL_BASE.shimIn * sc, shimHold: GTL_BASE.shimHold, thinWin: GTL_BASE.thinWin,
-        settle: GTL_BASE.settle, hold: GTL_BASE.hold };
+  if (GEN.artificial) {
+    const target = GEN_ARTIFICIAL_MIN_MS + (GEN_ARTIFICIAL_MAX_MS - GEN_ARTIFICIAL_MIN_MS) * (sc - 1) / 1.5;
+    const k = target / GTL_BASE_TOTAL;
+    GEN.tl = { bloomWin: GTL_BASE.bloomWin * k, regDur: GTL_BASE.regDur * k, shimDelay: GTL_BASE.shimDelay * k,
+        shimIn: GTL_BASE.shimIn * k, shimHold: GTL_BASE.shimHold * k, thinWin: GTL_BASE.thinWin * k,
+        settle: GTL_BASE.settle * k, hold: GTL_BASE.hold * k };
+  } else {
+    GEN.tl = cached ? Object.assign({}, GTL_CACHED)   // diff switch: no sc scaling, a cached Inferno is no slower than a cached Castle
+      : { bloomWin: GTL_BASE.bloomWin * sc, regDur: GTL_BASE.regDur * sc, shimDelay: GTL_BASE.shimDelay,
+          shimIn: GTL_BASE.shimIn * sc, shimHold: GTL_BASE.shimHold, thinWin: GTL_BASE.thinWin,
+          settle: GTL_BASE.settle, hold: GTL_BASE.hold };
+  }
   GEN.t0 = now - (skipBloom ? (GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay) : 0);
   const loader = document.getElementById('loader');
   if (loader){
@@ -3433,10 +3687,19 @@ function drawGen(now){
   }
   // ---- phase caption ----
   // ---- header (DOM): phase + live % + bar, in the readable top card ----
-  const phase = GEN.cached ? 'Restoring your canvas'
+  // a diff switch's cache hit stays on the short, un-narrated GTL_CACHED beat;
+  // everything else (including an artificial-elongated cache hit) narrates
+  // normally, since it now has time to.
+  const phase = (GEN.cached && !GEN.artificial) ? 'Restoring your canvas'
     : (GEN.kind !== 'diff' && rel < GEN.tl.bloomWin + GEN.tl.regDur) ? 'Growing the territories'
     : (rel < thinBegin ? 'Counting every square' : 'Thinning to the real clues');
-  genUpdateHeader(phase, Math.round(genClamp(GEN.progress) * 100));
+  // an artificial run's real GEN.progress jumps to 1 as soon as the (already-known)
+  // clue set resolves, which would snap the bar to 100% on frame one — so it shows
+  // fake, time-based progress across its own stretched timeline instead.
+  const pct = GEN.artificial
+    ? genClamp(rel / (GEN.tl.bloomWin + GEN.tl.regDur + GEN.tl.shimDelay + GEN.tl.shimIn + GEN.tl.shimHold + GEN.tl.thinWin + GEN.tl.settle + GEN.tl.hold)) * 100
+    : genClamp(GEN.progress) * 100;
+  genUpdateHeader(phase, Math.round(pct));
 }
 // phase text (from drawGen's own generation-progress reasoning) → which of the
 // three trail items lights up. A cache-hit run never leaves 'territories' — its
@@ -3814,6 +4077,9 @@ let lastCell = -1;          // last board/plot cell the player acted on
 // the token stored in cellOwner[] / zone.owner[].
 let coopActor = null;
 let remoteOwner = null;
+// who authored the most recent edit of any kind (tile or sudoku digit). Versus
+// uses it to break a tied region claim in favour of whoever laid the last piece.
+let lastEditOwner = null;
 function ownerForEdit(){
   if (applyingRemote) return remoteOwner || 'peer';
   if (coop) return 'L' + ((coopActor || players[0]).id);
@@ -3822,11 +4088,15 @@ function ownerForEdit(){
 
 function setCell(i, s){
   if (regionDone[regionOf[i]] || gameWon || locked[i] || zoneOf[i] >= 0) return;
-  if (timerStart < 0 && !solving) timerStart = Date.now();   // start the session clock on the first genuine user stitch
+  if (PVP.active && PVP.phase !== 'live') return;   // no stitching before the go, or after the whistle
+  // start the session clock on the first genuine user stitch. A versus match runs
+  // its own clock and never persists, so it must not inflate this canvas's play time.
+  if (timerStart < 0 && !solving && !PVP.active) timerStart = Date.now();
   lastTouchedRegion = regionOf[i];
   lastCell = i;
   state[i] = s;
   cellOwner[i] = (s === 0) ? null : ownerForEdit();
+  if (s !== 0) lastEditOwner = cellOwner[i];
   if (s === 0) wrong.delete(i);
   else if ((s === 1) !== (sol[i] === 1)) wrong.add(i);
   else wrong.delete(i);
@@ -3858,6 +4128,7 @@ function checkRegion(r, silent){
   for (const i of cells) wrong.delete(i);
   regionDone[r] = true;
   regionDoneAt[r] = performance.now();
+  if (!silent) claimRegion(r);       // versus: award it before any UI fires
   if (!silent) {
     if (!solving) {
       const pp = picrossByRegion.get(r);
@@ -3882,6 +4153,7 @@ function checkZone(zone, silent){
   regionDone[zone.region] = true;
   regionDoneAt[zone.region] = performance.now();
   for (const pl of players) if (pl.selZ === zone.idx) { pl.selZ = -1; pl.selP = -1; }
+  if (!silent) claimRegion(zone.region);   // versus: award it before any UI fires
   if (!silent) {
     if (!solving) toast(`${zone.name} is solved, its piece joins the canvas.`, true);
     maybeShowQuote();    // region+attached plots done -> quote (also during auto-solve)
@@ -3895,6 +4167,9 @@ function checkZone(zone, silent){
 function checkWin(){
   if (regionDone.every(Boolean) && !gameWon) {
     gameWon = true;
+    // versus: the match rule decides the ending, not the solo "you finished it"
+    // modal. gameWon still latches, so setCell stops accepting stitches.
+    if (PVP.active) { pvpCheckEnd(); return; }
     scheduleSave();
     setTimeout(() => {
       document.getElementById('winImg').src = mapDef().src;
@@ -3941,7 +4216,9 @@ const MAP_QUOTES = {
 let quotesShown = {};
 try { quotesShown = JSON.parse(localStorage.getItem('proverbs2-quotes') || '{}') || {}; } catch (e) {}
 function shownSet(){ return quotesShown[currentMap] || (quotesShown[currentMap] = []); }
-function saveQuotes(){ try { localStorage.setItem('proverbs2-quotes', JSON.stringify(quotesShown)); } catch (e) {} }
+// A versus match re-arms this map's quotes in memory so regions still speak, but
+// must never burn them from the player's real record.
+function saveQuotes(){ if (PVP.active) return; try { localStorage.setItem('proverbs2-quotes', JSON.stringify(quotesShown)); } catch (e) {} }
 const quoteQueue = [];
 
 // a "home region" is fully done once its own tiles and every plot/patch
@@ -3980,6 +4257,10 @@ function regionContributors(r){
 // contributors get the modal; teammates get a small "…finished a region" notice
 // with a button to read it themselves.
 function dispatchQuote(r, text){
+  // Versus: a modal over the board is a real time penalty in a race, and in
+  // territory play it would cover the very region someone is contesting. The
+  // proverb still lands, as a toast you can read without stopping.
+  if (PVP.active) { toast(text); return; }
   if (coop) {
     const owners = regionContributors(r);
     let any = false;
@@ -3995,6 +4276,71 @@ function dispatchQuote(r, text){
   quoteQueue.push(text); if (!charModalOpen()) showNextQuote();   // solo
 }
 function charModalOpen(){ return document.getElementById('charModal').classList.contains('show'); }
+
+// ---- versus scoring ----
+// Every claimable unit is a region id: pixel regions, sudoku zones and picross
+// patches all have one, so the whole scoreboard is "who owns which region id".
+// A sudoku region scores off zone.owner[]/zone.entries[]; everything else scores
+// off cellOwner[]/state[] — in both cases counting only tiles that are CORRECT,
+// so sabotage earns nothing.
+function zoneForRegion(r){ for (const z of ZONES) if (z.region === r) return z; return null; }
+function regionOwnerTally(r){
+  const tally = new Map();
+  const bump = o => { if (o != null) tally.set(o, (tally.get(o) || 0) + 1); };
+  const z = zoneForRegion(r);
+  if (z) {
+    if (z.owner) for (let p = 0; p < z.n * z.n; p++) if (z.entries[p] === z.solution[p]) bump(z.owner[p]);
+  } else {
+    const cells = regionCells[r];
+    if (cells) for (const i of cells) if (state[i] !== 0 && (state[i] === 1) === (sol[i] === 1)) bump(cellOwner[i]);
+  }
+  return tally;
+}
+// award a just-completed region. Most correct tiles takes it; a tie goes to
+// whoever laid the final piece, so a contested region can be stolen on the last
+// stitch. Unattributed regions (auto-solve, imported marks) stay unclaimed.
+function claimRegion(r){
+  if (!PVP.active || !PVP.claim || r < 0 || r >= PVP.claim.length) return;
+  if (PVP.claim[r] >= 0) return;
+  const tally = regionOwnerTally(r);
+  let best = null, bestN = 0, tied = 0;
+  for (const [o, n] of tally) if (n > bestN) { best = o; bestN = n; }
+  for (const n of tally.values()) if (n === bestN) tied++;
+  if (tied > 1 && lastEditOwner != null && tally.get(lastEditOwner) === bestN) best = lastEditOwner;
+  PVP.claim[r] = (best == null) ? -1 : PVP.seats.indexOf(best);
+  if (PVP.claim[r] >= 0) recomputeScores();
+  pvpCheckEnd();      // even an unclaimed region can be the one that finishes the canvas
+  needsDraw = true;
+}
+// correct tiles authored by one owner token, board + sudoku digits. O(N); called
+// on a claim and on the scoreboard's 2Hz refresh, never per stitch.
+function ownerCorrectCount(owner){
+  let c = 0;
+  for (let i = 0; i < N; i++) {
+    if (zoneOf[i] >= 0) continue;
+    if (cellOwner[i] === owner && state[i] !== 0 && (state[i] === 1) === (sol[i] === 1)) c++;
+  }
+  for (const z of ZONES) if (z.owner)
+    for (let p = 0; p < z.n * z.n; p++) if (z.owner[p] === owner && z.entries[p] === z.solution[p]) c++;
+  return c;
+}
+function recomputeScores(){
+  const s = {};
+  for (const o of PVP.seats) s[o] = { regions: 0, tiles: 0 };
+  if (PVP.claim) for (let r = 0; r < PVP.claim.length; r++) {
+    const o = PVP.seats[PVP.claim[r]];
+    if (o != null && s[o]) s[o].regions++;
+  }
+  for (const o of PVP.seats) s[o].tiles = ownerCorrectCount(o);
+  PVP.scores = s;
+}
+// rank seats: regions first, correct tiles break the tie
+function pvpRanking(){
+  return PVP.seats.slice().sort((a, b) => {
+    const A = PVP.scores[a] || { regions: 0, tiles: 0 }, B = PVP.scores[b] || { regions: 0, tiles: 0 };
+    return (B.regions - A.regions) || (B.tiles - A.tiles);
+  });
+}
 
 // ============================================================
 //  CO-OP AUDIENCE UI — pane cards (local split-screen) + notices (online)
@@ -4237,9 +4583,12 @@ function updateUndoBtn(){
   if (!b) return;
   b.disabled = coopMode() ? !((players[0].editStack || []).length) : undoStack.length === 0;
 }
-function undo(){
+function undo(pl){
   if (solving || !generated) return;
-  if (coopMode()) { undoOwn(players[0]); return; }   // co-op: each player undoes only their own contributions
+  // co-op/versus: each player undoes only their own contributions. The seat matters
+  // — without it seats 2-4 could only ever undo P1's work, which in a versus match
+  // is both useless to them and destructive to a rival.
+  if (coopMode()) { undoOwn(pl || mousePlayer()); return; }
   if (!undoStack.length) { toast('Nothing to undo.', true); return; }
   const snap = undoStack.pop();
   state.set(snap.state);
@@ -4328,7 +4677,7 @@ function timerPause(){ if (timerStart >= 0) { timerBase = timerTotal(); timerSta
 // persist the current map's total. Skipped before a board exists (else we'd zero a
 // saved value from the menu) and for online joiners (who don't own the save).
 function persistTimer(){
-  if (!generated || (net && onlineRole === 'join')) return;
+  if (!generated || (net && onlineRole === 'join') || PVP.active) return;
   try { localStorage.setItem(timerKey(), String(timerTotal())); } catch (e) {}
 }
 let timerShown = '';
@@ -4356,6 +4705,7 @@ function doneMaskStr(){
 // switch (state[] can still hold the old map's paint) or before a board exists.
 function saveNow(){
   if (net && onlineRole === 'join') return;
+  if (PVP.active) return;    // a versus match is scratch work — never let it touch the solo save
   if (!generated || GEN.active) return;
   try {
     localStorage.setItem(stateKey(), Array.from(state.subarray(0, N)).join(''));
@@ -4374,6 +4724,7 @@ function saveNow(){
 // creates keys for a map that has no save, so an untouched map stays untouched.
 function persistMenuSummary(){
   if (net && onlineRole === 'join') return;
+  if (PVP.active) return;
   try {
     if (localStorage.getItem(stateKey()) === null) return;
     localStorage.setItem(progressKey(), String(boardPercent()));
@@ -4385,6 +4736,7 @@ function scheduleSave(){
   // the joiner's). The joiner never writes localStorage, so its solo progress for
   // this map is left untouched and restored on disconnect.
   if (net && onlineRole === 'join') return;
+  if (PVP.active) return;   // see saveNow
   if (GEN.active) return;   // never persist mid-switch: state[] can still be the old map's paint
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, 400);   // debounced; saveNow re-checks the guards when it fires
@@ -4414,9 +4766,13 @@ function loadSave(){
     timerShown = '';   // force a repaint to the resumed value
   } catch (e) {}
 }
-function resetGame(){
+// wipe the board back to blank IN MEMORY ONLY — no localStorage is touched. Both
+// resetGame (which then clears the keys) and a versus match start (which must
+// leave the player's saved canvas alone) run through here.
+function clearBoardState(){
   solveQueue.length = 0; solving = false;
   state.fill(0); wrong.clear(); cellOwner.fill(null);
+  lastEditOwner = null;
   for (const z of ZONES) { z.entries = z.puzzle.slice(); z.owner = null; }
   resetSelections();
   applyGivens();
@@ -4427,10 +4783,413 @@ function resetGame(){
   quotesShown[currentMap] = []; saveQuotes(); quoteQueue.length = 0;   // re-arm this map's quotes
   timerBase = 0; timerStart = -1; timerShown = '';                     // and reset the clock
   clearTimeout(saveTimer);   // drop any debounced save still in flight, or it lands right after and re-creates the keys
+}
+function resetGame(){
+  // The one function that deletes save keys outright. During a match the board on
+  // screen is scratch work laid over a canvas whose real save we are holding in
+  // PVP.restore — wiping the keys here would destroy progress the player never
+  // agreed to lose.
+  if (PVP.active) { toast('Leave the match before clearing this canvas.', true); return; }
+  clearBoardState();
   // clear every per-map key, including the menu's summaries (%, unlocked regions) —
   // otherwise a reset map keeps showing its old progress on the map grid
   try { localStorage.removeItem(stateKey()); localStorage.removeItem(zonesKey()); localStorage.removeItem(timerKey()); localStorage.removeItem(picKey()); localStorage.removeItem(progressKey()); localStorage.removeItem(doneKey()); } catch (e) {}
   updateHUD(); fitView(); needsDraw = true;
+}
+
+// ============================================================
+//  VERSUS — match lifecycle
+// ============================================================
+// A match is scratch work laid over whatever canvas the player already has. On
+// start we bank an exportCode() of the live board (plus the two things a code
+// does not carry: banked play-time and which quotes this map has already shown),
+// blank the canvas in memory, and set every save path to bail. On teardown we
+// replay the code back. Net effect: playing versus on a canvas leaves that
+// canvas's localStorage byte-for-byte as it was.
+
+// the owner tokens competing, in a stable display order
+function pvpSeatTokens(){
+  if (PVP.mode === 'local') return players.map(p => 'L' + p.id);
+  return ['me', ...peerIds()];
+}
+function pvpLabel(tok){
+  if (tok === 'me') return 'You';
+  if (typeof tok === 'string' && tok[0] === 'L') return 'P' + ((+tok.slice(1) || 0) + 1);
+  return peerLabel(tok);
+}
+function pvpColor(tok){
+  const k = PVP.seats.indexOf(tok);
+  return PLAYER_COLOR[(k < 0 ? 0 : k) % PLAYER_COLOR.length];
+}
+function pvpRegionsTotal(){ return REG_COUNT; }
+
+function pvpBegin(cfg){
+  if (PVP.active) return;
+  PVP.mode    = cfg.mode;
+  PVP.matchId = cfg.matchId || ((Date.now() ^ (Math.random() * 0xffffff)) >>> 0);
+  PVP.rule    = cfg.rule || 'full';
+  PVP.target  = Math.max(1, cfg.target | 0);
+  // bank everything the match is about to overwrite, BEFORE anything is cleared
+  PVP.restore = {
+    map: currentMap,
+    code: exportCode(),
+    timerBase, timerStart,
+    quotes: (quotesShown[currentMap] || []).slice(),
+  };
+  PVP.active = true;
+  PVP.phase = 'live';
+  PVP.claim = new Int16Array(REG_COUNT).fill(-1);
+  PVP.seats = pvpSeatTokens();
+  PVP.scores = {}; PVP.opp = {}; PVP.result = null;
+  clearBoardState();                 // in-memory only — the saved canvas is untouched
+  PVP.startAt = performance.now();
+  PVP.endsAt  = PVP.rule === 'timed' ? PVP.startAt + PVP.target * 1000 : 0;
+  recomputeScores();
+  document.body.classList.add('versus');
+  buildPvpBar();
+  updateHUD();
+  needsDraw = true;
+}
+
+// end the match and show the scoreboard. `winner` may be null (a genuine draw).
+function pvpFinish(winner, scores){
+  if (!PVP.active || PVP.phase === 'over') return;
+  if (!scores) { recomputeScores(); scores = PVP.scores; }
+  else PVP.scores = scores;
+  PVP.phase = 'over';
+  PVP.result = { winner: winner == null ? null : winner, scores };
+  updatePvpBar();
+  showPvpResult();
+  needsDraw = true;
+}
+
+// put the player's own canvas back exactly as they left it
+function pvpTeardown(){
+  if (!PVP.active) return;
+  const r = PVP.restore;
+  PVP.active = false;
+  PVP.phase = 'off';
+  PVP.mode = null;
+  PVP.claim = null; PVP.seats = []; PVP.scores = {}; PVP.opp = {}; PVP.ready = {};
+  PVP.result = null; PVP.restore = null;
+  document.body.classList.remove('versus');
+  clearPvpBar();
+  clearPvpMinimap();
+  if (!r) { updateHUD(); return; }
+  quotesShown[r.map] = r.quotes; saveQuotes();
+  // importCode rebuilds first if the match ran on a different canvas or weave,
+  // then replays the banked marks; PVP.active is already false so this persists.
+  importCode(r.code, () => {
+    timerBase = r.timerBase; timerStart = -1; timerShown = '';
+    updateHUD();
+  }, true);
+}
+
+// Has anyone met the rule? Returns the winning token, or null if the match runs on.
+function pvpEvaluate(){
+  if (PVP.rule === 'regions')
+    for (const o of PVP.seats) if (((PVP.scores[o] || {}).regions || 0) >= PVP.target) return o;
+  // whatever the rule, a finished canvas always ends the match — there is nothing
+  // left to contest, so the standing leader takes it
+  if (regionDone.length && regionDone.every(Boolean)) return pvpRanking()[0] || null;
+  return null;
+}
+// Called whenever a region is claimed. Online guests never decide anything: they
+// report and wait for the host's pvp-result (see the versus net section).
+function pvpCheckEnd(){
+  if (!pvpLive()) return;
+  if (PVP.mode === 'online') { pvpOnlineCheckEnd(); return; }
+  const w = pvpEvaluate();
+  if (w !== null || (regionDone.length && regionDone.every(Boolean))) pvpFinish(w);
+}
+
+let pvpScoreNext = 0;
+// driven from loop(): a 2Hz scoreboard refresh (ownerCorrectCount is O(N), far too
+// heavy per stitch) plus the countdown for a timed round.
+function pvpTick(now){
+  if (!PVP.active) return;
+  if (PVP.phase !== 'live') return;
+  if (now >= pvpScoreNext) {
+    pvpScoreNext = now + 500;
+    recomputeScores();
+    updatePvpBar();
+    pvpMaybeSendProgress(now);
+  }
+  if (PVP.rule === 'timed') {
+    updatePvpClock(now);
+    if (now >= PVP.endsAt) {
+      recomputeScores();
+      if (PVP.mode === 'online') pvpOnlineTimeUp();
+      else pvpFinish(pvpRanking()[0] || null);
+    }
+  }
+}
+
+// ============================================================
+//  VERSUS — scoreboard, minimap panel and result screen
+// ============================================================
+// DOM, not canvas: the scoreboard is text that changes twice a second, and
+// draw() repaints only when needsDraw is set — parking text in the canvas would
+// mean re-rasterising it every frame of a drag stroke. The one thing that DOES
+// belong on the canvas is the claimed-region border, drawn in drawViewport.
+
+// one seat's live numbers. Locally everyone shares a board, so only regions and
+// tiles distinguish seats; online, an opponent's row is whatever they last sent.
+function pvpStat(tok){
+  if (PVP.mode === 'online' && tok !== 'me') {
+    const o = PVP.opp[tok] || {};
+    return { regions: o.regions | 0, tiles: o.tiles | 0, pct: o.pct | 0, seen: !!o.at };
+  }
+  const s = PVP.scores[tok] || { regions: 0, tiles: 0 };
+  // boardPercent() is a full O(N) sweep, and locally every seat shares one board
+  // so the number would be identical for all of them — only online rows show it.
+  return { regions: s.regions | 0, tiles: s.tiles | 0, pct: PVP.mode === 'online' ? boardPercent() : 0, seen: true };
+}
+function pvpRuleText(){
+  if (PVP.rule === 'regions') return 'First to ' + PVP.target + ' regions';
+  if (PVP.rule === 'timed')   return 'Most regions in ' + Math.round(PVP.target / 60) + ' min';
+  return 'Whole canvas — most regions wins';
+}
+function buildPvpBar(){
+  const bar = document.getElementById('pvpBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  for (const tok of PVP.seats) {
+    const el = document.createElement('div');
+    el.className = 'pvpSeat' + (tok === 'me' || (PVP.mode === 'local' && tok === 'L0') ? ' mine' : '');
+    el.dataset.seat = tok;
+    el.innerHTML = '<span class="ps-dot"></span><span class="ps-name"></span>'
+                 + '<span class="ps-num"></span><span class="ps-sub"></span>';
+    el.querySelector('.ps-dot').style.background = pvpColor(tok);
+    el.querySelector('.ps-name').textContent = pvpLabel(tok);
+    bar.appendChild(el);
+  }
+  if (PVP.rule === 'timed' || PVP.rule === 'regions') {
+    const c = document.createElement('div');
+    c.id = 'pvpClock';
+    bar.appendChild(c);
+  }
+  bar.style.display = '';
+  updatePvpBar();
+  if (PVP.mode === 'online') buildPvpPanel();
+}
+function updatePvpBar(){
+  const bar = document.getElementById('pvpBar');
+  if (!bar || !PVP.active) return;
+  const lead = pvpRanking()[0];
+  for (const el of bar.querySelectorAll('.pvpSeat')) {
+    const tok = el.dataset.seat, st = pvpStat(tok);
+    el.querySelector('.ps-num').textContent = st.regions + (PVP.rule === 'regions' ? '/' + PVP.target : '');
+    el.querySelector('.ps-sub').textContent = PVP.mode === 'online'
+      ? (st.seen ? st.pct + '%' : '…')
+      : st.tiles + ' tiles';
+    el.classList.toggle('lead', tok === lead && st.regions > 0);
+  }
+  const clock = document.getElementById('pvpClock');
+  if (clock && PVP.rule === 'regions') clock.textContent = 'First to ' + PVP.target;
+  if (PVP.mode === 'online') updatePvpPanel();
+}
+function updatePvpClock(now){
+  const clock = document.getElementById('pvpClock');
+  if (!clock || PVP.rule !== 'timed') return;
+  const left = Math.max(0, PVP.endsAt - now);
+  clock.textContent = '⏱ ' + fmtTime(left);
+  clock.classList.toggle('urgent', left < 30000);
+}
+function clearPvpBar(){
+  const bar = document.getElementById('pvpBar');
+  if (bar) { bar.innerHTML = ''; bar.style.display = 'none'; }
+  const p = document.getElementById('pvpPanel');
+  if (p) p.style.display = 'none';
+}
+
+// ---- online opponent panel + decided-tiles minimap ----
+let pvpMiniSel = null;      // which opponent the minimap is showing
+function buildPvpPanel(){
+  const p = document.getElementById('pvpPanel');
+  if (!p) return;
+  const rows = document.getElementById('pvpOppRows');
+  rows.innerHTML = '';
+  for (const tok of PVP.seats) {
+    if (tok === 'me') continue;
+    const el = document.createElement('div');
+    el.className = 'pvpOpp';
+    el.dataset.seat = tok;
+    el.innerHTML = '<span class="ps-dot"></span><span class="po-name"></span><span class="po-num"></span>';
+    el.querySelector('.ps-dot').style.background = pvpColor(tok);
+    el.querySelector('.po-name').textContent = pvpLabel(tok);
+    el.onclick = () => { pvpMiniSel = tok; updatePvpPanel(); };
+    rows.appendChild(el);
+  }
+  if (!pvpMiniSel) pvpMiniSel = PVP.seats.find(t => t !== 'me') || null;
+  p.style.display = PVP.seats.length > 1 ? '' : 'none';
+  document.getElementById('pvpMiniCap').textContent =
+    'Tiles they have decided. Which colour they chose is never shown.';
+  updatePvpPanel();
+}
+function updatePvpPanel(){
+  const p = document.getElementById('pvpPanel');
+  if (!p || p.style.display === 'none') return;
+  for (const el of p.querySelectorAll('.pvpOpp')) {
+    const tok = el.dataset.seat, st = pvpStat(tok);
+    el.querySelector('.po-num').textContent = st.seen ? (st.pct + '% · ' + st.regions + '/' + pvpRegionsTotal()) : 'connecting…';
+    el.classList.toggle('sel', tok === pvpMiniSel);
+  }
+  pvpRenderMini(pvpMiniSel);
+}
+function clearPvpMinimap(){ pvpMiniSel = null; }
+// Paint the opponent's DECIDED mask over this board's own region partition (which
+// is identical on every client — the partition is keyed by map, not seed). We read
+// regionOf/regionTint/regionDone and the received mask, and deliberately never
+// touch sol[] or cellCol[]: that is what makes the minimap incapable of leaking
+// light-vs-dark, however long you stare at it.
+function pvpRenderMini(tok){
+  const cv = document.getElementById('pvpMini');
+  if (!cv || !tok) return;
+  const o = PVP.opp[tok];
+  const cell = Math.max(1, Math.min(4, Math.round(240 / Math.max(GW, GH))));
+  if (cv.width !== GW * cell || cv.height !== GH * cell) { cv.width = GW * cell; cv.height = GH * cell; }
+  const g = cv.getContext('2d');
+  g.fillStyle = C.boardEdge || '#eee';
+  g.fillRect(0, 0, cv.width, cv.height);
+  const mask = o && o.mask;
+  const col = pvpColor(tok);
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+    const i = y * GW + x, r = regionOf[i];
+    if (r < 0) continue;
+    g.fillStyle = (mask && mask[i]) ? col : (regionTint[r] || '#ddd');
+    g.globalAlpha = (mask && mask[i]) ? 0.85 : 1;
+    g.fillRect(x * cell, y * cell, cell, cell);
+  }
+  g.globalAlpha = 1;
+}
+
+// ---- result screen ----
+function showPvpResult(){
+  const res = PVP.result || { winner: null, scores: {} };
+  document.getElementById('pvpResultRule').textContent = pvpRuleText();
+  const mine = PVP.mode === 'online' ? 'me' : 'L0';
+  const t = document.getElementById('pvpResultTitle');
+  if (res.winner == null) t.textContent = 'A dead heat';
+  else if (res.winner === mine) t.textContent = '🏆 You win';
+  else t.textContent = pvpLabel(res.winner) + ' wins';
+  const wrap = document.getElementById('pvpStandings');
+  wrap.innerHTML = '';
+  const order = PVP.seats.slice().sort((a, b) => {
+    const A = res.scores[a] || pvpStat(a), B = res.scores[b] || pvpStat(b);
+    return ((B.regions | 0) - (A.regions | 0)) || ((B.tiles | 0) - (A.tiles | 0));
+  });
+  for (const tok of order) {
+    const s = res.scores[tok] || pvpStat(tok);
+    const row = document.createElement('div');
+    row.className = 'pvpStandRow' + (tok === res.winner ? ' win' : '');
+    row.innerHTML = '<span class="ps-dot"></span><span class="psr-name"></span>'
+                  + '<span class="psr-sc"></span><span class="psr-sub"></span>';
+    row.querySelector('.ps-dot').style.background = pvpColor(tok);
+    row.querySelector('.psr-name').textContent = pvpLabel(tok);
+    row.querySelector('.psr-sc').textContent = (s.regions | 0) + (((s.regions | 0) === 1) ? ' region' : ' regions');
+    row.querySelector('.psr-sub').textContent = (s.tiles | 0) + ' tiles';
+    wrap.appendChild(row);
+  }
+  document.getElementById('pvpResultModal').classList.add('show');
+}
+
+// ---- match lobby ----
+// One surface for both shapes. Local just confirms the rules and starts. Online
+// is a two-step: open the room (so a code exists), then start once a rival is
+// built and ready — the ready gate matters because a custom weave misses the
+// baked clue set and can take tens of seconds to generate on the guest's machine.
+let pvpLobbyCfg = null, pvpLobbyStage = 'setup';
+function openPvpLobby(cfg){
+  pvpLobbyCfg = cfg;
+  pvpLobbyStage = 'setup';
+  const isLocal = cfg.mode === 'local';
+  document.getElementById('pvpLobbyTitle').textContent = isLocal ? 'Local versus' : 'Online versus';
+  document.getElementById('pvpLobbyBlurb').textContent = isLocal
+    ? 'One canvas for ' + cfg.players + ' players. Every region goes to whoever stitched the most of it — grab the last tile and you can steal one. ' + pvpRuleText() + '.'
+    : 'You and your rivals each get your own copy of this exact canvas. You will see their pace, never their answers. ' + pvpRuleText() + '. '
+      + 'Everyone scores their own board and reports it, so a match runs on the honour system — play it with people you would lend a pen to.';
+  document.getElementById('pvpLobbyOnline').style.display = isLocal ? 'none' : '';
+  document.getElementById('pvpLobbyRoom').style.display = 'none';
+  const warn = document.getElementById('pvpLobbyWarn');
+  if (isCustomSeed(currentMap)) {
+    warn.style.display = '';
+    warn.textContent = 'This canvas is on a custom weave, so it is not one of the boards that ship pre-built. Everyone will have to generate it, which can take a while.';
+  } else warn.style.display = 'none';
+  const start = document.getElementById('pvpLobbyStart');
+  start.textContent = isLocal ? 'Start the match' : 'Open the room';
+  start.disabled = false;
+  if (!isLocal) {
+    // blank the board BEFORE anyone can join: the setup payload is exportCode(),
+    // and it must not carry the host's own progress across the wire
+    pvpBegin({ mode: 'online', rule: cfg.rule, target: cfg.target });
+    PVP.phase = 'lobby';
+    document.getElementById('pvpLoopback').checked = document.getElementById('onlineLoopback').checked;
+  }
+  document.getElementById('pvpLobbyModal').classList.add('show');
+}
+function pvpLobbyRefresh(){
+  const seats = document.getElementById('pvpLobbySeats');
+  if (!seats || pvpLobbyStage !== 'waiting') return;
+  seats.innerHTML = '';
+  const list = ['me', ...peerIds()];
+  for (const tok of list) {
+    const row = document.createElement('div');
+    row.className = 'pvpSeatRow';
+    const ready = tok === 'me' || !!PVP.ready[tok];
+    row.innerHTML = '<span class="ps-dot"></span><span class="psr-name"></span><span class="psr-state"></span>';
+    row.querySelector('.ps-dot').style.background = PLAYER_COLOR[list.indexOf(tok) % PLAYER_COLOR.length];
+    row.querySelector('.psr-name').textContent = tok === 'me' ? 'You (host)' : peerLabel(tok);
+    const st = row.querySelector('.psr-state');
+    st.textContent = ready ? 'ready' : 'building the canvas…';
+    st.classList.toggle('ok', ready);
+    seats.appendChild(row);
+  }
+  const anyReady = peerIds().some(p => PVP.ready[p]);
+  const start = document.getElementById('pvpLobbyStart');
+  start.disabled = !anyReady;
+  start.textContent = anyReady ? 'Start the match' : 'Waiting for a rival…';
+}
+function pvpLobbyAdvance(){
+  const cfg = pvpLobbyCfg;
+  if (!cfg) return;
+  if (cfg.mode === 'local') {
+    document.getElementById('pvpLobbyModal').classList.remove('show');
+    startPvpLocal(cfg.players, cfg.rule, cfg.target);
+    return;
+  }
+  if (pvpLobbyStage === 'setup') {
+    document.getElementById('onlineLoopback').checked = document.getElementById('pvpLoopback').checked;
+    document.getElementById('pvpLoopWrap').style.display = 'none';
+    maxGuests = Math.max(1, Math.min(3, cfg.guests | 0));
+    pvpLobbyStage = 'waiting';
+    document.getElementById('pvpLobbyRoom').style.display = '';
+    document.getElementById('pvpLobbyCode').value = '';
+    const start = document.getElementById('pvpLobbyStart');
+    start.disabled = true; start.textContent = 'Waiting for a rival…';
+    startNet(chosenTransport(), 'host', null,
+      info => { document.getElementById('pvpLobbyCode').value = (info && info.roomId) || ''; setOnlineUI(); pvpLobbyRefresh(); },
+      () => { document.getElementById('pvpLobbyWarn').style.display = ''; document.getElementById('pvpLobbyWarn').textContent = 'Could not open the room. Try again.'; });
+    pvpLobbyRefresh();
+    return;
+  }
+  // waiting → live
+  document.getElementById('pvpLobbyModal').classList.remove('show');
+  PVP.phase = 'live';
+  PVP.startAt = performance.now();
+  PVP.endsAt = PVP.rule === 'timed' ? PVP.startAt + PVP.target * 1000 : 0;
+  pvpSendNext = 0; pvpLastPct = -1; pvpLastRegions = -1;
+  PVP.seats = pvpSeatTokens();
+  recomputeScores();
+  buildPvpBar();
+  netSend('pvp-start', { matchId: PVP.matchId, rule: PVP.rule, target: PVP.target, durationMs: PVP.rule === 'timed' ? PVP.target * 1000 : 0 });
+  toast('Go! ' + pvpRuleText(), true);
+}
+function pvpLobbyAbort(){
+  document.getElementById('pvpLobbyModal').classList.remove('show');
+  if (pvpLobbyStage === 'waiting' && net) { netSend('pvp-cancel', { reason: 'The host cancelled the match.' }); netClose(); setOnlineUI(); }
+  pvpLobbyStage = 'setup'; pvpLobbyCfg = null;
+  if (PVP.active) pvpTeardown();
 }
 
 // ============================================================
@@ -4642,10 +5401,23 @@ function applyImported(data){
 
 // top-level entry: validate, then apply (re-weaving clues first if the code's
 // difficulty differs from the current one — same path setDifficulty uses)
-function importCode(code, onDone, silent){
+// `opts.blank` = adopt this code's BOARD IDENTITY (map, weave, tier, patch tiers)
+// but throw away its progress and start empty. That is what a versus opponent
+// needs: the identical puzzle, none of the sender's answers. Everything
+// downstream already handles an empty payload, so we blank the decoded data here
+// rather than special-casing applyImported.
+// `opts.adopted` = this board arrived from a peer, not from the player pasting a
+// code. The weave is used for generation but never recorded as this player's own
+// (see setCustomSeed) — otherwise joining a friend's session would silently
+// re-file every save key for that canvas under the friend's weave.
+function importCode(code, onDone, silent, opts){
   if (!generated || solving) { toast('One moment, the canvas is still busy.', true); return false; }
   const data = decodeCode(code);
   if (!data) { toast('Hmm, I could not read that code. Check you copied all of it.', true); return false; }
+  if (opts && opts.blank) {
+    data.state.fill(0);
+    data.zones = (data.zones || []).map(e => new Uint8Array(e ? e.length : 0));
+  }
   const finish = () => {
     applyImported(data);
     if (typeof onDone === 'function') onDone();
@@ -4656,7 +5428,9 @@ function importCode(code, onDone, silent){
   const diffChanged = data.diff !== difficulty;
   if (diffChanged) {
     difficulty = data.diff;
-    try { localStorage.setItem(DIFF_KEY, difficulty); } catch (e) {}
+    // adopting an opponent's tier for one match must not rewrite the player's own
+    // default (the in-memory change still applies, so the board builds correctly)
+    if (!PVP.active) { try { localStorage.setItem(DIFF_KEY, difficulty); } catch (e) {} }
     updateDiffSel();
   }
   // Picross patch content is tier-shaped, and the recipient regenerates the
@@ -4675,8 +5449,10 @@ function importCode(code, onDone, silent){
   // change, a different seed means a different sol[], so regenClues alone will
   // not do: it needs the full rebuild. (Pre-v7 codes decode as canonical, so
   // importing one puts a rewoven canvas back on the original weave.)
+  // `opts.adopted` marks a board that came off the wire (a co-op snapshot or a
+  // resync), so the weave is used but never written into this player's seed store.
   const seedChanged = data.seed !== seedFor(data.map);
-  if (seedChanged) setCustomSeed(data.map, data.seed);
+  if (seedChanged) setCustomSeed(data.map, data.seed, !!(opts && opts.adopted));
 
   if (data.map !== currentMap || seedChanged) {
     // different painting (or a different weave of this one): rebuild it at the
@@ -4774,6 +5550,7 @@ function zoneSolveOrder(zone){
 }
 
 function startSolve(regionIds, leaveOne){
+  if (PVP.active) return;   // the auto-solver would simply win the match; the PIN gate unlocks for a whole session, so block it here too
   const list = [];
   for (const r of regionIds) {
     if (regionDone[r]) continue;
@@ -4916,8 +5693,11 @@ const PAD_ACTIONS = [
   { key: 'fit',     label: 'Fit view' },
   { key: 'zoomIn',  label: 'Zoom in (hold)' },
   { key: 'zoomOut', label: 'Zoom out (hold)' },
+  // Seats 2-4 have no keyboard and no HUD button, so without a pad binding they
+  // could never undo their own work — fine in co-op, unfair in a versus match.
+  { key: 'undo',    label: 'Undo my last stitch' },
 ];
-const PAD_DEFAULTS = { light: 0, dark: 1, hint: 2, fit: 3, zoomIn: 5, zoomOut: 4 };
+const PAD_DEFAULTS = { light: 0, dark: 1, hint: 2, fit: 3, zoomIn: 5, zoomOut: 4, undo: 8 };
 const PAD_KEY = 'proverbs2-pad';
 let padMap = Object.assign({}, PAD_DEFAULTS);
 try { const m = JSON.parse(localStorage.getItem(PAD_KEY) || 'null'); if (m) padMap = Object.assign(padMap, m); } catch (e) {}
@@ -5205,6 +5985,7 @@ function pollPad(pl, gp, now){
   if (edge(padMap.dark))  padSecondary(pl);
   if (edge(padMap.hint))  giveHint(pl);
   if (edge(padMap.fit))   fitView(pl);
+  if (edge(padMap.undo))  undo(pl);
 
   pl.padPrev = pressed;
 }
@@ -5237,6 +6018,10 @@ function tryLocalJoin(gps){
       pl.cursor = (GH >> 1) * GW + (GW >> 1);
       players.push(pl);
       for (const q of players) fitView(q);   // the split reflowed — re-fit everyone into their new pane
+      // a late joiner has to appear on the scoreboard. Seat tokens are only ever
+      // APPENDED ('L'+id, ids handed out in order), so the indices already stored
+      // in PVP.claim keep pointing at the same players.
+      if (PVP.active && PVP.mode === 'local') { PVP.seats = pvpSeatTokens(); recomputeScores(); buildPvpBar(); }
       toast('Player ' + players.length + ' joined!', true);
       needsDraw = true;
       if (players.length >= maxPlayers) break;
@@ -5255,6 +6040,17 @@ function startCoop(n){
   setOnlineUI();
   toast('Local co-op, up to ' + maxPlayers + '. Others: press a controller button to join.', true);
   needsDraw = true;
+}
+
+// Local versus rides on co-op: the seats, panes, per-seat undo and 'L'+id owner
+// tokens are all exactly what a territory match needs. PVP only adds the scoring,
+// the gates and the chrome — nothing else has to learn about a third mode.
+function startPvpLocal(n, rule, target){
+  startCoop(n);
+  pvpBegin({ mode: 'local', rule, target });
+  PVP.seats = pvpSeatTokens();     // startCoop may have resized players[]
+  buildPvpBar();
+  toast('Versus: ' + pvpRuleText() + '. Others: press a controller button to join.', true);
 }
 
 function exitCoop(){
@@ -5297,11 +6093,14 @@ function peerCount(){ return peerIds().length; }
 // number peers "Player 2, 3, …" in order of first sighting (this machine's P1 is
 // myself). Assigned lazily so any pid we hear about gets a label.
 let nextPeerNum = 2;
+let peerNums = {};   // pid -> display number. Kept OUT of coopPeers, which is the roster:
+                     // naming a peer must never be what puts it on the roster.
 function peerLabel(pid){
   if (!pid || pid === 'peer' || pid === 'me') return 'A teammate';
-  const p = coopPeers[pid] || (coopPeers[pid] = { cell: -1, view: null, seq: -1 });
-  if (!p.num) p.num = nextPeerNum++;
-  return 'Player ' + p.num;
+  if (!peerNums[pid]) peerNums[pid] = nextPeerNum++;
+  const p = coopPeers[pid];
+  if (p && !p.num) p.num = peerNums[pid];
+  return 'Player ' + peerNums[pid];
 }
 // synthetic, read-only "player" mirroring a remote participant's viewport (watch grid)
 function peerPlayerFor(id, idx){
@@ -5311,11 +6110,35 @@ function peerPlayerFor(id, idx){
 }
 
 function netEnvelope(type, data){ return { v: PROTO_V, app: APP_VERSION, compat: BOARD_COMPAT, pid: myPeerId, seq: netSeq++, type, data }; }
+// WHO REALLY SENT THIS. `msg.pid` is written by the sender and is therefore worth
+// nothing for authorisation — it survives only as a display hint. The transport
+// hands us the connection a frame arrived on, and that is the identity we use:
+//   host  — talks to every guest directly, so the connection IS the sender.
+//   guest — hears everything over its one connection to the host, so the
+//           connection alone cannot tell a host frame from a relayed guest frame.
+//           The host stamps `src` on everything it relays (see PeerNet.wire), so
+//           a stamped frame is by definition NOT the host's own.
+// LoopbackNet is a broadcast bus with no relay, so `from` is already the true
+// sender there and no frame ever carries `src`.
+function netOrigin(msg, from){
+  if (onlineRole === 'host') return from;
+  return (msg && msg.src) || from;
+}
+// A frame carrying a whole board is the only large thing on the wire; anything
+// past this is not a board we would accept anyway, so drop it before decoding
+// rather than allocating for it.
+const NET_MAX_CODE = 262144;
+const NET_MAX_PENDING = 4096;    // buffered peer moves while a joiner imports
+const NET_MAX_PEERS = 8;         // roster ceiling, so a peer list cannot grow without bound
+function netCodeOK(s){ return typeof s === 'string' && s.length > 0 && s.length <= NET_MAX_CODE; }
 function netSend(type, data){ if (net) net.send(netEnvelope(type, data)); }                       // broadcast to all
 function netSendTo(pid, type, data){ if (net && net.sendTo) net.sendTo(pid, netEnvelope(type, data)); }
 // emit a local move to everyone — no-op unless online and not currently replaying
-function netEmit(ev){ if (online && !applyingRemote && net) netSend('move', ev); }
-function netResync(){ if (online && net) netSend('resync', { code: exportCode() }); }
+// Co-op syncs MOVES because everyone shares one board. Versus does the opposite:
+// each client owns an independent board, so a move must never cross the wire —
+// only the lossy progress summaries in the versus net section do.
+function netEmit(ev){ if (online && !applyingRemote && net && !PVP.active) netSend('move', ev); }
+function netResync(){ if (online && net && !PVP.active) netSend('resync', { code: exportCode() }); }
 
 // replay a peer's move locally, WITHOUT re-broadcasting; every field bounds-checked.
 // `pid` is the sender, so its edits are attributed to that peer (drives who, on
@@ -5344,12 +6167,16 @@ function applyRemote(ev, pid){
 
 // ---- protocol message router. The host relays guests' moves/cursors to the
 //      other guests at the transport layer, so this stays a simple broadcast model. ----
-function onNetMessage(msg){
+function onNetMessage(msg, from){
   if (!msg || typeof msg !== 'object') return;
+  const origin = netOrigin(msg, from);     // authenticated; never msg.pid
+  if (!origin) return;
   switch (msg.type) {
     case 'hello':       // host → joiner: compatibility handshake
       if (onlineRole !== 'join') break;
-      hostPid = msg.pid;   // remember the host so we know whose leaving ends the session
+      if (msg.src) break;              // relayed by the host ⇒ another guest sent it
+      if (hostPid && hostPid !== origin) break;   // the host is decided once, at the first hello
+      hostPid = origin;    // remember the host so we know whose leaving ends the session
       if (msg.compat !== BOARD_COMPAT) {   // board/format/protocol compat, not release version
         netSend('hello-ack', { ok: false, reason: 'version' });
         toast('Version mismatch: host is on v' + msg.app + ', you are on v' + APP_VERSION + '. Update to play together.', true);
@@ -5361,44 +6188,280 @@ function onNetMessage(msg){
       break;
     case 'hello-ack':   // joiner → host: send that specific joiner the current board
       if (onlineRole !== 'host' || !msg.data) break;
+      if (!coopPeers[origin]) break;   // only a peer we actually accepted gets a board
       if (!msg.data.ok) { toast('A player could not join (' + (msg.data.reason || '?') + ').', true); break; }
-      netSendTo(msg.pid, 'snapshot', { code: exportCode() });
+      if (PVP.active) {
+        // Versus: hand over the board IDENTITY, not the board. The host's canvas is
+        // already blank at this point (pvpBegin runs before anyone can join), so the
+        // code carries no progress — and the guest imports it with blank:true anyway.
+        netSendTo(origin, 'pvp-setup', { matchId: PVP.matchId, rule: PVP.rule, target: PVP.target, code: exportCode() });
+        PVP.seats = pvpSeatTokens(); recomputeScores(); buildPvpBar(); pvpLobbyRefresh();
+        toast('A rival is joining your match.', true);
+        break;
+      }
+      netSendTo(origin, 'snapshot', { code: exportCode() });
       toast('A player is joining your board.', true);
       break;
+
+    // ---- versus (see the VERSUS NET section below) ----
+    // Every host→guest type repeats the `snapshot` guard. Under PeerNet's star
+    // relay the host rebroadcasts guest frames, so guest→guest traffic exists and
+    // without this check any guest could push a setup or a result at every other
+    // guest. `origin` is the authenticated sender, so the check now means what it
+    // always read as.
+    case 'pvp-setup':
+      if (onlineRole !== 'join' || origin !== hostPid || !msg.data) break;
+      pvpGuestSetup(msg.data);
+      break;
+    case 'pvp-ready':
+      if (onlineRole !== 'host' || !msg.data || !coopPeers[origin]) break;
+      if (msg.data.matchId !== PVP.matchId) break;
+      PVP.ready[origin] = true;
+      pvpLobbyRefresh();
+      break;
+    case 'pvp-start':
+      if (onlineRole !== 'join' || origin !== hostPid || !msg.data) break;
+      pvpGuestStart(msg.data);
+      break;
+    case 'pvp-progress':
+      if (!PVP.active || !msg.data || msg.data.matchId !== PVP.matchId) break;
+      pvpRecvProgress(origin, msg.data);
+      break;
+    case 'pvp-done':
+      if (onlineRole !== 'host' || !msg.data || !coopPeers[origin]) break;
+      if (msg.data.matchId !== PVP.matchId) break;
+      pvpHostDone(origin, msg.data);
+      break;
+    case 'pvp-result':
+      if (onlineRole !== 'join' || origin !== hostPid || !msg.data) break;
+      if (msg.data.matchId !== PVP.matchId) break;
+      pvpFinish(msg.data.winner, msg.data.scores);
+      break;
+    case 'pvp-cancel':
+      if (onlineRole !== 'join' || origin !== hostPid) break;
+      toast((msg.data && typeof msg.data.reason === 'string' && msg.data.reason.slice(0, 160))
+            || 'The host ended the match.', true);
+      pvpTeardown();
+      break;
     case 'snapshot':    // host → joiner: adopt the host's board + progress
-      if (onlineRole !== 'join' || msg.pid !== hostPid) break;   // only the host may push the board
-      if (msg.data && msg.data.code) {
+      if (onlineRole !== 'join' || origin !== hostPid) break;   // only the host may push the board
+      if (PVP.active) break;   // a match runs on independent boards — pvp-setup is the only way in
+      if (msg.data && netCodeOK(msg.data.code)) {
         joinerBackup = joinerBackup || exportCode();   // remember our own solo board
+        // `adopted`: this weave came off the wire, so it must not be written into
+        // OUR seed store — that would re-file this map's save under the host's
+        // weave and hide the player's own progress (see setCustomSeed).
         importCode(msg.data.code, () => {
           online = true;
           pendingRemote.forEach(x => applyRemote(x.ev, x.pid)); pendingRemote = [];   // flush moves that arrived mid-import
           setOnlineUI(); toast('Joined! You’re on the host’s board now.', true); needsDraw = true;
-        });
+        }, false, { adopted: true });
       }
       break;
     case 'move':
-      if (online) applyRemote(msg.data, msg.pid);
-      else if (net) pendingRemote.push({ ev: msg.data, pid: msg.pid });   // buffer until the snapshot import finishes
+      if (PVP.active) break;   // versus boards are independent: no move may cross the wire
+      if (online) applyRemote(msg.data, origin);
+      // buffer until the snapshot import finishes — bounded, so a peer that floods
+      // a half-joined client cannot grow this without limit
+      else if (net && pendingRemote.length < NET_MAX_PENDING) pendingRemote.push({ ev: msg.data, pid: origin });
       break;
     case 'cursor':
-      if (msg.data && msg.pid) {
-        const prev = coopPeers[msg.pid];
-        if (!prev || msg.seq > (prev.seq || -1)) { coopPeers[msg.pid] = { cell: msg.data.cell, view: msg.data.view, seq: msg.seq }; needsDraw = true; }
+      // The host only ever accepts presence from a peer it actually accepted; a
+      // guest's `origin` is already host-attested, so both sides are bounded by
+      // the host's real connections rather than by whatever pid a frame claims.
+      if (!msg.data) break;
+      if (!coopPeers[origin] && (onlineRole === 'host' || peerCount() >= NET_MAX_PEERS)) break;
+      {
+        const prev = coopPeers[origin];
+        if (!prev || msg.seq > (prev.seq || -1)) { coopPeers[origin] = { cell: msg.data.cell, view: msg.data.view, seq: msg.seq, num: prev && prev.num }; needsDraw = true; }
       }
       break;
     case 'resync':      // host → joiner: drift self-heal full snapshot (e.g. after a solo-path undo)
-      if (online && onlineRole === 'join' && msg.pid === hostPid && msg.data && msg.data.code)
-        importCode(msg.data.code, () => { needsDraw = true; });
+      if (PVP.active) break;   // see 'move'
+      if (online && onlineRole === 'join' && origin === hostPid && msg.data && netCodeOK(msg.data.code))
+        importCode(msg.data.code, () => { needsDraw = true; }, false, { adopted: true });
       break;
     case 'bye':
-      handlePeerGone('A player left.', msg.pid);
+      handlePeerGone('A player left.', origin);
       break;
   }
+}
+
+// ============================================================
+//  VERSUS NET — separate boards, lossy summaries, host referee
+// ============================================================
+// Co-op syncs moves because everyone shares a board. Versus is the opposite: the
+// determinism contract (map + seed + difficulty + picross tiers ⇒ identical
+// bytes) means each client can build the SAME puzzle independently, so the only
+// thing that has to cross the wire is how fast the other player is going.
+//
+// What an opponent may learn: your completion %, how many regions you hold, and
+// WHICH tiles you have committed to. What they may never learn: whether you
+// called a tile light or dark. The `done` mask below is keyed on `state[i] !== 0`
+// alone, so it reads identically for light, dark, right and wrong.
+//
+// One honest caveat, worth stating plainly: every client holds sol[] locally —
+// that is what makes independent generation possible at all — so online versus is
+// a trust-based race between friends, not a cheat-proof competition.
+
+// ---- decided-mask codec: bitmask → run-length → base64 ----
+// A raw mask is N bits (7.2 KB at the 320x180 ceiling). Play is spatially
+// clustered, so run-lengths compress it hard early and late; when they don't
+// (a heavily speckled board) we fall back to the packed bits so a frame can
+// never grow beyond the raw size.
+function pvpEncodeMask(){
+  const bits = new Uint8Array(N);
+  for (let i = 0; i < N; i++) bits[i] = state[i] !== 0 ? 1 : 0;
+  const packed = packBits(bits, N);
+  const runs = [];
+  let cur = 0, run = 0;                 // always starts with a run of 0-bits
+  for (let i = 0; i < N; i++) {
+    if (bits[i] === cur) { run++; continue; }
+    runs.push(run); cur ^= 1; run = 1;
+  }
+  runs.push(run);
+  const out = [];
+  for (const r of runs) { let v = r; do { let b = v & 0x7f; v >>>= 7; out.push(v ? (b | 0x80) : b); } while (v); }
+  if (out.length >= packed.length) return { raw: 1, d: bytesToB64(packed) };
+  return { raw: 0, d: bytesToB64(Uint8Array.from(out)) };
+}
+function pvpDecodeMask(frame){
+  if (!frame || !frame.d) return null;
+  const b = b64ToBytes(frame.d);
+  if (!b) return null;
+  if (frame.raw) return unpackBits(b, N);
+  const out = new Uint8Array(N);
+  let i = 0, p = 0, cur = 0;
+  while (p < b.length && i < N) {
+    let v = 0, sh = 0, byte;
+    do { byte = b[p++]; v |= (byte & 0x7f) << sh; sh += 7; } while (byte & 0x80 && p < b.length);
+    const end = Math.min(N, i + v);
+    if (cur) out.fill(1, i, end);
+    i = end; cur ^= 1;
+  }
+  return out;
+}
+
+// ---- progress broadcast ----
+let pvpSendNext = 0, pvpLastPct = -1, pvpLastRegions = -1;
+function pvpMaybeSendProgress(now){
+  if (!PVP.active || PVP.mode !== 'online' || !online || !net) return;
+  if (now < pvpSendNext) return;
+  const mine = PVP.scores['me'] || { regions: 0, tiles: 0 };
+  const pct = boardPercent();
+  if (pct === pvpLastPct && mine.regions === pvpLastRegions && pvpSendNext !== 0) { pvpSendNext = now + 1200; return; }
+  pvpLastPct = pct; pvpLastRegions = mine.regions;
+  pvpSendNext = now + 1200;
+  const m = pvpEncodeMask();
+  netSend('pvp-progress', { matchId: PVP.matchId, pct, regions: mine.regions, tiles: mine.tiles, raw: m.raw, d: m.d });
+}
+function pvpRecvProgress(pid, d){
+  if (!pid) return;
+  PVP.opp[pid] = { pct: d.pct | 0, regions: d.regions | 0, tiles: d.tiles | 0, mask: pvpDecodeMask(d), at: Date.now() };
+  if (PVP.seats.indexOf(pid) < 0) { PVP.seats = pvpSeatTokens(); buildPvpBar(); }
+  updatePvpBar();
+  if (onlineRole === 'host') pvpHostArbitrate();
+}
+
+// ---- the host is the referee ----
+// A guest that believes it has won says so and waits; only the host mints a
+// result. That is the only way to get one consistent answer out of independent
+// boards, and it matches the transport (a star through the host).
+function pvpOnlineCheckEnd(){
+  if (onlineRole === 'host') { pvpHostArbitrate(); return; }
+  const mine = PVP.scores['me'] || { regions: 0, tiles: 0 };
+  const met = (PVP.rule === 'regions' && mine.regions >= PVP.target)
+           || (regionDone.length && regionDone.every(Boolean));
+  if (met) netSend('pvp-done', { matchId: PVP.matchId, regions: mine.regions, tiles: mine.tiles, pct: boardPercent() });
+}
+function pvpHostDone(pid, d){
+  PVP.opp[pid] = Object.assign(PVP.opp[pid] || {}, { regions: d.regions | 0, tiles: d.tiles | 0, pct: d.pct | 0, at: Date.now(), done: true });
+  pvpHostArbitrate();
+}
+// standings from the host's point of view: its own live tally plus whatever each
+// guest last reported
+function pvpStandings(){
+  const s = {};
+  for (const tok of PVP.seats) {
+    const st = pvpStat(tok);
+    s[tok] = { regions: st.regions, tiles: st.tiles, pct: st.pct };
+  }
+  return s;
+}
+function pvpDeclare(winner){
+  if (!PVP.active || PVP.phase === 'over') return;
+  const scores = pvpStandings();
+  netSend('pvp-result', { matchId: PVP.matchId, winner: winner == null ? null : winner, scores });
+  pvpFinish(winner, scores);
+}
+function pvpHostArbitrate(){
+  if (!pvpLive() || onlineRole !== 'host') return;
+  // whoever first satisfies the rule, as observed here, takes it
+  if (PVP.rule === 'regions') {
+    for (const tok of PVP.seats) if (pvpStat(tok).regions >= PVP.target) { pvpDeclare(tok); return; }
+  }
+  const meDone = regionDone.length && regionDone.every(Boolean);
+  for (const tok of PVP.seats) {
+    const done = tok === 'me' ? meDone : !!(PVP.opp[tok] && PVP.opp[tok].done);
+    if (done) { pvpDeclare(PVP.rule === 'full' ? tok : (pvpOnlineRanking()[0] || tok)); return; }
+  }
+}
+// rank every online seat by the same rule the scoreboard shows
+function pvpOnlineRanking(){
+  return PVP.seats.slice().sort((a, b) => {
+    const A = pvpStat(a), B = pvpStat(b);
+    return (B.regions - A.regions) || (B.tiles - A.tiles) || (B.pct - A.pct);
+  });
+}
+function pvpOnlineTimeUp(){
+  if (onlineRole !== 'host') return;   // guests just show 0:00 and wait for the verdict
+  pvpDeclare(pvpOnlineRanking()[0] || null);
+}
+
+// ---- guest side of the handshake ----
+function pvpGuestSetup(d){
+  if (!d.code) return;
+  const peek = decodeCode(d.code);
+  if (!peek) { toast('Could not read the match board.', true); return; }
+  // Mirror menuLaunch's prefetch: clueCacheProbe awaits BAKED.load anyway, so
+  // without this the guest sits on a bare screen for the length of the download.
+  // A custom weave misses the bake by design, so don't ask for it.
+  const pre = (peek.seed === mapDef(peek.map).seed) ? BAKED.load(peek.map) : Promise.resolve(null);
+  pre.catch(() => null).then(() => {
+    pvpBegin({ mode: 'online', matchId: d.matchId, rule: d.rule, target: d.target });
+    // blank:true — take the map, weave, tier and patch tiers, leave the answers
+    importCode(d.code, () => {
+      online = true;
+      PVP.seats = pvpSeatTokens(); recomputeScores(); buildPvpBar();
+      PVP.phase = 'lobby';
+      document.getElementById('onlineModal').classList.remove('show');   // the join panel has done its job
+      setOnlineUI();
+      netSend('pvp-ready', { matchId: PVP.matchId });
+      toast('Ready. Waiting for the host to start the match…', true);
+      needsDraw = true;
+    }, true, { blank: true });
+  });
+}
+function pvpGuestStart(d){
+  if (!PVP.active) return;
+  PVP.rule = d.rule || PVP.rule;
+  PVP.target = d.target || PVP.target;
+  PVP.phase = 'live';
+  PVP.startAt = performance.now();
+  // No absolute timestamp crosses the wire — there is no clock sync here. Each
+  // peer runs its own countdown for display; the HOST's expiry is what ends it.
+  PVP.endsAt = PVP.rule === 'timed' ? PVP.startAt + (d.durationMs || PVP.target * 1000) : 0;
+  pvpSendNext = 0; pvpLastPct = -1; pvpLastRegions = -1;
+  buildPvpBar();
+  toast('Go! ' + pvpRuleText(), true);
 }
 
 // throttled local cursor + viewport broadcast (≈16 Hz, only when it changed)
 function maybeSendPresence(now){
   if (!online || !net) return;
+  // Versus: boards are independent, so a peer's cell index means nothing on your
+  // board — and painting their cursor there would leak where they are working.
+  if (PVP.active) return;
   if (now - lastPresenceAt < 60) return;
   const pl = players[0], v = pl.view;
   const cell = (pl.lastInput === 'pad' && pl.padActive) ? pl.cursor : pl.hoverCell;
@@ -5429,7 +6492,7 @@ function startNet(impl, role, roomId, onReady, onErr){
 function netClose(){
   if (net) { try { net.send(netEnvelope('bye', {})); } catch (e) {} try { net.close(); } catch (e) {} }
   net = null; online = false; onlineRole = null; coopPeers = {}; hostPid = null; watchPartner = false; pendingRemote = []; joinerBackup = null;
-  nextPeerNum = 2; mistakeFlagged.clear(); clearCoopNotes();
+  nextPeerNum = 2; peerNums = {}; mistakeFlagged.clear(); clearCoopNotes();
   clearUndo();   // undo history is per-session/mode — don't carry it across a disconnect
 }
 // user-initiated full disconnect (host or guest)
@@ -5444,6 +6507,12 @@ function leaveOnline(){
 // pre-join one) if you later disconnect.
 function saveCoopToLocal(){
   if (onlineRole !== 'join') return;
+  if (PVP.active) return;   // a match board is scratch work; adopting it would overwrite the real save
+  // The host's weave was adopted in memory only (see setCustomSeed). This is the
+  // player explicitly claiming this board, so the weave becomes theirs for real —
+  // otherwise the keys written below would be filed under a suffix that no longer
+  // resolves after a reload.
+  persistSeeds();
   try {
     localStorage.setItem(stateKey(), Array.from(state.subarray(0, N)).join(''));
     localStorage.setItem(zonesKey(), JSON.stringify(ZONES.map(z => Array.from(z.entries || []))));
@@ -5460,10 +6529,29 @@ function handlePeerGone(reason, pid){
   if (!net) return;
   if (onlineRole === 'host') {
     if (pid && coopPeers[pid]) { delete coopPeers[pid]; toast('A player left.', true); setOnlineUI(); needsDraw = true; }
+    if (PVP.active && PVP.mode === 'online') {
+      delete PVP.opp[pid]; delete PVP.ready[pid];
+      PVP.seats = pvpSeatTokens();
+      if (!peerIds().length) {          // last rival gone — a race with one runner has no result
+        toast('Your rival left. The match is off.', true);
+        pvpTeardown();
+      } else { buildPvpBar(); pvpLobbyRefresh(); pvpHostArbitrate(); }
+    }
     return;
   }
   // guest: another guest leaving just removes them; only the host leaving ends it
-  if (pid && hostPid && pid !== hostPid) { if (coopPeers[pid]) { delete coopPeers[pid]; needsDraw = true; } return; }
+  if (pid && hostPid && pid !== hostPid) {
+    if (coopPeers[pid]) { delete coopPeers[pid]; needsDraw = true; }
+    if (PVP.active) { delete PVP.opp[pid]; PVP.seats = pvpSeatTokens(); buildPvpBar(); }
+    return;
+  }
+  // the host is gone. In a match that voids it — nobody left can mint a result.
+  if (PVP.active) {
+    netClose(); setOnlineUI();
+    toast((reason || 'Disconnected') + ' The match is off; your own canvas is back.', true);
+    pvpTeardown();
+    return;
+  }
   const backup = joinerBackup;
   netClose(); setOnlineUI(); needsDraw = true;
   if (backup) importCode(backup, null, true);
@@ -5501,6 +6589,29 @@ function LoopbackNet(){
   };
 }
 
+// PeerJS is the project's ONLY third-party code, and it is vendored rather than
+// imported from a CDN: a runtime import puts whoever controls that CDN inside the
+// page, with full reach over every localStorage key, and a dynamic import cannot
+// carry an integrity hash to prevent it. Loaded as a script tag rather than by
+// fetch/import for the same reason boards/*.js is (see BAKED.load): fetch and ESM
+// imports are CORS-blocked on file://, script tags are not, so opening index.html
+// straight off disk keeps working. Lazy, so a solo player never pays for it.
+//   vendor/peerjs.js — peerjs 1.5.4 (peerjs.min.js, UMD; sets window.Peer)
+//   sha256 ad5d8870d1e389914f9cba8d35be313c4327c69ee0a221e482e9bf7621136fe5
+let peerJsPending = null;
+function loadPeerJS(){
+  if (window.Peer) return Promise.resolve(window.Peer);
+  return peerJsPending || (peerJsPending = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/peerjs.js';
+    s.async = true;
+    s.onload = () => window.Peer ? res(window.Peer)
+                                 : rej(new Error('the multiplayer library did not load'));
+    s.onerror = () => { peerJsPending = null; rej(new Error('could not load the multiplayer library')); };
+    document.head.appendChild(s);
+  }));
+}
+
 // real transport: WebRTC P2P via PeerJS (free public broker for signaling only).
 // Host's peer id IS the shareable code. STAR topology: guests connect to the host,
 // and the host relays each guest's data to the other guests.
@@ -5512,7 +6623,15 @@ function PeerNet(){
     c.on('open', () => { conns[c.peer] = c; em.emit('peer', c.peer); });
     c.on('data', d => {
       em.emit('message', d, c.peer);
-      if (isHost) for (const pid in conns) if (pid !== c.peer && conns[pid].open) conns[pid].send(d);   // relay
+      if (!isHost) return;
+      // Relay to the other guests — but STAMP THE TRUE ORIGIN first. A guest hears
+      // everything over its single connection to the host, so without this stamp a
+      // relayed guest frame is indistinguishable from one the host authored, and
+      // every "only the host may do this" guard downstream would pass for any
+      // guest. `src` is written by the host, over whatever the sender put there,
+      // so it cannot be forged. See netOrigin().
+      if (d && typeof d === 'object') d.src = c.peer;
+      for (const pid in conns) if (pid !== c.peer && conns[pid].open) conns[pid].send(d);
     });
     c.on('close', () => { delete conns[c.peer]; em.emit('close', c.peer); });
     c.on('error', e => em.emit('error', e));
@@ -5521,8 +6640,7 @@ function PeerNet(){
     on: em.on,
     async connect({ role, roomId }){
       isHost = role === 'host';
-      const mod = await import('https://esm.sh/peerjs@1.5.4');
-      const Peer = mod.default || mod.Peer || mod;
+      const Peer = await loadPeerJS();
       const opts = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] } };
       if (isHost) {
         const id = roomId || ('npxs-' + Math.random().toString(36).slice(2, 8));
@@ -5555,6 +6673,7 @@ function loop(now){
   pollGamepad(now);
   maybeSendPresence(now);     // online: share this player's cursor + viewport with the peer
   updateTimer();              // live session clock; ticks every frame, re-renders only on change
+  pvpTick(now);               // versus: 2Hz scoreboard refresh + the match countdown
   let animating = false;
   for (const pl of players) {
     if (!pl.viewAnim) continue;
@@ -5724,6 +6843,39 @@ function drawViewport(player, now, px, py, pw, ph){
     }
   }
   ctx.stroke();
+
+  // ---- versus: claimed-region borders ----
+  // Re-stroke the perimeter of each claimed region in its owner's colour. This
+  // sits on TOP of the neutral border pass and deliberately leaves the cell fill
+  // alone — the revealed artwork is the reward for finishing a region, so the
+  // scoreboard rides on the outline instead of painting over the picture.
+  if (PVP.active && PVP.claim) {
+    const seen = new Map();
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const i = gy * GW + gx, r = regionOf[i];
+        if (r < 0 || PVP.claim[r] < 0) continue;
+        const px = v.x + gx * s, py = v.y + gy * s;
+        let seg = seen.get(r);
+        if (!seg) { seg = []; seen.set(r, seg); }
+        if (gx === 0        || regionOf[i - 1]  !== r) seg.push(px, py, px, py + s);
+        if (gx === GW - 1   || regionOf[i + 1]  !== r) seg.push(px + s, py, px + s, py + s);
+        if (gy === 0        || regionOf[i - GW] !== r) seg.push(px, py, px + s, py);
+        if (gy === GH - 1   || regionOf[i + GW] !== r) seg.push(px, py + s, px + s, py + s);
+      }
+    }
+    ctx.lineWidth = Math.max(2.5, s * 0.17);
+    ctx.lineCap = 'round';
+    for (const [r, seg] of seen) {
+      const tok = PVP.seats[PVP.claim[r]];
+      if (tok == null) continue;
+      ctx.strokeStyle = pvpColor(tok);
+      ctx.beginPath();
+      for (let k = 0; k < seg.length; k += 4) { ctx.moveTo(seg[k], seg[k + 1]); ctx.lineTo(seg[k + 2], seg[k + 3]); }
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  }
 
   // ---- sudoku plots ----
   for (const zone of ZONES) {
@@ -5926,12 +7078,18 @@ function cellAt(mx, my, v = view){
 
 function cycleZone(zone, p, dir, pl = mousePlayer()){
   const n = zone.n;
+  coopActor = pl;                          // attribute this digit to the acting player (co-op/versus)
   pushUndo();
   const prev = zone.entries[p];
   let v = prev + dir;
   if (v > n) v = 0;
   if (v < 0) v = n;
   zone.entries[p] = v;
+  // Same attribution as setZoneDigit: a digit cycled by click/pad must record its
+  // author too, or sudoku work is invisible to regionContributors and to versus scoring.
+  if (!zone.owner) zone.owner = new Array(n * n).fill(null);
+  zone.owner[p] = (v === 0) ? null : ownerForEdit();
+  if (v !== 0) lastEditOwner = zone.owner[p];
   lastTouchedRegion = zone.region;
   lastCell = (zone.y + ((p / n) | 0)) * GW + zone.x + (p % n);
   checkZone(zone);
@@ -5942,12 +7100,14 @@ function cycleZone(zone, p, dir, pl = mousePlayer()){
 
 function setZoneDigit(zone, p, v, pl = mousePlayer()){
   if (zone.entries[p] === v) return;
+  if (PVP.active && PVP.phase !== 'live') return;   // same gate as setCell: no digits before the go, or after the whistle
   coopActor = pl;                          // attribute this digit to the acting player (co-op)
   pushUndo();
   const prev = zone.entries[p];
   zone.entries[p] = v;
   if (!zone.owner) zone.owner = new Array(zone.n * zone.n).fill(null);
   zone.owner[p] = (v === 0) ? null : ownerForEdit();
+  if (v !== 0) lastEditOwner = zone.owner[p];
   lastTouchedRegion = zone.region;
   lastCell = (zone.y + ((p / zone.n) | 0)) * GW + zone.x + (p % zone.n);
   checkZone(zone);
@@ -6080,13 +7240,21 @@ cvs.addEventListener('wheel', e => {
 //  Listeners live on `cvs`: a touch is delivered to its origin element for the
 //  whole gesture, so canvas gestures never steal scrolling from modals/menu, and
 //  preventDefault() (with #game touch-action:none) suppresses synthetic mouse
-//  events + page zoom. Drives player 0 (touch co-op is out of scope).
+//  events + page zoom. The seat is resolved from the pane the first finger lands
+//  in (touchPl), so split-screen touch attributes correctly.
 // ============================================================
 let touchBrush = 1;               // 1 = light, 2 = dark — what a tap/drag places
 let touchRevealed = false;
 const touchPts = new Map();       // identifier -> { x, y } (canvas-originated touches only)
 let touchGesture = null;          // 2-finger ref: { mx, my, dist }
 let touchStroke = null;           // 1-finger: { color, touched:Set } paint, or { pan:true, x, y }
+// Which local seat owns the touch interaction in flight. Resolved from the pane
+// the first finger lands in and held for the whole gesture, so a drag that
+// crosses a pane divider keeps stitching for the player who started it. Without
+// this, split-screen touch edits attribute to whoever acted last (see
+// ownerForEdit) — which quietly mis-scores co-op and versus alike.
+let touchPl = null;
+function touchPlayer(){ return (touchPl && players.includes(touchPl)) ? touchPl : players[0]; }
 
 function revealBrushBtn(){
   if (touchRevealed) return;
@@ -6108,7 +7276,9 @@ cvs.addEventListener('touchstart', e => {
   revealBrushBtn();
   for (const t of e.changedTouches) touchPts.set(t.identifier, { x: t.clientX, y: t.clientY });
   e.preventDefault();
-  const pl = players[0];
+  // a fresh single-finger interaction picks its seat from the pane it landed in
+  if (touchPts.size === 1) touchPl = playerAt(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+  const pl = touchPlayer();
   pl.viewAnim = null;
   if (touchPts.size >= 2) { touchStroke = null; touchGesture = touchGestureRef(); return; }   // two fingers → pan/zoom
   const t = e.changedTouches[0];
@@ -6138,6 +7308,7 @@ cvs.addEventListener('touchstart', e => {
   if (!regionDone[regionOf[i]] && !locked[i]) pushUndo();   // one undo entry per stroke
   const c = touchBrush;
   const prev = state[i], next = state[i] === c ? 0 : c;
+  coopActor = pl;                                // attribute the stitch to this seat
   setCell(i, next);                              // same per-cell toggle rule as a mouse click
   touchStroke = { color: c, touched: new Set([i]), edits: [{ i, prev, next }] };
 }, { passive: false });
@@ -6145,7 +7316,7 @@ cvs.addEventListener('touchstart', e => {
 cvs.addEventListener('touchmove', e => {
   for (const t of e.changedTouches) if (touchPts.has(t.identifier)) touchPts.set(t.identifier, { x: t.clientX, y: t.clientY });
   e.preventDefault();
-  const pl = players[0], v = pl.view;
+  const pl = touchPlayer(), v = pl.view;
   if (touchPts.size >= 2) {                      // pan by midpoint delta + pinch-zoom about the midpoint
     const g = touchGestureRef();
     if (touchGesture) {
@@ -6168,13 +7339,13 @@ cvs.addEventListener('touchmove', e => {
   if (i < 0 || zoneOf[i] >= 0) return;
   pl.cursor = i; pl.hoverCell = i;
   const c = touchStroke.color;
-  if (c && !touchStroke.touched.has(i)) { touchStroke.touched.add(i); const prev = state[i], next = state[i] === c ? 0 : c; setCell(i, next); if (touchStroke.edits) touchStroke.edits.push({ i, prev, next }); }
+  if (c && !touchStroke.touched.has(i)) { touchStroke.touched.add(i); const prev = state[i], next = state[i] === c ? 0 : c; coopActor = pl; setCell(i, next); if (touchStroke.edits) touchStroke.edits.push({ i, prev, next }); }
 }, { passive: false });
 
 function endTouch(e){
   for (const t of e.changedTouches) touchPts.delete(t.identifier);
   e.preventDefault();
-  const pl = players[0];
+  const pl = touchPlayer();
   if (touchPts.size >= 2) { touchGesture = touchGestureRef(); return; }
   if (touchPts.size === 1) {                     // dropped from two fingers to one → keep panning, don't stitch
     touchGesture = null;
@@ -6203,7 +7374,7 @@ addEventListener('keydown', e => {
   if (e.key === '+' || e.key === '=') { zoomCenter(1.25, pl); return; }
   if (e.key === '-') { zoomCenter(1 / 1.25, pl); return; }
   if (GEN.active) return;   // the loading animation owns the frame — no gameplay keys reach a board mid-generation
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(pl); return; }
   // digits go to the selected sudoku-plot cell
   if (pl.selZ >= 0 && pl.selP >= 0 && !solving) {
     const zone = ZONES[pl.selZ];
@@ -6237,6 +7408,7 @@ const MODAL_CLOSE = {
   onlineModal: 'btnCloseOnline', shareModal: 'btnCloseShare',
   optionsModal: 'btnCloseOptions', sudokuHelpModal: 'btnCloseSudokuHelp',
   picrossHelpModal: 'btnClosePicrossHelp',
+  pvpLobbyModal: 'pvpLobbyCancel', pvpResultModal: 'pvpResultClose',
 };
 // close an overlay via its mapped button (falls back to the last button / hiding)
 function closeOverlay(open){
@@ -6569,7 +7741,8 @@ document.getElementById('joinCode').addEventListener('keydown', e => { if (e.key
 // onlineBack: where the onlineChoice view's Back/Esc should return to — 'coopMode'
 // when reached via Home → Co-op → Online, 'grid' when reached via the grid's own
 // mode pill (which skips the coopMode chooser entirely)
-const MENU = { view: 'home', mode: 'solo', stepVal: 2, stepMin: 2, stepMax: 4, onlineBack: 'coopMode' };
+const MENU = { view: 'home', mode: 'solo', stepVal: 2, stepMin: 2, stepMax: 4, onlineBack: 'coopMode',
+               pvpRule: 'regions', pvpTarget: 5 };   // versus defaults: first to 5 regions
 // canvas count in the sub-line is computed, not hardcoded, so it never drifts as maps are added/removed
 document.getElementById('menuSolo').innerHTML = 'Single Player<small>' + MAPS.length + ' canvases · your progress is kept per canvas</small>';
 const LAST_SOLO_KEY = 'proverbs2-lastsolo';   // most recent single-player map, for Continue
@@ -6609,6 +7782,7 @@ function menuApplySort(){
 const _menuCardCache = {};
 const _menuArtCache = {};   // id -> per-cell RGBA of the map's artwork (see menuArtCols)
 const _menuImg = {};        // id -> Image, the menu's own decodes (never touches mapImgCache's onload)
+const _menuArtCropCache = {};   // id -> {x,y,w,h} source-rect fractions (see menuArtCrop)
 
 // region run-length for a map: hand maps carry it in HAND_LAYOUTS, watershed
 // maps (castle/crew/fighters) use the baked PREVIEW_RLE
@@ -6649,19 +7823,62 @@ function menuLoadImg(id, cb){
   im.addEventListener('load', cb, { once: true });
   im.src = mapDef(id).src;
 }
+// a map's source art often has a plain sky/backdrop margin on one or more edges
+// (most visible on castle's sky, inferno's bright top) — findable as an edge band
+// whose average brightness sits well above the image's own mean. Trims each edge
+// independently (capped at 22% a side so a genuinely bright subject never gets
+// eaten), so most maps come back untouched and only the real offenders crop in.
+// Menu-preview-only: does not touch sampleImage()/cellCol, so it can't move a
+// single sol/clue byte and needs no re-bake. Cached per id; {x,y,w,h} are source
+// fractions (0..1) for drawImage's crop rect.
+function menuArtCrop(id){
+  if (_menuArtCropCache[id]) return _menuArtCropCache[id];
+  const im = menuImg(id);
+  const none = { x: 0, y: 0, w: 1, h: 1 };
+  if (!im) return none;
+  try {
+    const W = 160, H = Math.max(1, Math.round(160 * im.naturalHeight / im.naturalWidth));
+    const off = document.createElement('canvas'); off.width = W; off.height = H;
+    const octx = off.getContext('2d', { willReadFrequently: true });
+    octx.drawImage(im, 0, 0, W, H);
+    const data = octx.getImageData(0, 0, W, H).data;
+    const lum = new Float32Array(W * H);
+    let mean = 0;
+    for (let i = 0; i < W * H; i++) {
+      const L = 0.299 * data[i*4] + 0.587 * data[i*4+1] + 0.114 * data[i*4+2];
+      lum[i] = L; mean += L;
+    }
+    mean /= W * H;
+    let vsum = 0; for (let i = 0; i < W * H; i++) { const dv = lum[i] - mean; vsum += dv * dv; }
+    const thresh = mean + 0.5 * Math.sqrt(vsum / (W * H));
+    const rowLum = y => { let s = 0; for (let x = 0; x < W; x++) s += lum[y * W + x]; return s / W; };
+    const colLum = x => { let s = 0; for (let y = 0; y < H; y++) s += lum[y * W + x]; return s / H; };
+    const capRow = Math.floor(H * 0.22), capCol = Math.floor(W * 0.22);
+    let top = 0; while (top < capRow && rowLum(top) > thresh) top++;
+    let bot = 0; while (bot < capRow && rowLum(H - 1 - bot) > thresh) bot++;
+    let left = 0; while (left < capCol && colLum(left) > thresh) left++;
+    let right = 0; while (right < capCol && colLum(W - 1 - right) > thresh) right++;
+    _menuArtCropCache[id] = { x: left / W, y: top / H, w: 1 - (left + right) / W, h: 1 - (top + bot) / H };
+  } catch (e) { _menuArtCropCache[id] = none; }
+  return _menuArtCropCache[id];
+}
 // per-cell artwork colours for a map, sampled exactly the way sampleImage() fills
 // cellCol (nearest-neighbour into a gw×gh offscreen), so a revealed region on a card
-// matches the revealed region on the board. Null until the image has decoded.
+// matches the revealed region on the board, modulo the preview-only zoom above.
+// Null until the image has decoded.
 function menuArtCols(id){
   if (_menuArtCache[id]) return _menuArtCache[id];
   const im = menuImg(id), meta = MAP_META[id];
   if (!im || !meta) return null;
   try {
+    const crop = menuArtCrop(id);
+    const sx = crop.x * im.naturalWidth, sy = crop.y * im.naturalHeight;
+    const sw = crop.w * im.naturalWidth, sh = crop.h * im.naturalHeight;
     const off = document.createElement('canvas');
     off.width = meta.gw; off.height = meta.gh;
     const octx = off.getContext('2d', { willReadFrequently: true });
     octx.imageSmoothingEnabled = false;
-    octx.drawImage(im, 0, 0, meta.gw, meta.gh);
+    octx.drawImage(im, sx, sy, sw, sh, 0, 0, meta.gw, meta.gh);
     _menuArtCache[id] = octx.getImageData(0, 0, meta.gw, meta.gh).data;
   } catch (e) { return null; }
   return _menuArtCache[id];
@@ -6857,11 +8074,15 @@ function menuRefreshCards(){
       (isCustomSeed(id) ? ' · new weave' : '');   // which weave this progress belongs to
   }
 }
-// fill in (or hide) the grid's Continue card from the last solo map's saved progress
+// fill in (or hide) the grid's Continue card from the last solo map's saved progress.
+// Whatever it resolves to also gets hidden from its own small card below, so the
+// map being resumed isn't shown twice on the same grid.
 function menuRefreshGridContinue(){
   const cc = document.getElementById('gridContinueCard');
   if (!cc) return;
   const id = menuLastSolo();
+  for (const card of document.querySelectorAll('#mapGrid .mapCard'))
+    card.style.display = (id && card.dataset.id === id) ? 'none' : '';
   if (!id) { cc.style.display = 'none'; return; }
   cc.style.display = '';
   let pct = 0, ms = 0;
@@ -6875,13 +8096,33 @@ function menuRefreshGridContinue(){
 }
 // highlight the mode pill matching the grid's current mode ('solo'/'local'/'host')
 function updateModeRow(){
-  const active = MENU.mode === 'local' ? 'local' : MENU.mode === 'host' ? 'online' : 'solo';
+  const active = MENU.mode === 'local' ? 'local'
+               : MENU.mode === 'host' ? 'online'
+               : MENU.mode === 'pvpLocal' ? 'pvpLocal'
+               : MENU.mode === 'pvpHost' ? 'pvpOnline'
+               : 'solo';
   for (const b of document.querySelectorAll('.modePill')) b.classList.toggle('active', b.dataset.mode === active);
 }
+// the versus rule picker in the grid's mode row: three rule pills plus a target
+// stepper whose unit (regions / minutes) follows the chosen rule
+function updateRuleRow(){
+  const row = document.getElementById('menuRuleStep');
+  if (!row) return;
+  const isPvp = MENU.mode === 'pvpLocal' || MENU.mode === 'pvpHost';
+  row.style.display = isPvp ? '' : 'none';
+  if (!isPvp) return;
+  for (const b of row.querySelectorAll('.rulePill')) b.classList.toggle('active', b.dataset.rule === MENU.pvpRule);
+  const wrap = document.getElementById('menuTargetWrap');
+  wrap.style.display = MENU.pvpRule === 'full' ? 'none' : '';
+  document.getElementById('menuTargetVal').textContent = String(MENU.pvpTarget);
+  document.getElementById('menuTargetUnit').textContent = MENU.pvpRule === 'timed' ? 'min' : 'regions';
+}
+function pvpTargetBounds(){ return MENU.pvpRule === 'timed' ? [2, 60] : [2, 40]; }
 
 function menuShowView(v){
   MENU.view = v;
-  const map = { home: 'menuHome', credits: 'menuCreditsView', coopMode: 'menuCoopMode', onlineChoice: 'menuOnlineChoice', grid: 'menuGrid' };
+  const map = { home: 'menuHome', credits: 'menuCreditsView', coopMode: 'menuCoopMode', onlineChoice: 'menuOnlineChoice',
+                pvpMode: 'menuPvpMode', pvpOnlineChoice: 'menuPvpOnlineChoice', grid: 'menuGrid' };
   for (const id of Object.values(map)) document.getElementById(id).style.display = 'none';
   document.getElementById(map[v]).style.display = '';
   document.querySelector('.menuBrand').style.display = v === 'grid' ? 'none' : '';   // the grid draws its own compact wordmark
@@ -6917,18 +8158,19 @@ function menuOpenGrid(mode){
   if (generated && !GEN.active) saveNow();   // flush the debounced save so the cards show the region you JUST finished
   MENU.mode = mode;
   const step = document.getElementById('menuPlayerStep');
-  if (mode === 'local') {
+  if (mode === 'local' || mode === 'pvpLocal') {
     document.getElementById('menuStepLbl').textContent = 'Players';
     MENU.stepMin = 2; MENU.stepMax = 4; MENU.stepVal = Math.min(4, Math.max(2, MENU.stepVal || 2));
     step.style.display = '';
-  } else if (mode === 'host') {
-    document.getElementById('menuStepLbl').textContent = 'Guests';
+  } else if (mode === 'host' || mode === 'pvpHost') {
+    document.getElementById('menuStepLbl').textContent = mode === 'pvpHost' ? 'Rivals' : 'Guests';
     MENU.stepMin = 1; MENU.stepMax = 3; MENU.stepVal = Math.min(3, Math.max(1, MENU.stepVal || 1));
     step.style.display = '';
   } else {
     step.style.display = 'none';
   }
   document.getElementById('menuStepVal').textContent = String(MENU.stepVal);
+  updateRuleRow();
   document.getElementById('mapSort').value = mapSort;
   menuBuildGrid();
   menuApplySort();
@@ -6977,11 +8219,22 @@ function menuAfterGen(){
   const mode = MENU.mode;
   if (mode === 'local') { const n = MENU.stepVal; return () => startCoop(n); }
   if (mode === 'host')  { const g = MENU.stepVal; return () => menuStartHost(g); }
+  if (mode === 'pvpLocal') {
+    const n = MENU.stepVal, rule = MENU.pvpRule, target = pvpTargetSeconds();
+    return () => openPvpLobby({ mode: 'local', players: n, rule, target });
+  }
+  if (mode === 'pvpHost') {
+    const g = MENU.stepVal, rule = MENU.pvpRule, target = pvpTargetSeconds();
+    return () => openPvpLobby({ mode: 'online', guests: g, rule, target });
+  }
   return null;   // solo
 }
+// the rule's target in its storage unit: seconds for 'timed', regions otherwise
+function pvpTargetSeconds(){ return MENU.pvpRule === 'timed' ? MENU.pvpTarget * 60 : MENU.pvpTarget; }
 
 function menuPlay(id){
   // tear down any live session before switching modes/boards
+  if (PVP.active) pvpTeardown();
   if (online || net) { netClose(); setOnlineUI(); }
   if (coop) exitCoop();
   // remember the last single-player map so Continue can resume it
@@ -7024,6 +8277,11 @@ document.getElementById('menuLocal').onclick = () => menuOpenGrid('local');
 document.getElementById('menuOnline').onclick = () => { MENU.onlineBack = 'coopMode'; menuShowView('onlineChoice'); };
 document.getElementById('menuHostPick').onclick = () => menuOpenGrid('host');
 document.getElementById('menuJoinPick').onclick = () => menuJoin();
+document.getElementById('menuPvp').onclick = () => menuShowView('pvpMode');
+document.getElementById('menuPvpLocal').onclick = () => menuOpenGrid('pvpLocal');
+document.getElementById('menuPvpOnline').onclick = () => menuShowView('pvpOnlineChoice');
+document.getElementById('menuPvpHostPick').onclick = () => menuOpenGrid('pvpHost');
+document.getElementById('menuPvpJoinPick').onclick = () => menuJoin();   // the join flow is identical; the host's pvp-setup decides it's a match
 document.getElementById('menuHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
 document.getElementById('menuGridOptions').onclick = openOptions;
 document.getElementById('menuGridHelp').onclick = () => document.getElementById('helpModal').classList.add('show');
@@ -7031,14 +8289,58 @@ document.querySelectorAll('.modePill').forEach(b => b.onclick = () => {
   const m = b.dataset.mode;
   if (m === 'local') menuOpenGrid('local');
   else if (m === 'online') { MENU.onlineBack = 'grid'; menuShowView('onlineChoice'); }
+  else if (m === 'pvpLocal') menuOpenGrid('pvpLocal');
+  else if (m === 'pvpOnline') menuOpenGrid('pvpHost');
   else menuOpenGrid('solo');
 });
+// where "← Back" lands from the grid, given the mode it was opened in
+function menuGridBack(){
+  if (MENU.mode === 'solo') return 'home';
+  if (MENU.mode === 'local') return 'coopMode';
+  if (MENU.mode === 'pvpLocal') return 'pvpMode';
+  if (MENU.mode === 'pvpHost') return 'pvpOnlineChoice';
+  return 'onlineChoice';
+}
 document.querySelectorAll('#menuScreen .menuBack').forEach(b => b.onclick = () => {
   const where = b.dataset.back;
-  if (where === 'auto') menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
+  if (where === 'auto') menuShowView(menuGridBack());
   else if (where === 'onlineAuto') menuShowView(MENU.onlineBack);
   else menuShowView(where);
 });
+// versus rule pills + target stepper
+document.querySelectorAll('#menuRuleStep .rulePill').forEach(b => b.onclick = () => {
+  MENU.pvpRule = b.dataset.rule;
+  const [lo, hi] = pvpTargetBounds();
+  MENU.pvpTarget = Math.min(hi, Math.max(lo, MENU.pvpRule === 'timed' ? 10 : 5));
+  updateRuleRow();
+});
+document.getElementById('menuTargetMinus').onclick = () => {
+  const [lo] = pvpTargetBounds();
+  MENU.pvpTarget = Math.max(lo, MENU.pvpTarget - 1); updateRuleRow();
+};
+document.getElementById('menuTargetPlus').onclick = () => {
+  const [, hi] = pvpTargetBounds();
+  MENU.pvpTarget = Math.min(hi, MENU.pvpTarget + 1); updateRuleRow();
+};
+// versus lobby + result
+document.getElementById('pvpLobbyStart').onclick = () => pvpLobbyAdvance();
+document.getElementById('pvpLobbyCancel').onclick = () => pvpLobbyAbort();
+document.getElementById('pvpCopyCode').onclick = () => {
+  const el = document.getElementById('pvpLobbyCode');
+  el.select();
+  try { navigator.clipboard.writeText(el.value); toast('Code copied.', true); } catch (e) {}
+};
+document.getElementById('pvpResultClose').onclick = () => {
+  document.getElementById('pvpResultModal').classList.remove('show');
+  if (online || net) { netClose(); setOnlineUI(); }
+  if (coop) exitCoop();
+  pvpTeardown();
+};
+document.getElementById('pvpPanelToggle').onclick = () => {
+  const p = document.getElementById('pvpPanel');
+  p.classList.toggle('collapsed');
+  document.getElementById('pvpPanelToggle').textContent = p.classList.contains('collapsed') ? '▴' : '▾';
+};
 document.getElementById('mapSort').onchange = e => {
   mapSort = e.target.value;
   try { localStorage.setItem(MAP_SORT_KEY, mapSort); } catch (err) {}
@@ -7060,9 +8362,11 @@ function menuEscape(){
   const ms = document.getElementById('menuScreen');
   if (!ms.classList.contains('show')) return false;
   const v = MENU.view;
-  if (v === 'grid')              menuShowView(MENU.mode === 'solo' ? 'home' : MENU.mode === 'local' ? 'coopMode' : 'onlineChoice');
+  if (v === 'grid')              menuShowView(menuGridBack());
   else if (v === 'onlineChoice') menuShowView(MENU.onlineBack);
+  else if (v === 'pvpOnlineChoice') menuShowView('pvpMode');
   else if (v === 'coopMode')     menuShowView('home');
+  else if (v === 'pvpMode')      menuShowView('home');
   else if (v === 'credits')      menuShowView('home');
   else if (generated)            hideMenu();
   else return false;
@@ -7226,6 +8530,7 @@ function syncOptions(){
 // exactly like the toolbar dropdown; keeps every difficulty control in sync
 function setDefaultDifficulty(d){
   if (!DIFF[d]) return;
+  if (PVP.active) { toast('The difficulty is fixed for the length of a match.', true); return; }
   if (typeof generated !== 'undefined' && generated && !solving) {
     setDifficulty(d);                 // reweaves clues, persists, updates #selDiff
   } else {

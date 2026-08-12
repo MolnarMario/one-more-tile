@@ -15,9 +15,13 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 - **`index.html`** — the entire game: HTML + CSS + one big inline `<script>` (~5,050 lines). No
   modules, no bundler, no dependencies. Open it in a browser and it runs. Boot lands on the **home
   menu** (§10), not a board.
-- **`boards/<map>.js`** — the only other *shipped* files: baked clue sets, loaded on demand (§7a).
-  A missing `boards/` folder costs generation time, never correctness — `index.html` alone still
-  plays.
+- **`boards/<map>.js`** — baked clue sets, loaded on demand (§7a). A missing `boards/` folder costs
+  generation time, never correctness — `index.html` alone still plays.
+- **`vendor/peerjs.js`** — peerjs 1.5.4, the project's only third-party code, loaded lazily by
+  `loadPeerJS()` and *only* when a player starts an online session. Vendored rather than imported
+  from a CDN so that no third party is inside the page at runtime (§7d); the page's CSP pins
+  `script-src` to `'self'`, which is what makes that guarantee real. A missing `vendor/` folder costs
+  online play only — solo and local co-op are untouched.
 - **Dev tools** (not shipped; generated *from* `index.html` so they reuse its exact code):
   - `region-editor.html` ← `node _build_editor.js` (uses `index.html` + `_editor.src.js`) — author
     maps by drawing region borders; exports a `.npxsmap.json`.
@@ -294,7 +298,10 @@ progress, _pct, _hdr}`.
   `APP_VERSION`, so UI releases don't break co-op, and *not* `GEN_COMPAT`, see §8.6). Since the
   snapshot **is** `exportCode()`, a `SHARE_VER` bump is always a `BOARD_COMPAT` bump.
   Host owns the canonical save; only the host may push `snapshot`/
-  `resync` (guarded on `hostPid`). **Undo is per-player in co-op**: each player has its own
+  `resync` (guarded on `hostPid`).
+- ⚠ **Peer identity is the connection, never `msg.pid`** — see §7d. Every authorisation
+  decision in `onNetMessage` reads `netOrigin(msg, from)`; `msg.pid` is a display hint that the
+  sender controls and must never be used for a guard. **Undo is per-player in co-op**: each player has its own
   `pl.editStack` of authored edits, and `undoOwn` reverts only that player's tiles/digits (skipping
   teammate-changed cells and already-completed regions), replaying the reverse through the normal
   move channel — solo keeps the whole-board snapshot `undoStack`. `saveCoopToLocal()` (~3342) lets a
@@ -389,7 +396,107 @@ under `SEED_KEY`) holds the per-map override, and `seedFor(id)` is what generati
   `exportCode()` (`onNetMessage` `hello-ack`), this covers online play with no protocol change of
   its own. `importCode` adopts the seed *before* rebuilding and forces the full-rebuild branch —
   `regenClues` alone is not enough, because a new seed means a new `sol[]`.
+- **An adopted weave is never recorded as yours.** `setCustomSeed(id, seed, adopted)` skips the
+  `SEED_KEY` write when the weave came off the wire (a co-op `snapshot`/`resync` passes
+  `importCode(..., { adopted: true })`) or during a match. The in-memory write must still happen —
+  `seedFor()` drives generation — but persisting it would give every per-map key the peer's
+  `-s<seed>` suffix, so the player's own save for that canvas would silently stop resolving
+  (0.33.0 fixed exactly that). `persistSeeds()` is the deliberate commit, and `saveCoopToLocal()`
+  is the one place that calls it: that *is* the player claiming the board.
 - Blocked while `online`: everyone in a session shares one board.
+
+### 7c. Versus (PVP) — competitive matches
+
+Two shapes, chosen to fit each transport's *information model*. All state hangs off the **`PVP`**
+global (declared next to `gameWon`, so it is in scope for `setCell`/`checkRegion` far above the rest
+of the feature). `PVP.active` is the master gate; `pvpLive()` = active **and** `phase === 'live'`.
+
+| | Shape | Why |
+|---|---|---|
+| `PVP.mode === 'local'` | **Territory** on ONE shared board; each region claimed by whoever placed the most correct tiles | You cannot stop someone reading the other half of a shared screen, so the same canvas is the *design*, not a leak. Also avoids duplicating the global board arrays. |
+| `PVP.mode === 'online'` | **Race** on SEPARATE boards, same puzzle | Every client already builds identical bytes from map+seed+difficulty+picTier, so this is nearly free: stop calling `netEmit`, exchange summaries instead. |
+
+- **Local versus rides on `coop = true`** (`startPvpLocal` → `startCoop` → `pvpBegin`). Seats, panes,
+  per-seat undo and the `'L'+id` owner tokens are already exactly what territory scoring needs, so
+  nothing else in the codebase has to learn about a third mode. A pad joining mid-match re-derives
+  `PVP.seats`; tokens are only ever **appended**, so the indices in `PVP.claim` stay valid.
+- **Scoring** (`regionOwnerTally` → `claimRegion`, hooked into **both** `checkRegion` *and*
+  `checkZone` behind `!silent`): most correct tiles takes the region, a tie goes to `lastEditOwner`
+  (steal-on-the-last-stitch). Wrong tiles count for nobody, so sabotage earns nothing.
+  `ownerCorrectCount` is O(N) and is called from the **2Hz `pvpTick`**, never per stitch.
+- **Online protocol** (`BOARD_COMPAT` 6): `pvp-setup` / `pvp-ready` / `pvp-start` / `pvp-progress` /
+  `pvp-done` / `pvp-result` / `pvp-cancel`. Board agreement reuses `exportCode()` — a v7 code already
+  *is* a complete board identity — imported with the new **`importCode(code, cb, silent, {blank:true})`**
+  option, which zeroes the decoded payload so the recipient adopts map/weave/tier/patch-tiers and
+  starts empty. No `SHARE_VER` bump.
+  ⚠ **Every host→guest case repeats the `snapshot` guard** (`onlineRole === 'join' && msg.pid ===
+  hostPid`). `PeerNet` is a star that rebroadcasts guest frames verbatim, so without it any guest
+  could forge a `pvp-result` at every other guest.
+- **The host is the referee.** A guest that meets the rule sends `pvp-done` and *waits*;
+  only `pvpDeclare` (host) mints `pvp-result`, and a client displays nothing else. There is no clock
+  sync anywhere in this codebase, so **`pvp-start` carries `durationMs`, never an absolute time** —
+  each peer runs its own countdown for display and the host's expiry is what ends the match.
+- **The decided mask never encodes colour.** `pvpEncodeMask` keys on `state[i] !== 0` alone
+  (bitmask → varint RLE → base64, falling back to raw packed bits so a frame can't exceed the raw
+  size; ~772B for a mid-game 57,600-cell board). `pvpRenderMini` paints it over `regionOf`/
+  `regionTint` and **never reads `sol` or `cellCol`** — that is the whole leak-proof argument.
+  Cursor presence is suppressed in a match for the same reason (`maybeSendPresence`).
+- **A match never persists** — the single most important property. `pvpBegin` banks
+  `PVP.restore = {code: exportCode(), timerBase, timerStart, quotes}` *before* `clearBoardState()`
+  (an in-memory-only wipe factored out of `resetGame`), and `pvpTeardown` replays it. Every write
+  path bails on `PVP.active`: `saveNow`, `scheduleSave`, `persistMenuSummary`, `persistTimer`,
+  `saveQuotes`, `saveCoopToLocal`, `resetGame`, plus the `timerStart` assignment in `setCell`.
+  Two subtle ones: `setCustomSeed` skips **only** the `SEED_KEY` write (the in-memory `customSeeds`
+  write must still happen — `seedFor()` drives generation), and `importCode` skips the `DIFF_KEY`
+  write while keeping the in-memory tier change.
+- **Gated during a match**: `startSolve`, `reweaveCanvas`, `setDifficulty`/`setDefaultDifficulty`,
+  `loadMap`, `resetGame`, `netEmit`/`netResync`, `maybeSendPresence`, `saveCoopToLocal`, and
+  `setCell` outside `phase === 'live'`. `body.versus` hides the matching controls — that is the
+  courtesy half; the JS guard is the real one. Quotes route to a toast (`dispatchQuote`).
+- **UI**: `#pvpBar` (shared scoreboard strip), `#pvpPanel` + `#pvpMini` (online opponents +
+  minimap), `#pvpLobbyModal`, `#pvpResultModal` — all **static markup**, because the `.overlay`
+  scrim listener runs once at parse time. Claimed-region outlines are drawn in `drawViewport`
+  after the neutral border pass, deliberately leaving the revealed artwork alone.
+
+### 7d. The online trust model — who is allowed to say what
+
+Added in 0.33.0, after a review found that every "only the host may do this" guard was checking a
+field the sender wrote. The rule now, in one line: **identity is the connection a frame arrived on.**
+
+- **`netEnvelope` still ships `pid`**, but it is a display hint only. `netOrigin(msg, from)` is the
+  authority and every guard reads it. ⚠ Any new message type must do the same — a single
+  `msg.pid` comparison re-opens the whole class.
+- **The host is the identity authority**, because it is the only node with a direct connection to
+  everyone. It talks to each guest directly, so for the host `origin === from`, full stop.
+- **A guest hears everything over its one connection to the host**, so `from` alone cannot separate
+  "the host said this" from "the host forwarded this from another guest". `PeerNet.wire` therefore
+  **stamps `src = c.peer` on every frame the host relays**, overwriting whatever the sender put
+  there. A stamped frame is by definition not the host's own. This stamp is the linchpin: remove it
+  and every host-only guard silently passes for any guest. `LoopbackNet` is a broadcast bus with no
+  relay, so `from` is already the true sender and no frame carries `src`.
+- **`hostPid` is bound once**, at the first *unrelayed* `hello`, to that connection — never
+  reassigned. It used to be set by any `hello` at any time, which was a one-frame takeover.
+- **The roster (`coopPeers`) is only written for real connections.** The host requires
+  `coopPeers[origin]` to already exist (created in `net.on('peer')`); a guest accepts only
+  host-attested origins, capped at `NET_MAX_PEERS`. `peerLabel()` keeps its numbering in a separate
+  `peerNums` map so that *naming* a peer can never enrol it.
+- **A versus match refuses `move`/`resync`/`snapshot`** — the boards are independent, so nothing
+  about them may cross the wire. The send side (`netEmit`/`netResync`) was always gated; the receive
+  side is now too.
+- **What this does not fix, and cannot**: online versus scoring. Each client scores its own board
+  and reports it (`pvp-done`/`pvp-progress`), and the host has nothing to check that against — every
+  client already holds `sol[]`, which is what makes independent generation possible in the first
+  place. The lobby says so out loud. Don't add a check that looks like verification but isn't.
+- Bounds live next to the constants: `NET_MAX_CODE` (board payloads, checked before `atob`),
+  `NET_MAX_PENDING` (moves buffered while a joiner imports), `NET_MAX_PEERS`.
+- **The page carries a CSP** (meta tag, top of `<head>`) pinning `script-src` to `'self'` +
+  `'unsafe-inline'` + `blob:`. `'unsafe-inline'` is forced by the single inline script block and
+  there is no build step to replace it with a nonce — but `'self'` is the half that matters: it is
+  why peerjs is vendored under `vendor/` instead of imported from esm.sh at connect time, which
+  would have handed that CDN full reach over every save key. ⚠ If you ever add a remote
+  subresource, the CSP will block it silently in production and work fine in your editor — add the
+  directive in the same commit. Today the page fetches nothing off-origin except peerjs signalling
+  (`*.peerjs.com`), and all artwork is `data:`.
 
 ---
 
@@ -450,6 +557,11 @@ under `SEED_KEY`) holds the per-map override, and `seedFor(id)` is what generati
    re-baking without bumping is safe only when output did not change. `?verifybake=` catches both
    mistakes. A `BOARD_COMPAT` bump on its own needs **no** re-bake — that is the whole point of the
    split.
+10. **`msg.pid` is not an identity.** Every guard in `onNetMessage` must read
+   `netOrigin(msg, from)` (§7d). `pid` is written by the sender, so a single comparison against it
+   re-opens guest-impersonates-host for the whole protocol. The host's relay stamp (`src` in
+   `PeerNet.wire`) is what makes `netOrigin` work on the guest side — don't drop it when touching the
+   transport, and don't add a transport that relays without it.
 
 ---
 
@@ -470,6 +582,11 @@ under `SEED_KEY`) holds the per-map override, and `seedFor(id)` is what generati
 | The home menu / map grid | §10 — `#menuScreen` markup, `showMenu`/`menuShowView`/`menuOpenGrid`/`menuPlay`, sort in `menuSortedIds` |
 | Map-card thumbnails / unlocked-region previews | §10 — `menuRenderCard`/`menuCardNode`/`menuArtCols`/`menuPlotRects`/`menuRefreshCards`, warmed by `menuPreloadCards`; the unlocked set is `doneKey()` (§7) |
 | The play timer | §10 — `timerTotal`/`timerPause`/`persistTimer`, `timerKey()` |
+| Versus rules / scoring | §7c — `PVP`, `regionOwnerTally`/`claimRegion` (hooked in `checkRegion` **and** `checkZone`), `pvpEvaluate`, `pvpTick` |
+| Versus protocol | §7c — the `pvp-*` cases in `onNetMessage` (⚠ keep the `origin !== hostPid` guard on every host→guest type), `pvpEncodeMask`/`pvpDecodeMask`, `pvpHostArbitrate` |
+| Any new net message type | §7d — authorise on `netOrigin(msg, from)`, **never** `msg.pid`; decide whether it is legal during a match; bound anything it can make grow |
+| Versus UI | §7c — `#pvpBar`/`#pvpPanel`/`#pvpLobbyModal`/`#pvpResultModal` (static markup — the scrim listener runs once at parse time), `buildPvpBar`/`pvpRenderMini`/`openPvpLobby` |
+| Anything that writes localStorage | add a `PVP.active` bail, or a match will clobber the player's real save (§7c) |
 | Change the clue rule | `nbhd` construction in `buildLayout` (⚠ affects everything) |
 | Solvability logic | `repairTexture`/`repairRegion`/`repairPicross` and the `genRegionClues` solver |
 | Verify a change | `?audit=1` (all maps × tiers, shardable per map); `?verifybake=1` if generation moved; syntax-check the inline script under Node |

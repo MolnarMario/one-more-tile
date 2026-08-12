@@ -5,6 +5,121 @@ shipped to the live site.
 
 ---
 
+## [0.33.0] — unreleased — Online play: who is actually speaking
+
+A security pass over online co-op and versus. The through-line: every privileged
+action was authorised against a peer id **the sender wrote into its own frame**,
+while the transport quietly knew who really sent it and threw that away.
+
+### Fixed
+- **A peer can no longer speak as the host.** Identity now comes from the
+  connection a frame arrived on, never from `msg.pid`. Because the host relays
+  guests' frames to each other, it also **stamps the true origin** on everything it
+  forwards — so a relayed guest frame can never be mistaken for one the host
+  authored. Previously, in any session with two or more guests, one guest could
+  push a board at the others, forge a match result, cancel their match, or
+  disconnect them.
+- **The host is decided once.** `hostPid` was set by *any* `hello` at *any* time, so
+  a single frame from another guest was enough to become "the host" for that
+  player and pass every host-only check from then on. It is now bound at the first
+  handshake, to the connection, and never reassigned.
+- **Joining a friend's game no longer hides your own progress.** Adopting the
+  host's board also adopted their *weave*, and that was written to your seed store
+  — which re-files every save key for that canvas under their `-s<seed>` suffix.
+  Your solo progress read as empty and the map card dropped to 0%. Disconnecting
+  put it back; closing the tab did not. An adopted weave is now used for
+  generation but never recorded as yours, unless you explicitly choose **Save this
+  board as mine**, which commits it.
+- **Presence can't stuff a room.** A `cursor` frame created a roster entry for
+  whatever id it claimed, so one forged frame could fill the host's guest slots and
+  turn real friends away with "That game is full", or grow the peer list without
+  bound. The host now accepts presence only from peers it actually accepted, and a
+  guest only from origins the host has attested. Naming a peer no longer adds it to
+  the roster either.
+- **`bye` evicts the sender**, not whoever it names — a guest could previously drop
+  a *different* guest, and in a match that was enough to end it for everyone.
+- **No move or board push crosses the wire during a versus match.** Sending was
+  already blocked; receiving was not, so a peer could stitch on your match board or
+  replace it outright. `move`, `resync` and `snapshot` are now refused while a match
+  is live.
+- **Sudoku digits obey the match clock.** `setZoneDigit` was missing the phase gate
+  `setCell` has, so digits could be entered during the lobby before "Go!" and after
+  the whistle — a free head start on every sudoku plot, in local versus too.
+- **Bounded buffers.** The queue of peer moves held while a joiner imports the
+  board was unbounded, and a board payload went to `atob` before its size was
+  checked. Both are capped now.
+
+### Changed
+- **The multiplayer library is now shipped with the game** (`vendor/peerjs.js`)
+  instead of being pulled from a CDN the moment you connect. A runtime import puts
+  whoever controls that CDN inside the page, with reach over every save you have,
+  and there is no way to attach an integrity check to it. It is still loaded lazily
+  — a solo player never downloads it — and loading it as a script tag means online
+  play now also works when you open `index.html` straight off disk. The page also
+  carries a **Content-Security-Policy** that refuses script from anywhere but
+  itself.
+- The online versus lobby now says plainly that a match runs on the **honour
+  system**: each player scores their own board and reports it, and there is no way
+  to verify that from the other side. This was always true — it is now stated where
+  people can read it.
+- `BOARD_COMPAT` 6 → 7 (the relay stamp is new, and a peer on the old build does not
+  produce it). **`GEN_COMPAT` is unchanged and nothing was re-baked** — none of this
+  touches the puzzle-maker.
+
+---
+
+## [0.32.0] — unreleased — Versus: race a friend for the canvas
+
+### Added
+- **Versus mode**, on the home menu beside Single Player and Co-op. Two shapes,
+  because a shared screen and two separate screens leak completely different
+  amounts of information:
+  - **Local versus (2–4, split-screen).** One shared canvas. Every region is
+    **claimed by whoever stitched the most of it**, and a tie goes to whoever laid
+    the *last* tile — so a region someone has nearly finished can still be stolen
+    out from under them. Sharing one canvas is the point here: there is no way to
+    stop someone glancing at the other half of a screen, so instead of pretending
+    otherwise, both players are looking at the same board by design.
+  - **Online versus (2–4, over a code).** Everyone gets their **own copy of the
+    same puzzle**. Moves are not shared. You see your rival's pace — completion %,
+    regions held, and a live minimap of the tiles they have committed to — but
+    **never which colour they chose**. The minimap reads identically for a light
+    tile, a dark tile and an outright mistake.
+- **Three match rules**, picked by the host on the canvas grid: **Full canvas**
+  (play it out, most regions wins), **First to N regions**, and **Timed** (most
+  regions when the clock stops, tiles break the tie).
+- A match scoreboard under the header, claimed regions outlined in their owner's
+  colour on the board itself, and a final standings screen.
+
+### Changed
+- **A match never touches your save.** Starting one banks your real canvas,
+  blanks the board in memory, and switches off every save path for the duration;
+  leaving puts your canvas back exactly as it was — marks, play-time, and even
+  which proverbs you had yet to see. Nothing about a match is written to disk.
+- `BOARD_COMPAT` 5 → 6 (seven new message types, and a versus session
+  deliberately stops syncing moves). **`GEN_COMPAT` is unchanged and no board was
+  re-baked** — this release does not touch the puzzle-maker at all, which is
+  exactly the split introduced in 0.31.0 paying for itself.
+- Region proverbs appear as a toast rather than a modal during a match; a dialog
+  over the board is a real time penalty in a race.
+
+### Fixed
+- **Sudoku digits entered by mouse or controller were credited to nobody.**
+  `cycleZone` — the path for every click and every pad press on a sudoku cell —
+  never recorded who entered the digit, while typing one did. Co-op has been
+  quietly routing those regions' proverbs to the wrong player since per-player
+  attribution landed in 0.25.0.
+- **Split-screen touch stitches were credited to the wrong seat.** Touch always
+  drove player 1 and never set the acting seat, so a tile placed by touch was
+  attributed to whichever player last used a controller or the keyboard. The seat
+  is now taken from the pane the finger lands in, and held for the whole stroke.
+- **Players 2–4 could not undo.** Undo was hard-wired to player 1, and only the
+  keyboard and the header button could reach it — so a controller seat had no way
+  to take back its own work. Undo now acts on the seat that asked for it, and
+  there is a controller binding for it.
+
+---
+
 ## [0.31.0] — 2026-08-11 — Weave a brand-new puzzle from any canvas
 
 ### Added

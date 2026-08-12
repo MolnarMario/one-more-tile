@@ -98,6 +98,30 @@ you like. The canvas grid and the header mark a rewoven board `· new weave` so 
 puzzle you're on, and share codes carry the weave with them so a friend gets *your* board, not the
 shipped one.
 
+### Versus — race a friend for the canvas
+Pick **Versus** on the home menu. It comes in two shapes, because sharing a screen and playing on
+separate ones give away completely different amounts of information.
+
+**Local versus (2–4, split-screen).** Everyone works the *same* canvas, and each region goes to
+whoever stitched the most of it. A tie is broken by whoever laid the **last** tile — so a region a
+rival has nearly finished is still up for grabs if you can beat them to the final stitch. There is
+no way to stop someone glancing at the other half of a shared screen, so rather than pretend
+otherwise, this mode makes the shared board the point.
+
+**Online versus (2–4, over a code).** Everyone gets their **own copy of the same puzzle**. You can
+see how fast your rival is going — their completion %, how many regions they hold, and a live
+minimap of the tiles they've committed to — but never *what they decided*. A tile on their minimap
+looks exactly the same whether they called it light, called it dark, or got it wrong.
+
+Three rules, picked by whoever sets up the match: **Full canvas** (play it out; most regions wins),
+**First to N regions**, or **Timed** (most regions when the clock stops).
+
+A match never touches your save. Your real canvas is put aside when the match starts and comes back
+exactly as you left it when you leave — marks, play-time, and even the proverbs you hadn't seen yet.
+
+> Both players' games hold the finished picture locally (that's what lets everyone build the same
+> puzzle without sending it), so online versus is a friendly race, not a cheat-proof competition.
+
 ### Quality of life
 - **Play timer** in the header — per canvas, and it *remembers your time*: leave and come back and
   it resumes where it stopped. It counts only active time (pauses when you open the menu, switch
@@ -109,8 +133,9 @@ shipped one.
 - **3×3 highlight** around the tile under your mouse/controller cursor.
 - **Share** — export your whole canvas as a copy-pasteable code or a `.npxs` file, and import a
   friend's; the recipient's game replays the progress, completed regions and all.
-- **Multiplayer** — local split-screen co-op (up to 4) and online co-op/watch (both peers must be
-  on the same version). In an online session you can keep the shared board as your own solo save.
+- **Multiplayer** — local split-screen co-op (up to 4), online co-op/watch, and **Versus** (above);
+  all peers must be on the same version. In an online co-op session you can keep the shared board as
+  your own solo save.
 - **Options** (⚙ in the toolbar or on the home menu) — recolour the whole interface from a palette
   of presets or a hue slider (default purple), mute/adjust the music, set your default difficulty
   (Medium), and open **controller setup**.
