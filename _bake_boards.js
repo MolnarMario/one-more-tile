@@ -1,0 +1,158 @@
+#!/usr/bin/env node
+/* ============================================================================
+ * _bake_boards.js — fold baked board payloads into the shipped game.
+ *
+ * The payloads themselves are produced IN THE BROWSER by index.html?bake=<map>
+ * (see bakeBoards()), because the pipeline's first stage is a canvas draw —
+ * reimplementing it here would defeat the entire point of baking, which is that
+ * the shipped bytes are whatever the shipped code actually produces. Each tab
+ * downloads one <map>.bake.json; this script consumes them.
+ *
+ *   1. open  index.html?bake=<map>  in a tab per map (they run for minutes)
+ *   2. node _bake_boards.js [srcDir]        # folds the payloads in
+ *   3. open  index.html?verifybake=<map>    # must say BAKE VERIFY PASS
+ *   4. open  index.html?audit=<map>         # must still say AUDIT PASS
+ *
+ * Step 1 banks each payload two ways, because a bake tab usually sits in the
+ * background and Chrome blocks automatic downloads there: it POSTs to
+ * <origin>/__bake/<map>.bake.json if anything is listening (serve the folder
+ * with a dev server that accepts it), and always leaves a download link on the
+ * page as the manual fallback. srcDir is wherever those landed — your downloads
+ * folder, or the server's sink.
+ *
+ * All three of ?bake=, ?verifybake= and ?audit= take a comma-separated map list
+ * (or 1/all). Shard them one map per tab: a whole-registry run takes hours.
+ *
+ * It writes two things:
+ *   boards/<map>.js — the clue sets for all five tiers (lazily loaded at play
+ *                     time by BAKED.load, one map at a time)
+ *   index.html      — the BAKED_LAYOUT / BAKED_SOL tables + BAKED_COMPAT, in
+ *                     place, between their marker comments
+ *
+ * Maps with no payload are simply left out: the game falls back to generating
+ * them exactly as it did before baking existed. A partial bake is slow, never
+ * wrong.
+ *
+ * Usage: node _bake_boards.js [srcDir]        (srcDir default: ../ )
+ * ==========================================================================*/
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = __dirname;
+const SRC = path.resolve(ROOT, process.argv[2] || '..');
+const INDEX = path.join(ROOT, 'index.html');
+const BOARDS = path.join(ROOT, 'boards');
+
+const html0 = fs.readFileSync(INDEX, 'utf8');
+
+// GEN_COMPAT — NOT BOARD_COMPAT — is the staleness stamp: it changes when
+// generation output changes, while BOARD_COMPAT tracks the share/net protocol.
+// Keying the bake off the protocol number would throw away a perfectly good
+// payload every time the share format moved (see the note beside them).
+const compatM = /^const GEN_COMPAT = (\d+);/m.exec(html0);
+if (!compatM) { console.error('! could not find GEN_COMPAT in index.html'); process.exit(1); }
+const GEN_COMPAT = +compatM[1];
+
+// map ids, in MAPS order, straight out of the shipped registry
+const mapsBlock = /^const MAPS = \[([\s\S]*?)^\];/m.exec(html0);
+if (!mapsBlock) { console.error('! could not find the MAPS array in index.html'); process.exit(1); }
+const MAP_IDS = [...mapsBlock[1].matchAll(/\bid:\s*['"]([^'"]+)['"]/g)].map(m => m[1]);
+
+// ---- collect payloads -------------------------------------------------------
+const found = [];
+for (const id of MAP_IDS) {
+  const f = path.join(SRC, id + '.bake.json');
+  if (!fs.existsSync(f)) continue;
+  let rec;
+  try { rec = JSON.parse(fs.readFileSync(f, 'utf8')); }
+  catch (e) { console.error('! ' + id + ': unreadable payload (' + e.message + ')'); process.exit(1); }
+  if (rec.id !== id) { console.error('! ' + f + ' claims id "' + rec.id + '"'); process.exit(1); }
+  if (rec.compat !== GEN_COMPAT) {
+    console.error('! ' + id + ': baked at GEN_COMPAT ' + rec.compat + ', index.html is at ' + GEN_COMPAT + ' — re-bake it');
+    process.exit(1);
+  }
+  if (!rec.sol || !rec.clue) { console.error('! ' + id + ': payload missing sol/clue'); process.exit(1); }
+  found.push(rec);
+}
+if (!found.length) {
+  console.error('! no <map>.bake.json found in ' + SRC);
+  console.error('  run index.html?bake=<map> in a browser tab first (it downloads them)');
+  process.exit(1);
+}
+
+// ---- boards/<map>.js --------------------------------------------------------
+fs.mkdirSync(BOARDS, { recursive: true });
+let clueBytes = 0;
+// How many clues each tier holds. The game checks this before trusting a
+// payload: clueMatchesSol() only proves the clues PRESENT are correct, so a
+// truncated set would pass it vacuously and produce an unsolvable board.
+// `cells` bounds the walk exactly as the game's check does — for an odd cell
+// count the final byte carries a half-nibble that was never written.
+function clueCount(b64, cells) {
+  const b = Buffer.from(b64, 'base64');
+  let n = 0;
+  for (let i = 0; i < cells; i++) {
+    const v = (i & 1) ? (b[i >> 1] >> 4) & 15 : b[i >> 1] & 15;
+    if (v !== 15) n++;
+  }
+  return n;
+}
+
+for (const rec of found) {
+  const n = {};
+  for (const tier of Object.keys(rec.clue)) n[tier] = clueCount(rec.clue[tier], rec.cells);
+  const body = { gw: rec.gw, gh: rec.gh, n, clue: rec.clue };
+  const js =
+    '// Generated by _bake_boards.js from index.html?bake=' + rec.id + ' — do not edit by hand.\n' +
+    '// clue[] for every difficulty tier, 4 bits per cell (15 = no clue), base64.\n' +
+    '// `n` = how many clues each tier should have, checked on load.\n' +
+    '// Loaded on demand by BAKED.load(); a missing or stale file just means the\n' +
+    '// game generates this board itself, as it did before baking existed.\n' +
+    'BAKED.put(' + JSON.stringify(rec.id) + ', ' + GEN_COMPAT + ', ' + JSON.stringify(body) + ');\n';
+  const out = path.join(BOARDS, rec.id + '.js');
+  fs.writeFileSync(out, js);
+  clueBytes += js.length;
+  console.log('  boards/' + rec.id + '.js  ' + (js.length / 1024).toFixed(0) + ' KB');
+}
+
+// ---- the inline tables ------------------------------------------------------
+const layoutEntries = [], solEntries = [];
+for (const rec of found) {
+  if (rec.regionRLE) {
+    layoutEntries.push('  ' + JSON.stringify(rec.id) + ': ' + JSON.stringify({
+      gw: rec.gw, gh: rec.gh, regPix: rec.regPix,
+      zones: rec.zones, picross: rec.picross, regionRLE: rec.regionRLE,
+    }) + ',');
+  }
+  solEntries.push('  ' + JSON.stringify(rec.id) + ': ' + JSON.stringify({ gw: rec.gw, gh: rec.gh, b: rec.sol }) + ',');
+}
+
+// index.html is CRLF; keep the surrounding line endings intact
+function splice(src, name, body) {
+  const re = new RegExp('(/\\* ' + name + ':BEGIN \\*/(\\r?\\n))[\\s\\S]*?(/\\* ' + name + ':END \\*/)');
+  if (!re.test(src)) { console.error('! marker ' + name + ' not found in index.html'); process.exit(1); }
+  return src.replace(re, (_, head, eol, tail) => head + body.split('\n').join(eol) + eol + tail);
+}
+
+let html = html0;
+html = splice(html, 'BAKED_LAYOUT',
+  layoutEntries.length ? 'const BAKED_LAYOUT = {\n' + layoutEntries.join('\n') + '\n};'
+                       : 'const BAKED_LAYOUT = {};');
+html = splice(html, 'BAKED_SOL',
+  solEntries.length ? 'const BAKED_SOL = {\n' + solEntries.join('\n') + '\n};'
+                    : 'const BAKED_SOL = {};');
+html = html.replace(/^const BAKED_COMPAT = \d+;/m, 'const BAKED_COMPAT = ' + GEN_COMPAT + ';');
+
+fs.writeFileSync(INDEX, html);
+
+// ---- report -----------------------------------------------------------------
+const missing = MAP_IDS.filter(id => !found.some(r => r.id === id));
+console.log('');
+console.log('baked ' + found.length + '/' + MAP_IDS.length + ' maps at GEN_COMPAT ' + GEN_COMPAT);
+console.log('  index.html  ' + (html0.length / 1024).toFixed(0) + ' KB -> ' + (html.length / 1024).toFixed(0) + ' KB' +
+            '  (layout ' + layoutEntries.length + ', sol ' + solEntries.length + ')');
+console.log('  boards/     ' + (clueBytes / 1024).toFixed(0) + ' KB across ' + found.length + ' files');
+if (missing.length) console.log('  NOT baked (will generate at play time): ' + missing.join(', '));
+console.log('');
+console.log('next: index.html?verifybake=1  then  index.html?audit=1');

@@ -15,3 +15,14 @@ example.png
 p1demo.png
 bug1.png
 bug-again.png
+
+# Working files, not deliverables. The two big ones matter: a saved copy of
+# index.html is ~1.2 MB, and git keeps every blob forever — a handful of those
+# would outweigh the entire rest of the repo. Any version you need is already
+# reachable from history, so save snapshots here rather than committing them.
+# multi-agent coordination board
+.aihive/
+# plans, one-off harnesses, design handoffs
+.scratch/
+# saved builds of index.html for side-by-side testing
+test-*.html
