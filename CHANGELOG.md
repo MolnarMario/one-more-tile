@@ -5,7 +5,33 @@ shipped to the live site.
 
 ---
 
-## [0.33.0] — unreleased — Online play: who is actually speaking
+## [0.33.1] 2026-09-25: Versus and menu fixes from live testing
+
+0.30.0 through 0.33.0 sat on a branch until now and ship together with this
+release. Playing them in a real browser, across two tabs over the live PeerJS
+broker, turned up these.
+
+### Fixed
+- **A versus guest never saw the host.** `pvpSeatTokens()` built the online seat list
+  from `coopPeers`, which only cursor frames fill, and a match sends none. So a
+  guest's scoreboard showed only "You" and it had no opponents panel. Anyone who
+  has reported match progress (`PVP.opp`) now gets a seat too.
+- **A guest who won was told "Player 3 wins".** The host builds the result from
+  its own seat, where `me` is the host and the guest is a peer id. The guest showed
+  it unchanged, so its own row carried the host's score. The guest now re-keys the
+  result to its own point of view, and seats any rival named in it.
+- **You could not host your most recent canvas online.** The grid's Continue card
+  always started a solo game, and since 0.30.0 the canvas's own card hides while
+  Continue shows. The Continue card now follows the grid's mode (co-op host,
+  versus), and only the home screen's Continue button means solo.
+- The join panel said "Connected, receiving the board…" forever after the board
+  had arrived. It now says you joined.
+- Six on-screen strings added in 0.30.0 to 0.32.0 had em dashes, which 0.29.0 had
+  stripped from the front end. Rewritten without them.
+
+---
+
+## [0.33.0] — 2026-09-25 — Online play: who is actually speaking
 
 A security pass over online co-op and versus. The through-line: every privileged
 action was authorised against a peer id **the sender wrote into its own frame**,
@@ -68,7 +94,7 @@ while the transport quietly knew who really sent it and threw that away.
 
 ---
 
-## [0.32.0] — unreleased — Versus: race a friend for the canvas
+## [0.32.0] — 2026-09-25 — Versus: race a friend for the canvas
 
 ### Added
 - **Versus mode**, on the home menu beside Single Player and Co-op. Two shapes,
@@ -120,7 +146,7 @@ while the transport quietly knew who really sent it and threw that away.
 
 ---
 
-## [0.31.0] — 2026-08-11 — Weave a brand-new puzzle from any canvas
+## [0.31.0] — 2026-09-25 — Weave a brand-new puzzle from any canvas
 
 ### Added
 - **"New weave" (🎲, in the ⋯ menu).** Every canvas ships with one fixed puzzle,
@@ -163,7 +189,7 @@ while the transport quietly knew who really sent it and threw that away.
 
 ---
 
-## [0.30.0] — 2026-08-11 — Boards ship precomputed: no more waiting to start
+## [0.30.0] — 2026-09-25 — Boards ship precomputed: no more waiting to start
 
 ### Added
 - **Every canvas now ships already generated.** The puzzle was always identical

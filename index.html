@@ -1188,10 +1188,10 @@
   <div class="card">
     <h2>🎲 Weave a new puzzle?</h2>
     <p>This keeps the painting, its regions and its plots exactly as they are, and weaves a
-       <b>completely new puzzle</b> across them — new solution, new clues, new sudoku and picross.</p>
+       <b>completely new puzzle</b> across them: new solution, new clues, new sudoku and picross.</p>
     <p style="font-size:13px;color:var(--muted)">Your progress on the original is <b>kept separately</b> and waiting
        whenever you come back to it. A new weave has to be built from scratch, so expect the long
-       loading screen — this is the one board that isn't shipped ready-made.</p>
+       loading screen. This is the one board that isn't shipped ready-made.</p>
     <div class="btns">
       <button class="primary" id="btnConfirmReweave">Weave a new one</button>
       <button id="btnBackToCanon" style="display:none">Back to the original</button>
@@ -1310,7 +1310,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.33.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.33.1';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -3167,7 +3167,7 @@ function afterBoardSwap(){
 // never destructive: you can walk back and forth between weaves.
 function reweaveCanvas(seed){
   if (!generated || solving || GEN.active) { toast('One moment, the canvas is still busy.', true); return false; }
-  if (online) { toast('Leave the online session before reweaving — everyone shares one board.', true); return false; }
+  if (online) { toast('Leave the online session before reweaving. Everyone shares one board.', true); return false; }
   if (PVP.active) { toast('You cannot reweave the canvas during a match.', true); return false; }
   timerPause();                     // bank the outgoing weave's time under ITS key
   setCustomSeed(currentMap, seed);  // must land before rebuildForMap: seedFor() drives generation
@@ -4810,7 +4810,12 @@ function resetGame(){
 // the owner tokens competing, in a stable display order
 function pvpSeatTokens(){
   if (PVP.mode === 'local') return players.map(p => 'L' + p.id);
-  return ['me', ...peerIds()];
+  // coopPeers is filled by cursor frames, which a match never sends, so a guest
+  // would never seat the host (or other guests). Anyone who has reported match
+  // progress is a rival too; PVP.opp only ever holds authenticated origins.
+  const ids = peerIds();
+  for (const pid of Object.keys(PVP.opp)) if (ids.indexOf(pid) < 0) ids.push(pid);
+  return ['me', ...ids];
 }
 function pvpLabel(tok){
   if (tok === 'me') return 'You';
@@ -4948,7 +4953,7 @@ function pvpStat(tok){
 function pvpRuleText(){
   if (PVP.rule === 'regions') return 'First to ' + PVP.target + ' regions';
   if (PVP.rule === 'timed')   return 'Most regions in ' + Math.round(PVP.target / 60) + ' min';
-  return 'Whole canvas — most regions wins';
+  return 'Whole canvas, most regions wins';
 }
 function buildPvpBar(){
   const bar = document.getElementById('pvpBar');
@@ -5106,9 +5111,9 @@ function openPvpLobby(cfg){
   const isLocal = cfg.mode === 'local';
   document.getElementById('pvpLobbyTitle').textContent = isLocal ? 'Local versus' : 'Online versus';
   document.getElementById('pvpLobbyBlurb').textContent = isLocal
-    ? 'One canvas for ' + cfg.players + ' players. Every region goes to whoever stitched the most of it — grab the last tile and you can steal one. ' + pvpRuleText() + '.'
+    ? 'One canvas for ' + cfg.players + ' players. Every region goes to whoever stitched the most of it. Grab the last tile and you can steal one. ' + pvpRuleText() + '.'
     : 'You and your rivals each get your own copy of this exact canvas. You will see their pace, never their answers. ' + pvpRuleText() + '. '
-      + 'Everyone scores their own board and reports it, so a match runs on the honour system — play it with people you would lend a pen to.';
+      + 'Everyone scores their own board and reports it, so a match runs on the honour system. Play it with people you would lend a pen to.';
   document.getElementById('pvpLobbyOnline').style.display = isLocal ? 'none' : '';
   document.getElementById('pvpLobbyRoom').style.display = 'none';
   const warn = document.getElementById('pvpLobbyWarn');
@@ -6235,7 +6240,18 @@ function onNetMessage(msg, from){
     case 'pvp-result':
       if (onlineRole !== 'join' || origin !== hostPid || !msg.data) break;
       if (msg.data.matchId !== PVP.matchId) break;
-      pvpFinish(msg.data.winner, msg.data.scores);
+      {
+        // The host keys the result from ITS seat: 'me' is the host and this
+        // guest is its peer id. Re-key it to ours before showing it, or a guest
+        // who won reads "Player 3 wins" with the host's score as "You".
+        const tr = t => t === 'me' ? hostPid : t === myPeerId ? 'me' : t;
+        const src = (msg.data.scores && typeof msg.data.scores === 'object') ? msg.data.scores : {};
+        const scores = {};
+        for (const k of Object.keys(src).slice(0, NET_MAX_PEERS + 1)) scores[tr(k)] = src[k];
+        // a rival that never sent us progress still belongs in the standings
+        for (const k of Object.keys(scores)) if (PVP.seats.indexOf(k) < 0) PVP.seats.push(k);
+        pvpFinish(msg.data.winner == null ? null : tr(msg.data.winner), scores);
+      }
       break;
     case 'pvp-cancel':
       if (onlineRole !== 'join' || origin !== hostPid) break;
@@ -6254,6 +6270,7 @@ function onNetMessage(msg, from){
         importCode(msg.data.code, () => {
           online = true;
           pendingRemote.forEach(x => applyRemote(x.ev, x.pid)); pendingRemote = [];   // flush moves that arrived mid-import
+          document.getElementById('onlineJoinStatus').textContent = 'Joined. You are on the host’s board.';
           setOnlineUI(); toast('Joined! You’re on the host’s board now.', true); needsDraw = true;
         }, false, { adopted: true });
       }
@@ -7992,7 +8009,10 @@ function menuBuildGrid(){
       '</div>' +
       '<span class="continueResume">Resume</span>' +
     '</div>';
-  cc.onclick = () => menuContinue();
+  // the grid's mode (co-op host, versus...) set by menuOpenGrid applies here too;
+  // only the home screen's Continue button means "resume solo". The resume map's
+  // own card is hidden while this one shows, so it is the only way to pick it.
+  cc.onclick = () => { const id = menuLastSolo(); if (id) menuPlay(id); };
   grid.appendChild(cc);
   for (const m of MAPS) {
     const meta = MAP_META[m.id];
