@@ -33,7 +33,7 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 - **Docs** — `README.md` (players), `CLAUDE.md` (this), `CHANGELOG.md` (per-version history).
 
 ### Running / verifying / debugging
-- **Play**: open `index.html`. Live: https://molnarmario.github.io/one-more-tile/
+- **Play**: open `index.html`. Live: https://tile.thebarbellengineer.com/
 - **`?audit=1`**: rebuilds every map × every difficulty and asserts zero pre-filled cells + full
   logical solvability; sets `document.title` to `AUDIT PASS`/`AUDIT FAIL` (headless-friendly). This
   is *the* correctness check — run it after touching generation. Entry: `auditGivens(only)`.

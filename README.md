@@ -8,7 +8,7 @@ No build, no server, no dependencies — open `index.html` in a browser and play
 `boards/` folder next to it for instant loading; without it the game just builds each canvas itself,
 the slow way.)
 
-**▶ Play it now: https://molnarmario.github.io/one-more-tile/**
+**▶ Play it now: https://tile.thebarbellengineer.com/**
 
 > New here and want the full engineering rundown (architecture, data flow, key globals, where the
 > seams are)? See **[CLAUDE.md](CLAUDE.md)** — a map of the codebase written for a new person or AI.
