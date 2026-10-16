@@ -14,8 +14,8 @@ What changed in **One More Tile** for the people playing it, newest first.
 ## [0.33.0] 2026-09-25: Safer online play
 
 - In a game with two or more guests, one guest could pretend to be the host:
-  push a board at the others, fake a match result or disconnect them. That's
-  no longer possible.
+  push a board at the others, fake or cancel a match, or disconnect another
+  guest, which could end a match for everyone. That's no longer possible.
 - Joining a friend's game no longer makes your own solo progress on that
   canvas look empty.
 - Nobody can fill a room with fake players to keep your friends out.
@@ -35,6 +35,8 @@ What changed in **One More Tile** for the people playing it, newest first.
 - Three rules: play out the full canvas, first to a number of regions, or
   most regions when the clock stops.
 - A match never touches your saved progress.
+- During a match, region quotes appear as a small notice instead of a dialog
+  over the board.
 - Fixed: sudoku digits placed with a mouse or controller now count for the
   player who placed them, touch stitches in split-screen go to the right
   player, and players 2 to 4 can undo their own moves.
@@ -51,7 +53,7 @@ What changed in **One More Tile** for the people playing it, newest first.
 
 - Every canvas ships ready-made. Opening one used to take up to 35 seconds
   the first time. Now it's the length of the loading animation.
-- Every player gets exactly the same board on every browser.
+- Every player gets exactly the same puzzle on every browser.
 
 ## [0.29.0] 2026-08-10: See your progress on the canvas cards
 
@@ -90,10 +92,11 @@ What changed in **One More Tile** for the people playing it, newest first.
 
 - Controller setup lists PlayStation buttons next to Xbox ones.
 
-## [0.26.0] 2026-08-02: Canvases you've played open in about a second
+## [0.26.0] 2026-08-02: Coming back to a canvas is near-instant
 
-- Coming back to a canvas is near-instant. Angels went from about 37 seconds
-  to under one.
+- A canvas you've already played opens in about a second. Angels went from
+  about 37 seconds to under one. A difficulty you haven't tried yet still
+  has to be woven the first time.
 - Picross patches get harder with the difficulty, and every one is still
   solvable by logic alone.
 - Changing difficulty never redraws a patch you've already started.
@@ -108,7 +111,9 @@ What changed in **One More Tile** for the people playing it, newest first.
 
 ## [0.24.1] 2026-07-30: Clearer Save button
 
-- Saving your progress has its own 💾 button, and the dialog explains sharing.
+- Saving your progress has its own 💾 button. The dialog explains how to
+  hand your board to a friend, and warns that importing one replaces their
+  progress on that canvas.
 
 ## [0.24.0] 2026-07-27: New canvas, Inferno
 
@@ -117,7 +122,8 @@ What changed in **One More Tile** for the people playing it, newest first.
 ## [0.23.0] 2026-07-27: Play on phones and tablets
 
 - Tap or drag to stitch, two fingers to pan and zoom, and a light or dark
-  brush switch.
+  brush switch. Tap a sudoku cell to select it, and tap again to change its
+  digit.
 - Typing a code or PIN no longer triggers board shortcuts.
 - Your last stitch is saved even if you close the tab right away.
 - The music setting is remembered, and with music off the track isn't
@@ -259,7 +265,8 @@ What changed in **One More Tile** for the people playing it, newest first.
 ## [0.9.1] 2026-06-16: Reliability fixes
 
 - Clearing your last mistakes can finish a region.
-- No region strands a few tiles inside another one.
+- No region strands a few tiles inside another one. On Flash, two stray
+  tiles went back to the region around them.
 
 ## [0.9.0] 2026-06-16: Big canvases load smoothly
 
