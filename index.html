@@ -490,11 +490,15 @@
     border-left:1px solid var(--panel-border)}
   .menuStepInline .menuOptLbl{margin-right:0}
   .mapGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:18px;width:100%;margin-top:24px}
+  /* cards are <button>s, which vertically CENTRE their content: when a grid row is
+     stretched (the taller Continue card, a neighbour's progress row) the art slid down
+     and left a bar of card background above the map. Pin everything to the top. */
+  .mapCard,.continueCard{display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch}
   .mapCard{padding:0;overflow:hidden;border-radius:14px;background:var(--panel);border:1px solid var(--panel-border);
     cursor:pointer;position:relative;text-align:left;box-shadow:0 8px 24px hsl(var(--hue) 46% 35% / .12);
     transition:transform .15s, box-shadow .15s, border-color .15s}
   .mapCard:hover,.mapCard:focus-visible{transform:translateY(-3px);box-shadow:0 16px 40px hsl(var(--hue) 46% 35% / .26);border-color:var(--accent);outline:none}
-  .mapCardArt{width:100%;aspect-ratio:16/10;background:var(--mapart);display:block;overflow:hidden}
+  .mapCardArt{width:100%;aspect-ratio:16/10;background:var(--mapart);display:block;overflow:hidden;flex:none}
   .mapCardArt canvas{width:100%;height:100%;object-fit:cover;display:block}
   .mapCardBody{padding:10px 12px 12px}
   .mapCardTitle{font-size:15px;font-weight:600;color:var(--text)}
