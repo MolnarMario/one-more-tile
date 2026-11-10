@@ -3,6 +3,11 @@
 What changed in **One More Tile** for the people playing it, newest first.
 [CHANGELOG.md](CHANGELOG.md) has the full technical record of each version.
 
+## [0.34.1] 2026-11-10: Canvas grid fix
+
+- Canvas thumbnails no longer slide down and leave an empty bar above the
+  picture when a row of the grid is taller than the card.
+
 ## [0.33.1] 2026-09-25: Versus and menu fixes
 
 - In online versus, a joining player now sees the host on the scoreboard and

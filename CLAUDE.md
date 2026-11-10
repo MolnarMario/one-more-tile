@@ -26,8 +26,16 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
   - `region-editor.html` ← `node _build_editor.js` (uses `index.html` + `_editor.src.js`) — author
     maps by drawing region borders; exports a `.npxsmap.json`.
   - `region-map.html` ← `node _build_inspector.js` — region inspector (borders + ids).
-  - `_bake_map.js` — bakes a `.npxsmap.json` into `index.html` as a built-in map.
-  - `_bake_boards.js` — folds `?bake=` payloads into `index.html` + `boards/` (§7a).
+  - `_release_map.js` — **add a map in one command** (§8.11): runs the four tools below in order,
+    resumable.
+  - `_bake_map.js` — inserts a `.npxsmap.json` into `index.html` as a built-in map (validated,
+    appended to `MAPS`).
+  - `_bake_boards.js` — **upserts** `?bake=` payloads into `index.html` + `boards/` (§7a).
+  - `_check_map_release.js` — the map-only release gate: byte-isolation vs the live release (§8.11).
+  - `_headless.js` — runs `?audit=`/`?bake=`/`?verifybake=` in headless Chrome, one Chrome per map
+    in parallel, plus a sequential boot `smoke` of every map; `_dev_server.js` serves the page + the
+    bake sink for it.
+    `_map_lib.js` is their shared parser/validator.
   - `verify-puzzle.js`, `inspect-region.js` — **legacy** Castle-only Node harnesses, superseded by
     the in-browser audit (below). Their headers say so.
 - **Docs** — `README.md` (players), `CLAUDE.md` (this), `CHANGELOG.md` (per-version history).
@@ -40,9 +48,12 @@ must not break. Player-facing docs live in [README.md](README.md); the shipped-c
 - **`?verifybake=1`**: rebuilds every map × tier for real and asserts the **shipped baked payload is
   byte-identical** (partition, plot geometry, `sol`, `clue`). Title → `BAKE VERIFY PASS`/`FAIL`.
   Run it whenever you re-bake. Entry: `verifyBake(only)`.
-- **`?bake=<map>`**: produces the payload for those maps (§7a). Title → `BAKE DONE`.
+- **`?bake=<map>`**: produces the payload for those maps (§7a), **auditing every tier on the bytes it
+  ships** (the `?audit=` checks + `clueMatchesSol` + a pack round-trip) and refusing on any failure.
+  Title → `BAKE DONE` only once every payload POST was written.
 - ⚠ **All three take a comma-separated map list** (`?audit=angels,castle`; `1`/`all` = everything).
-  A whole-registry run takes hours — **shard it one map per tab** and read each tab's title.
+  A whole-registry run in one page takes hours — run them with **`node _headless.js <mode> <maps|all>`**,
+  which gives each map its own headless Chrome (parallel, `--jobs N`) and exits non-zero on failure.
 - **`?nowork=1`**: forces synchronous, worker-free clue generation (headless/debug).
 - **`?nocache=1`**: bypasses the IndexedDB board cache **and the bake** (§7/§7a) so you always get a
   real, cold build. `?audit=1`, `?bake=` and `?verifybake=` disable both for the same reason — they
@@ -363,10 +374,17 @@ expensive half of generation now ships as data. Three artifacts, produced by `ba
   browser's `drawImage` downscale, and that fed both `sol` and `edge[]` → `regionOf`. With the
   partition and solution baked, nothing about the puzzle depends on the local browser; only
   `cellCol` (revealed artwork) is still sampled per machine.
-- **Workflow**: `?bake=<map>` per tab → `node _bake_boards.js [srcDir]` → `?verifybake=` →
-  `?audit=`. The payload is produced *in the browser* on purpose: the first pipeline stage is a
-  canvas draw, so any Node reimplementation would defeat the point that the shipped bytes are what
-  the shipped code makes.
+- **Workflow**: `node _headless.js bake <maps>` → `node _bake_boards.js .scratch/bake` →
+  `node _headless.js verifybake <maps>`. (A new map uses `_release_map.js` instead, §8.11.) The
+  payload is produced *in the browser* on purpose: the first pipeline stage is a canvas draw, so any
+  Node reimplementation would defeat the point that the shipped bytes are what the shipped code makes.
+- **`_bake_boards.js` upserts.** It replaces or adds only the maps it is handed and keeps every other
+  inline record byte-for-byte. `BAKED_COMPAT` is **one** stamp for every inline record, so when it
+  differs from `GEN_COMPAT` the fold is FULL: it demands a payload for every map and refuses
+  otherwise (re-stamping a partial set would pass the rest off as current). It validates every
+  payload — dims, seed, tier set, the partition, the clue rule, the bake-time audit — before writing
+  anything. (Until 0.34.1 it rebuilt both tables from whatever payloads it found: folding Silver Steel
+  alone deleted the other nine maps' inline records.)
 
 ### 7b. Custom seeds — reweaving a canvas
 
@@ -562,6 +580,21 @@ field the sender wrote. The rule now, in one line: **identity is the connection 
    re-opens guest-impersonates-host for the whole protocol. The host's relay stamp (`src` in
    `PeerNet.wire`) is what makes `netOrigin` work on the guest side — don't drop it when touching the
    transport, and don't add a transport that relays without it.
+11. **A new map is a map-only release.** `node _release_map.js <map>.npxsmap.json` inserts it, bakes it
+   once headless (the bake *is* the audit), upserts it, gates it and smoke-boots every map. The gate,
+   `_check_map_release.js <id> --payload .scratch/bake`, proves that every byte of `index.html`
+   outside the map's own records equals the live release (only `APP_VERSION`'s value may change),
+   that each of those records is pure canonical data (regenerated by `_map_lib.js`'s `canon` and
+   compared), that no file but `index.html`, `boards/<id>.js`, docs and a source `.npxsmap.json`
+   differs, and that the shipped bytes equal the audited payload. Under that proof every other map still runs the same code on the same data,
+   so its earlier `?audit=`/`?verifybake=` passes still hold — **don't re-run them for a map add**.
+   Ship tooling or code changes in their own release first; the gate fails on them by design.
+   - New maps are **appended** to `MAPS` (`MAPS[0]` is `mapDef()`'s fallback) and to
+     `MAP_ADDED_ORDER`. Ids key saves, share codes (≤64 chars) and the bake: **never reuse one**.
+   - A shipped map's partition is permanent — region ids are quote keys and saved `doneKey` masks.
+   - An older client still on the same `BOARD_COMPAT` can join a host who is playing the new map and
+     will fail to decode the snapshot (unknown id). Expected; don't bump `BOARD_COMPAT` for it, which
+     would split co-op on every map.
 
 ---
 
@@ -569,13 +602,13 @@ field the sender wrote. The rule now, in one line: **identity is the connection 
 
 | Task | Where |
 |---|---|
-| Add a map | `MAPS` array (by hand) or the editor + `node _bake_map.js` |
+| Add a map | the editor's `.npxsmap.json` → `node _release_map.js <file> --id <slug> --name "…"` → bump `APP_VERSION` + CHANGELOG → `node _check_map_release.js <id> --payload .scratch/bake --ship` → PR (§8.11) |
 | Add/adjust quotes | `MAP_QUOTES[mapId]` keyed by region id |
 | Tune difficulty | the `DIFF` table (`redundancy`/`extremeKeep`/`zGivens`/`zSwaps`/`basicOnly`) |
 | Tune picross difficulty | `DIFF[tier].pRuns`/`.pRounds` + `shapePicross`/`picrossProfile` (§4). Verify with `?audit=1` — the shaping must never make a patch unsolvable |
 | Tune the loading animation | `GTL_BASE` (timeline), the `sc` scale in `beginGen`, `drawGen`; `GTL_CACHED` for the short cache-hit beat (keep every divisor non-zero — `drawGen` divides by `regDur`/`shimIn`/`settle`) |
 | Board caching / eviction | the board-cache block just above `startGeneration` (§7); `BCACHE_CLUE_MAX`, `clueMatchesSol`, `prepareSolution`, `regenCluesFresh` |
-| Re-bake after a generation change | §7a — `?bake=<map>` per tab → `node _bake_boards.js [srcDir]` → **`?verifybake=` must pass** → `?audit=` |
+| Re-bake after a generation change | §7a — `node _headless.js bake all` → `node _bake_boards.js .scratch/bake` (FULL fold: needs every map) → **`node _headless.js verifybake all` must pass** |
 | Custom seeds / reweaving | §7b — `seedFor`/`layoutSeed`/`setCustomSeed`, `seedSuffix` in `stateKey`, `reweaveCanvas`, `#reweaveModal` |
 | Baked-board plumbing | §7a — the baked-boards block above the cache (`BAKED*`, `packBits`/`packNibbles`), and the seams in `buildLayout`/`prepareSolution`/`regenClues`/`clueCacheProbe` |
 | Change colours / theme | edit `:root` HSL vars (CSS chrome) **and** `buildPalette()` (canvas `C` + `TINTS`) together; both key off `--hue`/`themeHue`. Add/adjust theme swatches in `THEME_PRESETS` (§10) |
@@ -589,7 +622,7 @@ field the sender wrote. The rule now, in one line: **identity is the connection 
 | Anything that writes localStorage | add a `PVP.active` bail, or a match will clobber the player's real save (§7c) |
 | Change the clue rule | `nbhd` construction in `buildLayout` (⚠ affects everything) |
 | Solvability logic | `repairTexture`/`repairRegion`/`repairPicross` and the `genRegionClues` solver |
-| Verify a change | `?audit=1` (all maps × tiers, shardable per map); `?verifybake=1` if generation moved; syntax-check the inline script under Node |
+| Verify a change | `node _headless.js audit all` (all maps × tiers, parallel); `node _headless.js verifybake all` if generation moved; `node _headless.js smoke` for a real boot of every map; syntax-check the inline script under Node |
 | Ship it | bump `APP_VERSION`, add a `CHANGELOG.md` entry, re-bake if generation changed, rebuild dev tools if blocks changed, one clean push |
 
 ---
