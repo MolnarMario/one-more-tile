@@ -5,6 +5,16 @@ shipped to the live site.
 
 ---
 
+## [0.34.0] — 2026-11-10 — New map: Silver Steel ⚔️
+
+### Added
+- **New map "Silver Steel ⚔️"** (321×179, 52 regions, 8 sudoku plots, 8 picross
+  plots, 6 region quotes), hand-laid out and baked in via `_bake_map.js`. Audit
+  PASS on every tier (locked/unsolved/picross all 0); `?verifybake=` confirms
+  the shipped payload is byte-identical to a fresh build.
+
+---
+
 ## [0.33.1] 2026-09-25: Versus and menu fixes from live testing
 
 0.30.0 through 0.33.0 sat on a branch until now and ship together with this
