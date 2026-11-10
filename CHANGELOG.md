@@ -7,11 +7,16 @@ shipped to the live site.
 
 ## [0.34.1] — 2026-11-10 — Adding a map touches only that map
 
-Tooling only; nothing changes for players. Generation output is unchanged (a fresh
-headless bake of Castle and of Silver Steel reproduces the shipped bytes exactly), so
-`GEN_COMPAT`/`BOARD_COMPAT` stay put and nothing was re-baked.
+One fix players will see (the map-card bar below); the rest is release tooling.
+Generation output is unchanged (a fresh headless bake of Castle and of Silver Steel
+reproduces the shipped bytes exactly), so `GEN_COMPAT`/`BOARD_COMPAT` stay put and
+nothing was re-baked.
 
 ### Fixed
+- **A bar of card background above some map thumbnails** (Amigos, Angels) on the
+  canvas grid. Cards are `<button>`s, which vertically centre their content, so when
+  a grid row stretched (the taller Continue card, or a neighbour's progress row) the
+  thumbnail slid down. `.mapCard`/`.continueCard` are now top-aligned flex columns.
 - **Folding one map's bake deleted every other map's baked data.** `_bake_boards.js`
   rebuilt the inline `BAKED_LAYOUT`/`BAKED_SOL` tables from only the payloads it was
   handed, so folding Silver Steel alone dropped the other nine maps' records (caught
