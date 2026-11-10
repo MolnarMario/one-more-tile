@@ -201,33 +201,42 @@ audit supersedes them.)*
 
 ## Adding a map
 
-Two ways:
-
-**By hand** — embed an image as a data URI and add an entry to the `MAPS` array in `index.html`:
-
-```js
-{ id: 'mymap', name: '🎨 My Map', src: IMG_SRC_3, seed: 12345 }
-```
-
-Omit `gw`/`gh` and the board auto-sizes to the image's aspect; plots auto-place; regions grow to
-fit. Optionally add a `MAP_QUOTES['mymap']` table of region-id → quote.
-
-**With the editor** — open `region-editor.html`, load an image, draw region borders (the tool
-auto-detects each region, auto-places the sudoku/picross plots, and lets you attach a quote per
-region), and **Export** a `.npxsmap.json`. Then bake it into the game:
+Open `region-editor.html`, load an image, draw region borders (the tool auto-detects each region,
+auto-places the sudoku/picross plots, and lets you attach a quote per region), and **Export** a
+`.npxsmap.json`. Then, with Chrome installed:
 
 ```sh
-node _bake_map.js mymap.npxsmap.json --name "🎨 My Map"
+node _release_map.js mymap.npxsmap.json --id my-map --name "My Map 🎨"
 ```
 
-This inserts the image, a `HAND_LAYOUTS` partition, a `MAPS` entry and any quotes into `index.html`.
+One command, unattended, and it only ever touches that map:
+
+1. **insert** — validates the map (fails closed on a malformed partition, a bad name or quote, an
+   id that was ever used before) and appends it to `index.html`;
+2. **bake** — generates its board once in headless Chrome, auditing every difficulty on the exact
+   bytes that will ship (≈15 min for the largest map, seconds for small ones);
+3. **fold** — adds this map's records to the baked tables, leaving every other map's byte-for-byte;
+4. **check** — proves nothing outside this map changed against the live release, and that the
+   shipped bytes equal the audited bake;
+5. **smoke** — boots the game normally and launches every map from its shipped board.
+
+It is safe to re-run; each step picks up where the last stopped. Then bump `APP_VERSION`, add a
+`CHANGELOG.md` entry, run `node _check_map_release.js my-map --payload .scratch/bake --ship`, and
+open the PR — it should contain only `index.html`, `boards/my-map.js`, docs and (optionally) the
+map's source `.npxsmap.json`. Because the gate
+proves the other maps are untouched, there is no need to re-audit them.
+
+*(A map can still be added by hand as a bare `MAPS` entry with no layout — the board then
+auto-sizes, auto-places plots and grows regions at runtime — but it ships unbaked, so it generates
+in every player's browser. The release check rejects it.)*
 
 ---
 
 ## Debug flags
 
 - **`?audit=1`** — run the solvability audit across all maps × tiers (see above); skips normal boot.
-- **`?bake=<map>`** — regenerate the shipped precomputed board payload for those maps (see below).
+- **`?bake=<map>`** — regenerate the shipped precomputed board payload for those maps (see below),
+  auditing every tier on the bytes it ships; it refuses to produce a payload that fails.
 - **`?verifybake=<map>`** — rebuild those maps for real and assert the shipped payload is
   byte-identical. Run it after every re-bake.
 - **`?nowork=1`** — force clue generation to run synchronously on the main thread instead of in the
@@ -237,8 +246,17 @@ This inserts the image, a `HAND_LAYOUTS` partition, a `MAPS` entry and any quote
   generation.)
 
 `?audit=`, `?bake=` and `?verifybake=` all take a comma-separated map list (`?audit=angels,castle`;
-`1` or `all` means every map). A whole-registry run takes hours — shard it one map per browser tab
-and read the verdict off each tab's title.
+`1` or `all` means every map). Rather than driving tabs by hand, run them headless:
+
+```sh
+node _headless.js audit all          # or bake / verifybake, with a map list instead of `all`
+node _headless.js smoke              # normal boot: menu grid + every map from its shipped board
+```
+
+For `audit`/`bake`/`verifybake` each map gets its own headless Chrome, in parallel (`--jobs N`);
+`smoke` walks the maps one after another in a single Chrome (~5 s each). The exit code is the verdict.
+To drive a tab yourself, `node _dev_server.js` serves the page on `http://127.0.0.1:8923/` and
+catches `?bake=` payloads in `.scratch/bake/`.
 
 ## Dev tools (not shipped)
 
@@ -250,12 +268,16 @@ changing the relevant part of `index.html`:
 - **`region-map.html`** — a region inspector: renders each map's art with region borders and ids
   (`R`n region, `S`n sudoku, `P`n picross) plus each plot's home region, for assigning quotes.
   Built by `node _build_inspector.js`.
-- **`_bake_map.js`** — bakes an exported `.npxsmap.json` into `index.html` as a built-in map.
+- **`_release_map.js`** — adds a map end to end (see *Adding a map*).
+- **`_bake_map.js`** — inserts an exported `.npxsmap.json` into `index.html` as a built-in map.
 - **`_bake_boards.js`** — folds the `?bake=` payloads into `index.html` + `boards/`, so canvases
-  ship already generated. Re-run it (and then `?verifybake=`) after **any** change to generation —
+  ship already generated. It updates only the maps you give it. After **any** change to generation,
+  re-bake every map and fold them all (it insists), then `node _headless.js verifybake all` —
   otherwise the shipped boards no longer match the code that makes them. The payloads are produced
   in the browser rather than in Node on purpose: generation starts with a canvas draw, so a Node
   reimplementation would defeat the whole point of the bake being the real output.
+- **`_check_map_release.js`** — the gate for a map-only release: proves nothing but that map changed.
+- **`_headless.js`** / **`_dev_server.js`** — run the debug flags headless / serve them locally.
 - **`verify-puzzle.js` / `inspect-region.js`** — legacy Castle-only Node analysis harnesses,
   superseded by `?audit=1` (kept for reference).
 

@@ -1316,7 +1316,7 @@ const MAPS = [
   { id: 'crew',   name: 'The Crew 🛡', src: IMG_SRC_2, seed: 80218 },                    // dims derived from its aspect
   { id: 'fighters', name: 'The Fighters 🐉', src: IMG_SRC_3, seed: 305139 },  // dims derived from its aspect
 ];
-const APP_VERSION = '0.34.0';   // shown bottom-right; keep in sync with CHANGELOG
+const APP_VERSION = '0.34.1';   // shown bottom-right; keep in sync with CHANGELOG
 // online co-op compatibility key. Peers may play together only if these match.
 // Bump ONLY when generation, the share/snapshot format, or the net protocol
 // changes — NOT for cosmetic releases — so friends on adjacent UI builds can
@@ -3878,7 +3878,10 @@ function auditSolvePicross(pz){
 //  Run one map per tab:  index.html?bake=angels   (?bake=all for every map)
 //  It walks the SAME pipeline auditGivens does, and for the same reason: the
 //  payload has to be whatever this exact code produces, never a reimplementation
-//  of it. Output downloads as <map>.bake.json; _bake_boards.js splices it in.
+//  of it. Each map's tiers are also audited here (the ?audit= checks, on the
+//  packed bytes), so a bake that finishes is an audit that passed. Output is
+//  POSTed to _dev_server.js (or downloaded) as <map>.bake.json, and
+//  _bake_boards.js upserts it. `node _headless.js bake <map>` drives all of it.
 // ============================================================
 function bakeLoadImg(id){
   return new Promise((res, rej) => {
@@ -3930,6 +3933,7 @@ async function bakeBoards(only, onMap){
     capturePicBase();               // shapePicross always works from these
     rec.sol = bytesToB64(packBits(sol, N));   // PRE-shaping, so it stays tier-independent
     rec.clue = {};
+    rec.audit = [];
     for (const d of DIFF_ORDER){
       difficulty = d;
       locked.fill(0); clue.fill(-1);
@@ -3939,8 +3943,24 @@ async function bakeBoards(only, onMap){
       // never ship a board that hands the player free cells (CLAUDE.md §8.3)
       let lockedN = 0; for (let i = 0; i < N; i++) if (locked[i]) lockedN++;
       if (lockedN) throw new Error('bake ' + m.id + '/' + d + ': ' + lockedN + ' locked cells — repair regression, refusing to bake');
-      rec.clue[d] = bytesToB64(packNibbles(clue, N, bakeOrganic));
-      console.log('[bake] ' + m.id + ' ' + d + ' ok');
+      // The ?audit= checks, run here on exactly the bytes being shipped, so a
+      // bake doubles as the audit and a new map needs ONE generation pass, not
+      // three. All four are read-only over clue/sol/nbhd/regionCells: the packed
+      // nibbles must decode back to the in-memory set, every clue must obey the
+      // clue rule against sol, and the set must solve from blank with zero
+      // givens at this tier's technique level (picross too).
+      const packed = packNibbles(clue, N, bakeOrganic), back = unpackNibbles(packed, N);
+      let roundTrip = true;
+      for (let i = 0; i < N; i++) if (bakeOrganic(i) && back[i] !== clue[i]) { roundTrip = false; break; }
+      let pUnsolved = 0;
+      for (const pz of PICROSS) pUnsolved += auditSolvePicross(pz);
+      const audit = { tier: d, locked: lockedN, roundTrip, clueMatchesSol: clueMatchesSol(clue),
+                      unsolved: auditSolveRegions(DIFF[d].basicOnly), picrossUnsolved: pUnsolved };
+      if (!audit.roundTrip || !audit.clueMatchesSol || audit.unsolved || audit.picrossUnsolved)
+        throw new Error('bake ' + m.id + '/' + d + ': audit failed ' + JSON.stringify(audit) + ' — refusing to bake');
+      rec.audit.push(audit);
+      rec.clue[d] = bytesToB64(packed);
+      console.log('[bake] ' + m.id + ' ' + d + ' ok ' + JSON.stringify(audit));
     }
     out.push(rec);
     if (onMap) onMap(rec);
@@ -4020,13 +4040,16 @@ function bakeArg(re){
 if (BAKE_MODE) {
   setTimeout(() => {
     const only = bakeArg(/[?&]bake=([^&]*)/);
-    const links = [];
+    const unknown = (only || []).filter(id => !MAPS.some(m => m.id === id));
+    if (unknown.length) { bakeShow('BAKE ERROR', 'not in MAPS: ' + unknown.join(', ')); return; }
+    const links = [], banks = [];
     bakeBoards(only, rec => {
       // Banked as each map finishes, so a long all-maps run never loses hours of
       // work to a late error. Two routes, because a bake tab usually sits in the
-      // background and Chrome blocks automatic downloads there: POST to a local
-      // sink if one is listening (see the dev server in the plan), and always
-      // leave a clickable link behind as the manual fallback.
+      // background and Chrome blocks automatic downloads there: POST to the
+      // local sink if one is listening (_dev_server.js), and otherwise fall back
+      // to a download. The verdict waits for every POST to be answered, so
+      // "BAKE DONE" in the title means the payloads are already on disk.
       const text = JSON.stringify(rec);
       const name = rec.id + '.bake.json';
       const a = document.createElement('a');
@@ -4036,12 +4059,16 @@ if (BAKE_MODE) {
       a.style.cssText = 'position:fixed;left:8px;z-index:100;color:#7cfc98;top:' + (8 + links.length * 18) + 'px';
       document.body.appendChild(a);
       links.push(a);
-      fetch(location.origin + '/__bake/' + name, { method: 'POST', body: text })
-        .then(r => { if (r.ok) a.textContent = 'banked ' + name; else a.click(); }, () => a.click());
-    }).then(rows => {
-      bakeShow('BAKE DONE', rows.map(r => r.id + ' ' + r.gw + 'x' + r.gh + ' cells=' + r.cells +
-        ' sol=' + r.sol.length + 'B64 tiers=' + Object.keys(r.clue).length).join('\n'));
-    }).catch(e => bakeShow('BAKE ERROR', String(e && e.stack || e)));
+      banks.push(fetch(location.origin + '/__bake/' + name, { method: 'POST', body: text })
+        .then(r => r.ok, () => false)
+        .then(ok => { if (ok) a.textContent = 'banked ' + name; else a.click(); return ok; }));
+    }).then(rows => Promise.all(banks).then(banked => {
+      // plain "BAKE DONE" only when every payload reached the sink; the manual
+      // (downloads) route says so, and _headless.js treats it as a failure
+      bakeShow(banked.every(Boolean) ? 'BAKE DONE' : 'BAKE DONE · DOWNLOADED', rows.map(r => r.id + ' ' + r.gw + 'x' + r.gh + ' cells=' + r.cells +
+        ' sol=' + r.sol.length + 'B64 tiers=' + Object.keys(r.clue).length +
+        ' audit=' + r.audit.map(a => a.tier + ':' + (a.unsolved || a.picrossUnsolved ? 'FAIL' : 'ok')).join(',')).join('\n'));
+    })).catch(e => bakeShow('BAKE ERROR', String(e && e.stack || e)));
   }, 0);
 }
 if (VERIFY_BAKE) {

@@ -5,6 +5,51 @@ shipped to the live site.
 
 ---
 
+## [0.34.1] — 2026-11-10 — Adding a map touches only that map
+
+Tooling only; nothing changes for players. Generation output is unchanged (a fresh
+headless bake of Castle and of Silver Steel reproduces the shipped bytes exactly), so
+`GEN_COMPAT`/`BOARD_COMPAT` stay put and nothing was re-baked.
+
+### Fixed
+- **Folding one map's bake deleted every other map's baked data.** `_bake_boards.js`
+  rebuilt the inline `BAKED_LAYOUT`/`BAKED_SOL` tables from only the payloads it was
+  handed, so folding Silver Steel alone dropped the other nine maps' records (caught
+  and hand-repaired before 0.34.0 shipped). It now upserts: the maps you give it are
+  added or replaced, every other line stays byte-identical. When `GEN_COMPAT` has
+  moved it demands a payload for every map, since `BAKED_COMPAT` is one stamp for all
+  of them. Every payload is validated before anything is written.
+
+### Added
+- **`node _release_map.js <map>.npxsmap.json`** — add a map in one unattended,
+  re-runnable command: insert → bake once (headless) → fold → gate → smoke boot.
+  Silver Steel took ~1h45m and three full generation passes; replayed through this,
+  it is one pass.
+- **`_check_map_release.js`** — the gate for a map-only release. It proves every byte
+  of `index.html` outside the new map's own records matches the live release, that
+  each of those records (and `boards/<id>.js`) is exactly the canonical data line the
+  tools write — so no code can ride along after one — that no other file changed,
+  and that the shipped bytes equal the audited bake. The other maps' earlier audits
+  therefore still hold and need no re-run.
+- **`_headless.js`** — runs `?audit=`/`?bake=`/`?verifybake=` in headless Chrome, one
+  browser per map in parallel, plus a `smoke` boot of every map from its shipped
+  board. Replaces opening a tab per map and polling titles. `_dev_server.js` is the
+  local server + bake sink it uses (previously re-written by hand each release).
+
+### Changed
+- **`?bake=` is also the audit.** Each tier is checked on the exact bytes being
+  shipped (locked/unsolved/picross 0, `clueMatchesSol`, pack round-trip), and the
+  bake refuses to emit a failing payload. Its `BAKE DONE` now waits until every
+  payload POST has been written, and an unknown map id is an error, not an empty
+  success.
+- **`_bake_map.js` fails closed** on a disconnected region (which `healRegions` would
+  silently rewrite), a plot mask that doesn't match the plots, a reused or over-long
+  id, a seed that doesn't fit the share code, `<`/`&` in a name (rendered with
+  `innerHTML`), or `</script` in a quote. New maps are **appended** to `MAPS`, so
+  `MAPS[0]` (the `mapDef()` fallback) no longer changes with each release.
+
+---
+
 ## [0.34.0] — 2026-11-10 — New map: Silver Steel ⚔️
 
 ### Added
