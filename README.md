@@ -1,146 +1,104 @@
-# One More Tile: The Emergent Canvas
+<h1 align="center">One More Tile</h1>
 
-A single-file browser puzzle game inspired by [Proverbs](https://store.steampowered.com/app/2748080/Proverbs/)-style
-**Fill-a-pix (Mosaic)** — with **sudoku** and **picross** puzzles woven directly into the same
-canvas. Solve the cross-stitch board to reveal a hidden pixel-art painting, region by region.
+<p align="center">
+  <b>A cross-stitch logic puzzle that paints a picture as you solve it.</b><br>
+  Fill-a-pix clues cover the canvas, with sudoku and picross patches woven
+  in. Every region you finish uncovers a piece of a hidden pixel-art
+  painting. Solo, in co-op or in versus, in your browser, with nothing to
+  install.
+</p>
 
-No build, no server, no dependencies — open `index.html` in a browser and play. (Keep the small
-`boards/` folder next to it for instant loading; without it the game just builds each canvas itself,
-the slow way.)
+<p align="center">
+  <a href="https://tile.thebarbellengineer.com/"><b>Play it now</b></a> ·
+  <a href="https://thebarbellengineer.com/projects/one-more-tile/">Project page</a> ·
+  <a href="#how-to-play">How to play</a> ·
+  <a href="RELEASE-NOTES.md">Release notes</a> ·
+  <a href="LICENSE">MIT license</a>
+</p>
 
-**▶ Play it now: https://tile.thebarbellengineer.com/**
+<p align="center">
+  <img src="https://thebarbellengineer.com/assets/img/tile-1600.webp" alt="A One More Tile canvas, half solved, with the painting showing through the finished regions" width="720">
+</p>
 
-> New here and want the full engineering rundown (architecture, data flow, key globals, where the
-> seams are)? See **[CLAUDE.md](CLAUDE.md)** — a map of the codebase written for a new person or AI.
+## Why
 
----
+I loved the cross-stitch puzzles in
+[Proverbs](https://store.steampowered.com/app/2748080/Proverbs/) and wanted
+more of them, with two things they didn't have: a reward you can see as you
+go, and a promise that you never have to guess. Here the solution is a
+painting, so every finished region shows a recognisable piece of it, and
+every board at every difficulty is checked to be solvable by logic alone.
 
-## What's inside
+## What it does
 
-### A home menu, then multiple paintings
-The game opens on a **home menu** — a vertical stack of buttons: **Single Player · Co-op ·
-Continue · Options · Credits**. **Single Player** and **Co-op** lead to a **grid of canvas cards**
-(each shows its region lines, and its region/square counts on hover); **Continue** drops you back
-into your most recently played single-player canvas. Reopen the menu any time with the **🏠 Menu**
-button in the toolbar. Each map is a different painting turned into its own puzzle, with
-**separate, autosaved progress**. Drop in any pixel-art image and the generator builds a fitting
-puzzle around it:
+### Three puzzles on one canvas
 
-- **The board's shape follows the image.** A wide painting makes a wide board, a square one a
-  square board — derived from the image's aspect ratio at a roughly constant cell budget, so
-  every puzzle is a similar size.
-- **Region borders follow the picture.** Regions are grown as a *content-aware watershed* along
-  the image's edges, so finishing a region reveals a coherent chunk of the art (a boat, a
-  character) rather than an arbitrary blob.
-- **Sudoku/picross are scattered to fit** each board, and each is attached to a "home" region.
+- **Fill-a-pix** covers the board. Each number counts the light tiles in the
+  3×3 block around it, itself included, and clues never count across a region
+  border.
+- **Sudoku patches**, 4×4 up to 9×9, some with irregular jigsaw boxes.
+- **Picross patches** whose solution is part of the painting. Hover near one
+  to see its run clues.
 
-### Three puzzle types on one canvas
-- **Fill-a-pix core** — each numbered clue counts the light tiles in the 3×3 block centred on it
-  (itself included). Clues never count across a region border or into a plot.
-- **Sudoku plots** — square patches played as sudoku (4×4 up to 9×9), several with irregular
-  **jigsaw boxes**. Click a tile and type a digit (or click to cycle).
-- **Picross patches** — nonograms whose solution *is* the painting. Hover near one and its run
-  clues appear; stitch with the usual light/dark controls.
+### A painting, region by region
 
-### Characters & quotes
-On character maps, each **home region is a character**. Complete a region *and* the
-sudoku/picross attached to it, and that character greets you with a line in a dialogue box.
-**Click a finished region again** to replay its quote. Quotes are an easy-to-edit table in the
-source (`MAP_QUOTES`), keyed by region id — add maps and lines freely.
+- **Regions follow the picture.** They are grown along the painting's own
+  edges, so a finished region shows a boat or a face, not a random blob.
+- **Ten paintings**, each with its own autosaved progress and a play timer
+  that remembers your time.
+- **Characters with something to say.** On character maps, finishing a
+  region and its patches makes that character speak. Click the region again
+  to replay the line.
+- **New weave.** Finished a canvas? **🎲 New weave** builds a completely new
+  puzzle over the same painting, with its own save.
 
-### Difficulty — nothing pre-filled, guessing never required
-**5 tiers** (Very Easy → Very Hard) scale clue density, free 0/9 moves, sudoku givens, jigsaw
-irregularity **and the picross patches** all at once. Switching tiers re-weaves the clues *without
-losing your progress*.
+### Never a guess
 
-- **Very Easy / Easy / Medium** are solvable by plain neighbour-counting alone.
-- **Hard / Very Hard** add *Advanced Deductions* (comparing overlapping clues) — explained by an
-  in-game tutorial the first time you reach them.
-- **The picross patches scale too.** A nonogram's numbers *are* its answer, so there are no clues to
-  hide — instead each patch is redrawn to demand the right amount of deduction, measured in how many
-  full row-and-column passes it takes to crack from blank: **1–2 on Very Easy, around 8 on Very
-  Hard**. Every patch stays solvable by pure line logic at every tier. Start stitching into a patch
-  and it's left alone if you change difficulty — only untouched ones are redrawn.
-- **Every tile is yours to stitch — the board is never pre-filled.** At every tier the puzzle is
-  provably solvable by pure logic, achieved by *repairing the texture* rather than revealing
-  answers: before any clue is shown, the generator flips a handful of stitch pixels so the board
-  falls to logic on its own (details below). No starter tiles, no head-starts, no guessing.
+- **Five difficulty tiers**, Very Easy to Very Hard. The easier three need
+  only neighbour counting; Hard and Very Hard add comparing overlapping
+  clues, with a short tutorial the first time.
+- **Nothing is ever pre-filled**, on any tier, and an audit checks that every
+  region of every painting solves from its clues alone.
+- **Hints near where you're working.** Press `H` and it points at a forced
+  move close to your cursor and says why it's forced.
+- **No game over.** Mistakes are forgiven, and **Undo** takes back whole drag
+  strokes.
 
-### The loading screen shows the puzzle being built
-Instead of a plain progress bar, the load animates the real generation on the board: the
-**territories bloom in** with their borders and plots, every square runs a **"compute shimmer"** of
-flickering digits, then a sweep **thins down to the real clues**. It's spoiler-safe (the shimmer is
-random digits, not the true counts) and it runs on the idle main thread while the clues are computed
-in a background worker, so it's essentially free. A slim **progress bar** in the top card shows the
-real clue-thinning progress, and you can **scroll to zoom** the board while it loads. Bigger maps
-(more to compute) get a slower, more deliberate reveal.
+### Play together
 
-**Mostly, you don't sit through it at all.** Every canvas ships **already generated**. The puzzles
-were always identical for everyone — each canvas is built deterministically from its own seed — so
-rather than have every player recompute the same bytes (between a second and *35 seconds* per canvas
-per difficulty), that work is done once, ahead of time, and shipped with the game. On the biggest
-canvas the stages it replaced now take **1.4 ms**, so the only thing you wait for is the loading
-animation itself. Boards you've played are also
-kept on your machine, which covers anything not shipped — a custom canvas, or one built before an
-update. Either way the game re-checks every clue against the solution before trusting it, so a
-restored board is identical to a freshly generated one, and your stitches are never affected.
+- **Co-op**: split-screen for up to four on one screen, or online with a
+  room code.
+- **Versus** for two to four. On one screen everyone races on the same
+  canvas and each region goes to whoever stitched most of it. Online,
+  everyone solves their own copy and sees rivals' progress, never their
+  answers. Play the full canvas, first to N regions, or against the clock.
+  A match never touches your own save. Each game holds the finished picture
+  locally, so online versus is a friendly race, not a cheat-proof one.
+- **Share codes.** Export a canvas as a code or a file and a friend's game
+  replays it.
 
-### Finished a canvas? Weave it again
-Every canvas ships with one fixed puzzle, the same for everyone. When you want a different one from
-the same painting, pick **🎲 New weave** in the ⋯ menu: the artwork, its regions and its plots stay
-exactly where they are, and a **completely new puzzle** is woven across them — new solution, new
-clues, new sudoku and picross. This is the one board that isn't shipped ready-made, so it's built on
-the spot and you'll see the full loading screen while it happens.
+### Comfortable for hours
 
-Your progress on the original isn't touched — each weave keeps its own save. **Back to the original**
-in the same dialog returns you to it exactly as you left it, and you can switch back again whenever
-you like. The canvas grid and the header mark a rewoven board `· new weave` so you always know which
-puzzle you're on, and share codes carry the weave with them so a friend gets *your* board, not the
-shipped one.
+- **Mouse, touch or gamepad**, with remappable buttons. Pan and zoom freely.
+- **Recolour the whole interface**, adjust the music, set a default
+  difficulty.
+- **Loads instantly.** Every canvas ships already generated, so the only wait
+  is a short animation of the puzzle being built.
 
-### Versus — race a friend for the canvas
-Pick **Versus** on the home menu. It comes in two shapes, because sharing a screen and playing on
-separate ones give away completely different amounts of information.
+## How to play
 
-**Local versus (2–4, split-screen).** Everyone works the *same* canvas, and each region goes to
-whoever stitched the most of it. A tie is broken by whoever laid the **last** tile — so a region a
-rival has nearly finished is still up for grabs if you can beat them to the final stitch. There is
-no way to stop someone glancing at the other half of a shared screen, so rather than pretend
-otherwise, this mode makes the shared board the point.
+1. Open **https://tile.thebarbellengineer.com/** in a desktop or mobile
+   browser.
+2. Pick **Single Player**, **Co-op** or **Versus**, then a painting.
+3. Left-click (or tap) a tile to stitch it light, right-click to mark it
+   dark. Drag to paint several. In a sudoku patch, click a cell and type a
+   digit.
+4. Finish a region to reveal its piece of the painting. Your progress saves
+   itself, and **Continue** on the home menu takes you back.
 
-**Online versus (2–4, over a code).** Everyone gets their **own copy of the same puzzle**. You can
-see how fast your rival is going — their completion %, how many regions they hold, and a live
-minimap of the tiles they've committed to — but never *what they decided*. A tile on their minimap
-looks exactly the same whether they called it light, called it dark, or got it wrong.
-
-Three rules, picked by whoever sets up the match: **Full canvas** (play it out; most regions wins),
-**First to N regions**, or **Timed** (most regions when the clock stops).
-
-A match never touches your save. Your real canvas is put aside when the match starts and comes back
-exactly as you left it when you leave — marks, play-time, and even the proverbs you hadn't seen yet.
-
-> Both players' games hold the finished picture locally (that's what lets everyone build the same
-> puzzle without sending it), so online versus is a friendly race, not a cheat-proof competition.
-
-### Quality of life
-- **Play timer** in the header — per canvas, and it *remembers your time*: leave and come back and
-  it resumes where it stopped. It counts only active time (pauses when you open the menu, switch
-  maps, background the tab or close the page; resumes on your next stitch).
-- **Undo** (toolbar button or `Ctrl+Z`) — whole drag strokes, region completions and error
-  sweeps all roll back as one step.
-- **Local hints** — press `H`; it points at a forced move *near where you're working* and tells
-  you the move (mark dark / light / compare an overlapping neighbour).
-- **3×3 highlight** around the tile under your mouse/controller cursor.
-- **Share** — export your whole canvas as a copy-pasteable code or a `.npxs` file, and import a
-  friend's; the recipient's game replays the progress, completed regions and all.
-- **Multiplayer** — local split-screen co-op (up to 4), online co-op/watch, and **Versus** (above);
-  all peers must be on the same version. In an online co-op session you can keep the shared board as
-  your own solo save.
-- **Options** (⚙ in the toolbar or on the home menu) — recolour the whole interface from a palette
-  of presets or a hue slider (default purple), mute/adjust the music, set your default difficulty
-  (Medium), and open **controller setup**.
-- **Mistake forgiveness** (no game over), autosave per map, pan/zoom, and full **gamepad support**
-  with remappable buttons.
+To play offline, download this repository and open `index.html`. Keep the
+`boards/` folder next to it so canvases load instantly; without it the game
+builds each one itself, which can take a while on the largest.
 
 ---
 
@@ -290,3 +248,7 @@ requests) — they make the deploy job fail with *"Deployment failed, try again 
 push per change; if a deploy flakes transiently, re-run *that* workflow run rather than pushing more.
 `APP_VERSION` (top of the `index.html` script, echoed bottom-right) tracks the shipped version and
 must match between online-multiplayer peers; keep it in sync with `CHANGELOG.md`.
+
+## License
+
+[MIT](LICENSE). Built by Mario Molnar. Engineering map for new contributors and agents: [CLAUDE.md](CLAUDE.md).
